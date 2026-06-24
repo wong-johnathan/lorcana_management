@@ -466,7 +466,7 @@ export default function ScanPage() {
                     min="0"
                     value={batchQty}
                     onChange={(e) => setBatchQty(e.target.value)}
-                    onBlur={() => setBatchQty(String(parseInt(batchQty) || 1))}
+                    onBlur={() => { const v = parseInt(batchQty); setBatchQty(String(isNaN(v) ? 1 : Math.max(0, v))); }}
                     className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-amber-500"
                   />
                 </div>
