@@ -1,14 +1,25 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi, sync as syncApi } from "../services/api";
 import type { Card, InventoryEntry } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
 
+function filtersFromParams(params: URLSearchParams): Record<string, string> {
+  const filters: Record<string, string> = {};
+  for (const key of ["search", "color", "set", "rarity", "cardType", "ownership"]) {
+    const val = params.get(key);
+    if (val) filters[key] = val;
+  }
+  return filters;
+}
+
 export default function DatabasePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [cardList, setCardList] = useState<Card[]>([]);
-  const [filters, setFilters] = useState<Record<string, string>>({});
-  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<Record<string, string>>(() => filtersFromParams(searchParams));
+  const [page, setPage] = useState(() => parseInt(searchParams.get("page") || "1") || 1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [inventoryMap, setInventoryMap] = useState<
@@ -92,9 +103,19 @@ export default function DatabasePage() {
     }
   };
 
+  const syncToUrl = useCallback((f: Record<string, string>, p: number) => {
+    const params = new URLSearchParams();
+    for (const [key, val] of Object.entries(f)) {
+      if (val) params.set(key, val);
+    }
+    if (p > 1) params.set("page", String(p));
+    setSearchParams(params, { replace: true });
+  }, [setSearchParams]);
+
   const handleFilterChange = (newFilters: Record<string, string>) => {
     setFilters(newFilters);
     setPage(1);
+    syncToUrl(newFilters, 1);
   };
 
   const handleAdd = async (
@@ -170,7 +191,7 @@ export default function DatabasePage() {
           {totalPages > 1 && (
             <div className="flex justify-center items-center gap-4 py-4">
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => { const p = Math.max(1, page - 1); setPage(p); syncToUrl(filters, p); }}
                 disabled={page === 1}
                 className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50 text-sm"
               >
@@ -180,7 +201,7 @@ export default function DatabasePage() {
                 Page {page} of {totalPages}
               </span>
               <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => { const p = Math.min(totalPages, page + 1); setPage(p); syncToUrl(filters, p); }}
                 disabled={page === totalPages}
                 className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50 text-sm"
               >
