@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lorcana
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lorcana}
+      POSTGRES_DB: lorcana_inventory
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lorcana -d lorcana_inventory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    image: wongjohnathanwh741/lorcana-server:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://lorcana:${POSTGRES_PASSWORD:-lorcana}@db:5432/lorcana_inventory
+      JWT_SECRET: ${JWT_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PORT: "3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && npm run seed && npm start"
+
+  nginx:
+    image: wongjohnathanwh741/lorcana-nginx:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:

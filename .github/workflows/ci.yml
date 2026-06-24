@@ -161,8 +161,8 @@ jobs:
           context: ./server
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/lorcana-server:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/lorcana-server:${{ github.sha }}
+            wongjohnathanwh741/lorcana-server:latest
+            wongjohnathanwh741/lorcana-server:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -173,7 +173,7 @@ jobs:
           file: ./nginx/Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/lorcana-nginx:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/lorcana-nginx:${{ github.sha }}
+            wongjohnathanwh741/lorcana-nginx:latest
+            wongjohnathanwh741/lorcana-nginx:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
