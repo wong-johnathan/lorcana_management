@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -30,35 +30,40 @@ export interface RecognitionResult {
 export async function recognizeCard(
   imageDataUrl: string
 ): Promise<RecognitionResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return { recognized: null, matches: [], error: "Vision API key not configured" };
   }
 
-  const client = new OpenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey });
 
-  let imageUrl = imageDataUrl;
-  if (!imageUrl.startsWith("data:")) {
-    imageUrl = `data:image/jpeg;base64,${imageUrl}`;
+  let base64Data = imageDataUrl;
+  let mimeType = "image/jpeg";
+
+  if (base64Data.startsWith("data:")) {
+    const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+    if (match) {
+      mimeType = match[1];
+      base64Data = match[2];
+    }
   }
 
   let recognized: RecognizedCard;
   try {
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [
         {
           role: "user",
-          content: [
-            { type: "text", text: PROMPT },
-            { type: "image_url", image_url: { url: imageUrl } },
+          parts: [
+            { text: PROMPT },
+            { inlineData: { mimeType, data: base64Data } },
           ],
         },
       ],
-      max_tokens: 200,
     });
 
-    const text = response.choices[0]?.message?.content?.trim() || "";
+    const text = response.text?.trim() || "";
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -67,21 +72,20 @@ export async function recognizeCard(
 
     recognized = JSON.parse(jsonMatch[0]);
   } catch (err: any) {
-    console.error("DeepSeek vision error:", err?.message || err);
+    console.error("Gemini vision error:", err?.message || err);
     return { recognized: null, matches: [], error: "Vision API request failed" };
-  }
-
-  const where: any = {};
-  if (recognized.name) {
-    where.OR = [
-      { name: { contains: recognized.name, mode: "insensitive" } },
-      { subtitle: { contains: recognized.name, mode: "insensitive" } },
-    ];
   }
 
   if (!recognized.name) {
     return { recognized, matches: [], error: "Could not identify card name" };
   }
+
+  const where: any = {
+    OR: [
+      { name: { contains: recognized.name, mode: "insensitive" } },
+      { subtitle: { contains: recognized.name, mode: "insensitive" } },
+    ],
+  };
 
   try {
     let matches = await prisma.card.findMany({
