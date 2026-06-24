@@ -203,6 +203,7 @@ export default function ScanPage() {
     setBatchQty("1");
     setBatchFoilQty("0");
     if (batchFileInputRef.current) batchFileInputRef.current.value = "";
+    if (canUseCamera) startCamera();
   };
 
   const removeFromQueue = (index: number) => {
