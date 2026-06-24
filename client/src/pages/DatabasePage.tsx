@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi, sync as syncApi } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import type { Card, InventoryEntry } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardGrid from "../components/CardGrid";
@@ -16,6 +17,7 @@ function filtersFromParams(params: URLSearchParams): Record<string, string> {
 }
 
 export default function DatabasePage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [cardList, setCardList] = useState<Card[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>(() => filtersFromParams(searchParams));
@@ -30,6 +32,7 @@ export default function DatabasePage() {
   const [syncMessage, setSyncMessage] = useState("");
 
   const loadInventory = useCallback(async () => {
+    if (!user) return;
     try {
       const entries: InventoryEntry[] = await inventoryApi.list();
       const map = new Map<
@@ -47,7 +50,7 @@ export default function DatabasePage() {
     } catch (err) {
       console.error("Failed to load inventory:", err);
     }
-  }, []);
+  }, [user]);
 
   const loadCards = useCallback(async () => {
     setLoading(true);
@@ -135,26 +138,28 @@ export default function DatabasePage() {
       <div className="p-3">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold">Card Database</h2>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-sm px-3 py-1.5 rounded-md transition-colors"
-          >
-            <svg
-              className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth={2}
+          {user && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-sm px-3 py-1.5 rounded-md transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-            {syncing ? "Syncing..." : "Sync Cards"}
-          </button>
+              <svg
+                className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              {syncing ? "Syncing..." : "Sync Cards"}
+            </button>
+          )}
         </div>
         {syncMessage && (
           <div className="mb-2 text-sm text-green-400 bg-green-400/10 px-3 py-1.5 rounded">
@@ -164,7 +169,7 @@ export default function DatabasePage() {
         <FilterBar
           filters={filters}
           onChange={handleFilterChange}
-          showOwnership
+          showOwnership={!!user}
         />
       </div>
 
@@ -175,8 +180,8 @@ export default function DatabasePage() {
           <CardGrid
             cards={cardList}
             onSelect={setSelectedCard}
-            ownedCardIds={ownedCardIds}
-            ownedQuantities={ownedQuantities}
+            ownedCardIds={user ? ownedCardIds : undefined}
+            ownedQuantities={user ? ownedQuantities : undefined}
           />
 
           {totalPages > 1 && (
@@ -207,9 +212,9 @@ export default function DatabasePage() {
         <CardDetail
           card={selectedCard}
           onClose={() => setSelectedCard(null)}
-          onAdd={handleAdd}
+          onAdd={user ? handleAdd : undefined}
           currentQuantity={
-            inventoryMap.has(selectedCard.id)
+            user && inventoryMap.has(selectedCard.id)
               ? inventoryMap.get(selectedCard.id)
               : undefined
           }

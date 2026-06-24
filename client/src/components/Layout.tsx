@@ -1,28 +1,42 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const navItems = [
-  { to: "/scan", label: "Scan", icon: "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M15 13a3 3 0 11-6 0 3 3 0 016 0z" },
-  { to: "/inventory", label: "Inventory", icon: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" },
-  { to: "/database", label: "Database", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" },
-];
+const NAV_ICONS = {
+  scan: "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z M15 13a3 3 0 11-6 0 3 3 0 016 0z",
+  inventory: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
+  database: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+  login: "M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1",
+};
 
 export default function Layout() {
   const { user, logout } = useAuth();
+
+  const navItems = user
+    ? [
+        { to: "/scan", label: "Scan", icon: NAV_ICONS.scan },
+        { to: "/inventory", label: "Inventory", icon: NAV_ICONS.inventory },
+        { to: "/database", label: "Database", icon: NAV_ICONS.database },
+      ]
+    : [
+        { to: "/database", label: "Database", icon: NAV_ICONS.database },
+        { to: "/login", label: "Sign In", icon: NAV_ICONS.login },
+      ];
 
   return (
     <div className="flex flex-col min-h-screen">
       <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
         <h1 className="text-xl font-bold text-amber-400">Lorcana Inventory</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400">{user?.username}</span>
-          <button
-            onClick={logout}
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            Logout
-          </button>
-        </div>
+        {user && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-400">{user.username}</span>
+            <button
+              onClick={logout}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 overflow-auto pb-20 md:pb-4">

@@ -17,21 +17,22 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return (
-      <Routes>
-        <Route path="*" element={<LoginPage />} />
-      </Routes>
-    );
-  }
-
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/scan" element={<ScanPage />} />
-        <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/database" element={<DatabasePage />} />
-        <Route path="*" element={<Navigate to="/scan" replace />} />
+        {user ? (
+          <>
+            <Route path="/scan" element={<ScanPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="*" element={<Navigate to="/scan" replace />} />
+          </>
+        ) : (
+          <>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="*" element={<Navigate to="/database" replace />} />
+          </>
+        )}
       </Route>
     </Routes>
   );
