@@ -6,7 +6,7 @@ export const publicRouter = Router();
 
 publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
   try {
-    const { userId } = req.params;
+    const { userId } = req.params as { userId: string };
     const { search, color, set, rarity, type, character } = req.query;
 
     const user = await prisma.user.findUnique({
