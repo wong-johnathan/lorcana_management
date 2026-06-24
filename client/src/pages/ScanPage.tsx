@@ -243,7 +243,7 @@ export default function ScanPage() {
     return (
       <div className="space-y-3">
         {canUseCamera && (
-          <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-[4/3]">
+          <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-[2/3]">
             {cameraError ? (
               <div className="flex items-center justify-center h-full text-gray-500 text-sm p-4 text-center">
                 {cameraError}
