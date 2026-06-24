@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lorcana
+      POSTGRES_PASSWORD: lorcana
+      POSTGRES_DB: lorcana_inventory
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lorcana -d lorcana_inventory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://lorcana:lorcana@db:5432/lorcana_inventory
+      JWT_SECRET: dev-secret-change-in-production
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PORT: "3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./server/src:/app/src
+      - ./server/prisma:/app/prisma
+      - ./server/data:/app/data
+    command: npm run dev
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://server:3001
+    depends_on:
+      - server
+    volumes:
+      - ./client/src:/app/src
+      - ./client/index.html:/app/index.html
+    command: npm run dev
+
+volumes:
+  pgdata:
