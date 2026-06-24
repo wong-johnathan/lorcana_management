@@ -8,6 +8,8 @@ import type {
   RecognizeResult,
   BatchItem,
   BatchResult,
+  UserSettings,
+  PublicCollection,
 } from "../types";
 
 const API_BASE = "/api";
@@ -95,4 +97,20 @@ export const sync = {
     request<{ message: string; count: number }>("/sync/refresh", {
       method: "POST",
     }),
+};
+
+export const settings = {
+  get: () => request<UserSettings>("/settings/profile"),
+  update: (data: { publicEnabled: boolean }) =>
+    request<UserSettings>("/settings/profile", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const publicCollection = {
+  get: (userId: string, params?: Record<string, string>) => {
+    const query = params ? "?" + new URLSearchParams(params).toString() : "";
+    return request<PublicCollection>(`/public/collection/${userId}${query}`);
+  },
 };

@@ -5,6 +5,8 @@ import LoginPage from "./pages/LoginPage";
 import ScanPage from "./pages/ScanPage";
 import InventoryPage from "./pages/InventoryPage";
 import DatabasePage from "./pages/DatabasePage";
+import SettingsPage from "./pages/SettingsPage";
+import PublicCollectionPage from "./pages/PublicCollectionPage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -21,10 +23,12 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/database" element={<DatabasePage />} />
+        <Route path="/collection/:userId" element={<PublicCollectionPage />} />
         {user ? (
           <>
             <Route path="/scan" element={<ScanPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/scan" replace />} />
           </>
         ) : (

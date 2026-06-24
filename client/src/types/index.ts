@@ -97,3 +97,14 @@ export interface InventoryStats {
   totalCards: number;
   setBreakdown: { setName: string; owned: number; total: number }[];
 }
+
+export interface UserSettings {
+  publicEnabled: boolean;
+  publicUrl: string;
+}
+
+export interface PublicCollection {
+  user: User;
+  cards: { card: Card; quantity: number; foilQuantity: number }[];
+  stats: InventoryStats;
+}
