@@ -36,6 +36,8 @@ export default function ScanPage() {
   const [batchProcessing, setBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const [batchResults, setBatchResults] = useState<BatchResultItem[] | null>(null);
+  const [batchOriginalImages, setBatchOriginalImages] = useState<string[]>([]);
+  const [expandedResult, setExpandedResult] = useState<number | null>(null);
 
   const canUseCamera =
     typeof navigator !== "undefined" &&
@@ -220,8 +222,10 @@ export default function ScanPage() {
         foilQuantity: q.foilQuantity,
       }));
 
+      setBatchOriginalImages(batchQueue.map((q) => q.image));
       const result = await inventoryApi.batchAdd(items);
       setBatchResults(result.results);
+      setExpandedResult(null);
       setBatchQueue([]);
     } catch (err) {
       console.error("Batch error:", err);
@@ -508,31 +512,89 @@ export default function ScanPage() {
             </div>
           </div>
 
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {batchResults.map((r) => (
-              <div
-                key={r.index}
-                className={`p-2 rounded-lg border text-sm ${
-                  r.status === "success"
-                    ? "bg-gray-900 border-green-800"
-                    : "bg-gray-900 border-red-800"
-                }`}
-              >
-                {r.status === "success" ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-400">&#10003;</span>
-                    <span className="font-medium">{r.card?.name}</span>
-                    {r.card?.subtitle && <span className="text-gray-400">— {r.card.subtitle}</span>}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-400">&#10007;</span>
-                    <span className="text-gray-400">Card {r.index + 1}: </span>
-                    <span className="text-red-400">{r.error}</span>
-                  </div>
-                )}
-              </div>
-            ))}
+          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
+            {batchResults.map((r) => {
+              const isExpanded = expandedResult === r.index;
+              return (
+                <div
+                  key={r.index}
+                  className={`rounded-lg border text-sm overflow-hidden ${
+                    r.status === "success"
+                      ? "bg-gray-900 border-green-800"
+                      : "bg-gray-900 border-red-800"
+                  }`}
+                >
+                  <button
+                    onClick={() => setExpandedResult(isExpanded ? null : r.index)}
+                    className="w-full flex items-center gap-2 p-2 text-left"
+                  >
+                    {r.status === "success" ? (
+                      <>
+                        <span className="text-green-400">&#10003;</span>
+                        <span className="font-medium flex-1">{r.card?.name}</span>
+                        {r.card?.subtitle && <span className="text-gray-400 flex-1 truncate">— {r.card.subtitle}</span>}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-red-400">&#10007;</span>
+                        <span className="text-gray-400">Card {r.index + 1}: </span>
+                        <span className="text-red-400 flex-1 truncate">{r.error}</span>
+                      </>
+                    )}
+                    <svg
+                      className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="border-t border-gray-800 p-3 space-y-3">
+                      <div className="flex gap-3">
+                        {batchOriginalImages[r.index] && (
+                          <div className="shrink-0">
+                            <p className="text-xs text-gray-500 mb-1">Your photo</p>
+                            <img
+                              src={batchOriginalImages[r.index]}
+                              alt="Original"
+                              className="w-24 h-32 object-cover rounded border border-gray-700"
+                            />
+                          </div>
+                        )}
+                        {r.status === "success" && r.card?.imageUrl && (
+                          <div className="shrink-0">
+                            <p className="text-xs text-gray-500 mb-1">Matched card</p>
+                            <img
+                              src={r.card.imageUrl}
+                              alt={r.card.name}
+                              className="w-24 h-32 object-cover rounded border border-green-800"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {r.recognized && (
+                        <div className="text-xs text-gray-400">
+                          <span className="text-gray-500">AI detected: </span>
+                          {r.recognized.name}
+                          {r.recognized.subtitle && ` — ${r.recognized.subtitle}`}
+                          {r.recognized.color && ` (${r.recognized.color})`}
+                        </div>
+                      )}
+
+                      {r.status === "success" && r.card && (
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div><span className="text-gray-500">Color:</span> {r.card.color}</div>
+                          <div><span className="text-gray-500">Set:</span> {r.card.setName}</div>
+                          <div><span className="text-gray-500">Rarity:</span> {r.card.rarity}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <button
