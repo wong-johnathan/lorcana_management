@@ -57,6 +57,10 @@ export default function ScanPage() {
   }, [canUseCamera]);
 
   useEffect(() => {
+    if (canUseCamera) startCamera();
+  }, [canUseCamera, startCamera]);
+
+  useEffect(() => {
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
     }
@@ -248,7 +252,7 @@ export default function ScanPage() {
               <div className="flex items-center justify-center h-full text-gray-500 text-sm p-4 text-center">
                 {cameraError}
               </div>
-            ) : stream ? (
+            ) : (
               <video
                 ref={videoRef}
                 autoPlay
@@ -257,15 +261,6 @@ export default function ScanPage() {
                 onLoadedMetadata={() => setVideoReady(true)}
                 className="w-full h-full object-cover"
               />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <button
-                  onClick={startCamera}
-                  className="bg-amber-500 hover:bg-amber-600 text-black font-semibold px-6 py-3 rounded-lg transition-colors"
-                >
-                  Start Camera
-                </button>
-              </div>
             )}
           </div>
         )}
