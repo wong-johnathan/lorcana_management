@@ -80,6 +80,9 @@ export interface BatchResultItem {
   recognized: RecognizedCard | null;
   card?: Card;
   error?: string;
+  quantity?: number;
+  foilQuantity?: number;
+  entryId?: string;
 }
 
 export interface BatchResult {

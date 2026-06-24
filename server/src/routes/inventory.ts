@@ -141,6 +141,9 @@ inventoryRouter.post("/batch", async (req: AuthRequest, res: Response) => {
           status: "success",
           recognized: recognition.recognized,
           card: entry.card,
+          quantity,
+          foilQuantity,
+          entryId: entry.id,
         });
       } catch (err: any) {
         results.push({

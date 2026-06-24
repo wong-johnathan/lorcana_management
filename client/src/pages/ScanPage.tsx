@@ -38,6 +38,10 @@ export default function ScanPage() {
   const [batchResults, setBatchResults] = useState<BatchResultItem[] | null>(null);
   const [batchOriginalImages, setBatchOriginalImages] = useState<string[]>([]);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
+  const [correctingIndex, setCorrectingIndex] = useState<number | null>(null);
+  const [correctionQuery, setCorrectionQuery] = useState("");
+  const [correctionResults, setCorrectionResults] = useState<Card[]>([]);
+  const [correctionSearching, setCorrectionSearching] = useState(false);
 
   const canUseCamera =
     typeof navigator !== "undefined" &&
@@ -267,6 +271,63 @@ export default function ScanPage() {
 
   const clearBatchResults = () => {
     setBatchResults(null);
+    setCorrectingIndex(null);
+    setCorrectionQuery("");
+    setCorrectionResults([]);
+  };
+
+  const startCorrection = (index: number) => {
+    setCorrectingIndex(index);
+    setCorrectionQuery("");
+    setCorrectionResults([]);
+  };
+
+  useEffect(() => {
+    if (correctingIndex === null || !correctionQuery.trim()) {
+      setCorrectionResults([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      setCorrectionSearching(true);
+      try {
+        const res = await cardsApi.list({ search: correctionQuery, limit: "8" });
+        setCorrectionResults(res.cards);
+      } catch (err) {
+        console.error("Correction search error:", err);
+      } finally {
+        setCorrectionSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [correctionQuery, correctingIndex]);
+
+  const applyCorrection = async (correctCard: Card) => {
+    if (correctingIndex === null || !batchResults) return;
+    const result = batchResults[correctingIndex];
+    if (!result) return;
+
+    const qty = result.quantity ?? 1;
+    const foilQty = result.foilQuantity ?? 0;
+
+    try {
+      if (result.entryId) {
+        await inventoryApi.remove(result.entryId);
+      }
+      await inventoryApi.add(correctCard.id, qty, foilQty);
+
+      setBatchResults((prev) =>
+        prev!.map((r, i) =>
+          i === correctingIndex
+            ? { ...r, card: correctCard, status: "success" as const, error: undefined }
+            : r
+        )
+      );
+      setCorrectingIndex(null);
+      setCorrectionQuery("");
+      setCorrectionResults([]);
+    } catch (err) {
+      console.error("Correction failed:", err);
+    }
   };
 
   // === Camera/upload UI (shared between modes) ===
@@ -636,6 +697,55 @@ export default function ScanPage() {
                           <div><span className="text-gray-500">Set:</span> {r.card.setName}</div>
                           <div><span className="text-gray-500">Rarity:</span> {r.card.rarity}</div>
                         </div>
+                      )}
+
+                      {correctingIndex === r.index ? (
+                        <div className="space-y-2 border-t border-gray-800 pt-2">
+                          <input
+                            type="text"
+                            placeholder="Search for the correct card..."
+                            value={correctionQuery}
+                            onChange={(e) => setCorrectionQuery(e.target.value)}
+                            autoFocus
+                            className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+                          />
+                          {correctionSearching && <p className="text-gray-500 text-xs">Searching...</p>}
+                          {correctionResults.length > 0 && (
+                            <div className="space-y-1 max-h-48 overflow-y-auto">
+                              {correctionResults.map((card) => (
+                                <button
+                                  key={card.id}
+                                  onClick={() => applyCorrection(card)}
+                                  className="w-full flex items-center gap-2 p-1.5 bg-gray-800 rounded border border-gray-700 hover:border-amber-500 text-left text-xs"
+                                >
+                                  {card.imageUrl ? (
+                                    <img src={card.imageUrl} alt={card.name} className="w-8 h-11 object-cover rounded" loading="lazy" />
+                                  ) : (
+                                    <div className="w-8 h-11 bg-gray-700 rounded" />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium truncate">{card.name}</p>
+                                    {card.subtitle && <p className="text-gray-400 truncate">{card.subtitle}</p>}
+                                    <p className="text-gray-500">{card.color} · {card.setName}</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => { setCorrectingIndex(null); setCorrectionQuery(""); setCorrectionResults([]); }}
+                            className="text-xs text-gray-500 hover:text-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => startCorrection(r.index)}
+                          className="text-xs text-amber-400 hover:text-amber-300 mt-1"
+                        >
+                          Wrong match? Fix it
+                        </button>
                       )}
                     </div>
                   )}
