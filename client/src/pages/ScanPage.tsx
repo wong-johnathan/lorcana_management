@@ -108,15 +108,41 @@ export default function ScanPage() {
     }
   }, []);
 
+  const GUIDE_WIDTH_RATIO = 0.75;
+  const GUIDE_ASPECT = 2 / 3;
+
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (video.videoWidth === 0 || video.videoHeight === 0) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")!.drawImage(video, 0, 0);
-    const imageData = canvas.toDataURL("image/jpeg", 0.8);
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (vw === 0 || vh === 0) return;
+
+    const previewAspect = video.clientWidth / video.clientHeight;
+    const videoAspect = vw / vh;
+
+    let visibleW = vw;
+    let visibleH = vh;
+    let offsetX = 0;
+    let offsetY = 0;
+    if (videoAspect > previewAspect) {
+      visibleW = vh * previewAspect;
+      offsetX = (vw - visibleW) / 2;
+    } else {
+      visibleH = vw / previewAspect;
+      offsetY = (vh - visibleH) / 2;
+    }
+
+    const guideW = visibleW * GUIDE_WIDTH_RATIO;
+    const guideH = guideW / GUIDE_ASPECT;
+    const sx = offsetX + (visibleW - guideW) / 2;
+    const sy = offsetY + (visibleH - guideH) / 2;
+
+    canvas.width = guideW;
+    canvas.height = guideH;
+    canvas.getContext("2d")!.drawImage(video, sx, sy, guideW, guideH, 0, 0, guideW, guideH);
+    const imageData = canvas.toDataURL("image/jpeg", 0.85);
 
     if (batchMode) {
       setBatchImage(imageData);
@@ -194,8 +220,10 @@ export default function ScanPage() {
 
   const addToQueue = () => {
     if (!batchImage) return;
-    const qty = parseInt(batchQty) || 1;
-    const foilQty = parseInt(batchFoilQty) || 0;
+    const parsed = parseInt(batchQty);
+    const qty = isNaN(parsed) ? 1 : Math.max(0, parsed);
+    const parsedFoil = parseInt(batchFoilQty);
+    const foilQty = isNaN(parsedFoil) ? 0 : Math.max(0, parsedFoil);
     if (qty === 0 && foilQty === 0) return;
 
     setBatchQueue((prev) => [...prev, { image: batchImage, quantity: qty, foilQuantity: foilQty }]);
@@ -252,20 +280,38 @@ export default function ScanPage() {
     return (
       <div className="space-y-3">
         {canUseCamera && (
-          <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-[2/3]">
+          <div className="relative bg-gray-900 rounded-lg overflow-hidden aspect-[3/4]">
             {cameraError ? (
               <div className="flex items-center justify-center h-full text-gray-500 text-sm p-4 text-center">
                 {cameraError}
               </div>
             ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                onLoadedMetadata={() => setVideoReady(true)}
-                className="w-full h-full object-cover"
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  onLoadedMetadata={() => setVideoReady(true)}
+                  className="w-full h-full object-cover"
+                />
+                {stream && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div
+                      className="border-2 border-amber-400 rounded-lg"
+                      style={{
+                        width: `${GUIDE_WIDTH_RATIO * 100}%`,
+                        aspectRatio: "2/3",
+                        boxShadow: "0 0 0 9999px rgba(0,0,0,0.5)",
+                      }}
+                    >
+                      <div className="absolute -bottom-6 left-0 right-0 text-center text-xs text-amber-400/70">
+                        Align card within frame
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
