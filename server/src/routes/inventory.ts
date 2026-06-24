@@ -1,6 +1,7 @@
 import { Router, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../middleware/auth.js";
+import { recognizeCard } from "../services/cardRecognition.js";
 
 const prisma = new PrismaClient();
 export const inventoryRouter = Router();
@@ -82,6 +83,79 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Stats error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.post("/batch", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "items array is required" });
+      return;
+    }
+
+    if (items.length > 50) {
+      res.status(400).json({ error: "Maximum 50 items per batch" });
+      return;
+    }
+
+    const results: any[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const { image, quantity = 1, foilQuantity = 0 } = items[i];
+
+      if (!image) {
+        results.push({ index: i, status: "failed", error: "No image provided", recognized: null });
+        continue;
+      }
+
+      try {
+        const recognition = await recognizeCard(image);
+
+        if (!recognition.matches || recognition.matches.length === 0) {
+          results.push({
+            index: i,
+            status: "failed",
+            error: recognition.error || "Could not identify card",
+            recognized: recognition.recognized,
+          });
+          continue;
+        }
+
+        const topMatch = recognition.matches[0];
+
+        const entry = await prisma.inventoryEntry.upsert({
+          where: { userId_cardId: { userId, cardId: topMatch.id } },
+          create: { userId, cardId: topMatch.id, quantity, foilQuantity },
+          update: {
+            quantity: { increment: quantity },
+            foilQuantity: { increment: foilQuantity },
+          },
+          include: { card: true },
+        });
+
+        results.push({
+          index: i,
+          status: "success",
+          recognized: recognition.recognized,
+          card: entry.card,
+        });
+      } catch (err: any) {
+        results.push({
+          index: i,
+          status: "failed",
+          error: err?.message || "Processing failed",
+          recognized: null,
+        });
+      }
+    }
+
+    res.json({ results });
+  } catch (error) {
+    console.error("Batch error:", error);
+    res.status(500).json({ error: "Batch processing failed" });
   }
 });
 

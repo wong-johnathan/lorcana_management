@@ -68,6 +68,24 @@ export interface RecognizeResult {
   error?: string;
 }
 
+export interface BatchItem {
+  image: string;
+  quantity: number;
+  foilQuantity: number;
+}
+
+export interface BatchResultItem {
+  index: number;
+  status: "success" | "failed";
+  recognized: RecognizedCard | null;
+  card?: Card;
+  error?: string;
+}
+
+export interface BatchResult {
+  results: BatchResultItem[];
+}
+
 export interface InventoryStats {
   totalUnique: number;
   totalCards: number;

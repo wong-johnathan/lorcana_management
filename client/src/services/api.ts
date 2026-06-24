@@ -6,6 +6,8 @@ import type {
   FilterOptions,
   InventoryStats,
   RecognizeResult,
+  BatchItem,
+  BatchResult,
 } from "../types";
 
 const API_BASE = "/api";
@@ -81,6 +83,11 @@ export const inventory = {
   remove: (id: string) =>
     request<void>(`/inventory/${id}`, { method: "DELETE" }),
   stats: () => request<InventoryStats>("/inventory/stats"),
+  batchAdd: (items: BatchItem[]) =>
+    request<BatchResult>("/inventory/batch", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    }),
 };
 
 export const sync = {
