@@ -1,14 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { inventory as inventoryApi } from "../services/api";
-import type { InventoryEntry, InventoryStats } from "../types";
+import type { Card, InventoryEntry, InventoryStats } from "../types";
 import FilterBar from "../components/FilterBar";
+import CardDetail from "../components/CardDetail";
 
 export default function InventoryPage() {
   const [entries, setEntries] = useState<InventoryEntry[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const entryByCardId = useMemo(() => {
+    const map = new Map<string, { quantity: number; foilQuantity: number }>();
+    for (const e of entries) map.set(e.cardId, { quantity: e.quantity, foilQuantity: e.foilQuantity });
+    return map;
+  }, [entries]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,8 +120,12 @@ export default function InventoryPage() {
                     <img
                       src={card.imageUrl}
                       alt={card.name}
-                      className="w-12 h-16 object-cover rounded"
+                      className="w-12 h-16 object-cover rounded cursor-pointer hover:ring-2 hover:ring-amber-400 transition-all"
                       loading="lazy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCard(card);
+                      }}
                     />
                   ) : (
                     <div className="w-12 h-16 bg-gray-800 rounded flex items-center justify-center text-xs text-gray-500">
@@ -249,6 +261,14 @@ export default function InventoryPage() {
             );
           })}
         </div>
+      )}
+
+      {selectedCard && (
+        <CardDetail
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          currentQuantity={entryByCardId.get(selectedCard.id)}
+        />
       )}
     </div>
   );
