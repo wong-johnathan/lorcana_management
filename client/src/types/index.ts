@@ -58,8 +58,11 @@ export interface FilterOptions {
 export interface RecognizedCard {
   name: string;
   subtitle: string;
-  set: string;
   color: string;
+  inkCost: number;
+  strength: number;
+  willpower: number;
+  cardNumber: string;
 }
 
 export interface RecognizeResult {

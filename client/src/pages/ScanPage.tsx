@@ -54,7 +54,7 @@ export default function ScanPage() {
       setCameraError("");
       setVideoReady(false);
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 } },
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       setStream(mediaStream);
     } catch {
@@ -146,7 +146,7 @@ export default function ScanPage() {
     canvas.width = guideW;
     canvas.height = guideH;
     canvas.getContext("2d")!.drawImage(video, sx, sy, guideW, guideH, 0, 0, guideW, guideH);
-    const imageData = canvas.toDataURL("image/jpeg", 0.85);
+    const imageData = canvas.toDataURL("image/jpeg", 0.92);
 
     if (batchMode) {
       setBatchImage(imageData);
@@ -460,9 +460,17 @@ export default function ScanPage() {
 
               {recognized && !recognizing && (
                 <div className="bg-green-900/30 border border-green-700 rounded-md px-3 py-2 text-sm">
-                  <span className="text-green-400">Detected: </span>
-                  <span className="font-medium">{recognized.name}</span>
-                  {recognized.subtitle && <span className="text-gray-400"> — {recognized.subtitle}</span>}
+                  <div>
+                    <span className="text-green-400">Detected: </span>
+                    <span className="font-medium">{recognized.name}</span>
+                    {recognized.subtitle && <span className="text-gray-400"> — {recognized.subtitle}</span>}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {recognized.color && <span>{recognized.color}</span>}
+                    {recognized.inkCost > 0 && <span> · {recognized.inkCost} ink</span>}
+                    {recognized.strength > 0 && <span> · {recognized.strength} STR</span>}
+                    {recognized.willpower > 0 && <span> · {recognized.willpower} WIL</span>}
+                  </div>
                 </div>
               )}
 
@@ -683,11 +691,19 @@ export default function ScanPage() {
                       </div>
 
                       {r.recognized && (
-                        <div className="text-xs text-gray-400">
-                          <span className="text-gray-500">AI detected: </span>
-                          {r.recognized.name}
-                          {r.recognized.subtitle && ` — ${r.recognized.subtitle}`}
-                          {r.recognized.color && ` (${r.recognized.color})`}
+                        <div className="text-xs text-gray-400 space-y-0.5">
+                          <div>
+                            <span className="text-gray-500">AI detected: </span>
+                            {r.recognized.name}
+                            {r.recognized.subtitle && ` — ${r.recognized.subtitle}`}
+                          </div>
+                          <div className="text-gray-500">
+                            {r.recognized.color && <span>{r.recognized.color}</span>}
+                            {r.recognized.inkCost > 0 && <span> · {r.recognized.inkCost} ink</span>}
+                            {r.recognized.strength > 0 && <span> · {r.recognized.strength} STR</span>}
+                            {r.recognized.willpower > 0 && <span> · {r.recognized.willpower} WIL</span>}
+                            {r.recognized.cardNumber && <span> · #{r.recognized.cardNumber}</span>}
+                          </div>
                         </div>
                       )}
 
