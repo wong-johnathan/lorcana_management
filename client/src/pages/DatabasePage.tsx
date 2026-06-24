@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi, sync as syncApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -21,15 +21,17 @@ export default function DatabasePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [cardList, setCardList] = useState<Card[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>(() => filtersFromParams(searchParams));
-  const [page, setPage] = useState(() => parseInt(searchParams.get("page") || "1") || 1);
+  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [inventoryMap, setInventoryMap] = useState<
     Map<string, { quantity: number; foilQuantity: number; entryId: string }>
   >(new Map());
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const loadInventory = useCallback(async () => {
     if (!user) return;
@@ -52,32 +54,57 @@ export default function DatabasePage() {
     }
   }, [user]);
 
-  const loadCards = useCallback(async () => {
-    setLoading(true);
+  const loadCards = useCallback(async (pageNum: number, append: boolean) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const params: Record<string, string> = {
         ...filters,
-        page: String(page),
+        page: String(pageNum),
         limit: "40",
       };
 
       const res = await cardsApi.list(params);
-      setCardList(res.cards);
+      setCardList((prev) => append ? [...prev, ...res.cards] : res.cards);
       setTotalPages(res.pagination.totalPages);
     } catch (err) {
       console.error("Failed to load cards:", err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [filters, page]);
+  }, [filters]);
 
   useEffect(() => {
     loadInventory();
   }, [loadInventory]);
 
   useEffect(() => {
-    loadCards();
+    setPage(1);
+    loadCards(1, false);
   }, [loadCards]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading && !loadingMore && page < totalPages) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          loadCards(nextPage, true);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [page, totalPages, loading, loadingMore, loadCards]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -87,7 +114,7 @@ export default function DatabasePage() {
       setSyncMessage(res.message);
       setTimeout(() => setSyncMessage(""), 5000);
       setPage(1);
-      await loadCards();
+      loadCards(1, false);
     } catch (err) {
       setSyncMessage("Sync failed. Please try again.");
       setTimeout(() => setSyncMessage(""), 5000);
@@ -97,19 +124,18 @@ export default function DatabasePage() {
     }
   };
 
-  const syncToUrl = useCallback((f: Record<string, string>, p: number) => {
+  const syncToUrl = useCallback((f: Record<string, string>) => {
     const params = new URLSearchParams();
     for (const [key, val] of Object.entries(f)) {
       if (val) params.set(key, val);
     }
-    if (p > 1) params.set("page", String(p));
     setSearchParams(params, { replace: true });
   }, [setSearchParams]);
 
   const handleFilterChange = (newFilters: Record<string, string>) => {
     setFilters(newFilters);
     setPage(1);
-    syncToUrl(newFilters, 1);
+    syncToUrl(newFilters);
   };
 
   const handleAdd = async (
@@ -184,25 +210,15 @@ export default function DatabasePage() {
             ownedQuantities={user ? ownedQuantities : undefined}
           />
 
-          {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-4 py-4">
-              <button
-                onClick={() => { const p = Math.max(1, page - 1); setPage(p); syncToUrl(filters, p); }}
-                disabled={page === 1}
-                className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50 text-sm"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-gray-400">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => { const p = Math.min(totalPages, page + 1); setPage(p); syncToUrl(filters, p); }}
-                disabled={page === totalPages}
-                className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50 text-sm"
-              >
-                Next
-              </button>
+          <div ref={sentinelRef} className="h-1" />
+
+          {loadingMore && (
+            <div className="text-center text-gray-500 py-4">Loading more...</div>
+          )}
+
+          {page >= totalPages && cardList.length > 0 && (
+            <div className="text-center text-gray-600 text-sm py-4">
+              Showing all {cardList.length} cards
             </div>
           )}
         </>
