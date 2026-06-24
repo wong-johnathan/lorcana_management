@@ -57,25 +57,16 @@ export default function DatabasePage() {
         page: String(page),
         limit: "40",
       };
-      delete params.ownership;
 
       const res = await cardsApi.list(params);
-      let filtered = res.cards;
-
-      if (filters.ownership === "owned") {
-        filtered = filtered.filter((c) => inventoryMap.has(c.id));
-      } else if (filters.ownership === "not_owned") {
-        filtered = filtered.filter((c) => !inventoryMap.has(c.id));
-      }
-
-      setCardList(filtered);
+      setCardList(res.cards);
       setTotalPages(res.pagination.totalPages);
     } catch (err) {
       console.error("Failed to load cards:", err);
     } finally {
       setLoading(false);
     }
-  }, [filters, page, inventoryMap]);
+  }, [filters, page]);
 
   useEffect(() => {
     loadInventory();

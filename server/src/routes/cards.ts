@@ -1,9 +1,24 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import jwt from "jsonwebtoken";
 import { recognizeCard } from "../services/cardRecognition.js";
+import type { AuthPayload } from "../middleware/auth.js";
 
 const prisma = new PrismaClient();
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 export const cardsRouter = Router();
+
+function getUserIdFromRequest(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    return payload.userId;
+  } catch {
+    return null;
+  }
+}
 
 cardsRouter.get("/", async (req: Request, res: Response) => {
   try {
@@ -15,6 +30,7 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       type,
       character,
       cardType,
+      ownership,
       page = "1",
       limit = "40",
     } = req.query;
@@ -35,6 +51,24 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       where.character = { contains: character, mode: "insensitive" };
     }
     if (cardType && typeof cardType === "string") where.cardType = cardType;
+
+    if (ownership && typeof ownership === "string") {
+      const userId = getUserIdFromRequest(req);
+      if (userId) {
+        const ownedCardIds = (
+          await prisma.inventoryEntry.findMany({
+            where: { userId },
+            select: { cardId: true },
+          })
+        ).map((e) => e.cardId);
+
+        if (ownership === "owned") {
+          where.id = { in: ownedCardIds };
+        } else if (ownership === "not_owned") {
+          where.id = { notIn: ownedCardIds };
+        }
+      }
+    }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 40));
