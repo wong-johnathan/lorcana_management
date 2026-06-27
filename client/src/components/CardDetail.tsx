@@ -132,6 +132,26 @@ export default function CardDetail({
               </div>
             )}
 
+            {/* eBay links */}
+            <div className="flex gap-2 pt-1">
+              <a
+                href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`Disney Lorcana "${card.name}" ${card.cardNumber}`)}&LH_Sold=1&LH_Complete=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 text-center text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-700/50 rounded-md px-3 py-1.5 transition-colors"
+              >
+                💰 Sold listings
+              </a>
+              <a
+                href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`Disney Lorcana "${card.name}" ${card.cardNumber}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 text-center text-xs bg-blue-700/30 hover:bg-blue-700/50 text-blue-400 border border-blue-700/50 rounded-md px-3 py-1.5 transition-colors"
+              >
+                🛒 Active listings
+              </a>
+            </div>
+
             {currentQuantity && (
               <div className="bg-gray-800 rounded-md p-2 text-sm">
                 <span className="text-gray-400">In your collection: </span>
