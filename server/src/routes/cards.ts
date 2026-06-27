@@ -45,7 +45,7 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
     }
     if (color && typeof color === "string") where.color = color;
     if (set && typeof set === "string") where.setName = set;
-    if (rarity && typeof rarity === "string") where.rarity = rarity;
+    if (rarity && typeof rarity === "string") where.rarity = { in: rarity.split(",") };
     if (type && typeof type === "string") where.types = { has: type };
     if (character && typeof character === "string") {
       where.character = { contains: character, mode: "insensitive" };
