@@ -1,16 +1,28 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { inventory as inventoryApi } from "../services/api";
+import { useSearchParams } from "react-router-dom";
+import { inventory as inventoryApi, cards as cardsApi } from "../services/api";
 import type { Card, InventoryEntry, InventoryStats } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardDetail from "../components/CardDetail";
 
 export default function InventoryPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<InventoryEntry[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const cardId = searchParams.get("card");
+
+  useEffect(() => {
+    if (cardId) {
+      cardsApi.get(cardId).then(setDetailCard).catch(() => setDetailCard(null));
+    } else {
+      setDetailCard(null);
+    }
+  }, [cardId]);
 
   const entryByCardId = useMemo(() => {
     const map = new Map<string, { quantity: number; foilQuantity: number }>();
@@ -58,6 +70,18 @@ export default function InventoryPage() {
     } catch (err) {
       console.error("Failed to remove:", err);
     }
+  };
+
+  const handleSelectCard = (card: Card) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("card", card.id);
+    setSearchParams(params);
+  };
+
+  const handleCloseDetail = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("card");
+    setSearchParams(params, { replace: true });
   };
 
   return (
@@ -124,7 +148,7 @@ export default function InventoryPage() {
                       loading="lazy"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedCard(card);
+                        handleSelectCard(card);
                       }}
                     />
                   ) : (
@@ -263,11 +287,11 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {selectedCard && (
+      {detailCard && (
         <CardDetail
-          card={selectedCard}
-          onClose={() => setSelectedCard(null)}
-          currentQuantity={entryByCardId.get(selectedCard.id)}
+          card={detailCard}
+          onClose={handleCloseDetail}
+          currentQuantity={entryByCardId.get(detailCard.id)}
         />
       )}
     </div>

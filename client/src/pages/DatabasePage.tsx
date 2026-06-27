@@ -23,7 +23,7 @@ export default function DatabasePage() {
   const [filters, setFilters] = useState<Record<string, string>>(() => filtersFromParams(searchParams));
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [inventoryMap, setInventoryMap] = useState<
     Map<string, { quantity: number; foilQuantity: number; entryId: string }>
   >(new Map());
@@ -32,6 +32,17 @@ export default function DatabasePage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const cardId = searchParams.get("card");
+
+  // Load card detail when card param changes
+  useEffect(() => {
+    if (cardId) {
+      cardsApi.get(cardId).then(setDetailCard).catch(() => setDetailCard(null));
+    } else {
+      setDetailCard(null);
+    }
+  }, [cardId]);
 
   const loadInventory = useCallback(async () => {
     if (!user) return;
@@ -129,13 +140,28 @@ export default function DatabasePage() {
     for (const [key, val] of Object.entries(f)) {
       if (val) params.set(key, val);
     }
+    // Preserve card param
+    const c = searchParams.get("card");
+    if (c) params.set("card", c);
     setSearchParams(params, { replace: true });
-  }, [setSearchParams]);
+  }, [setSearchParams, searchParams]);
 
   const handleFilterChange = (newFilters: Record<string, string>) => {
     setFilters(newFilters);
     setPage(1);
     syncToUrl(newFilters);
+  };
+
+  const handleSelectCard = (card: Card) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("card", card.id);
+    setSearchParams(params);
+  };
+
+  const handleCloseDetail = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("card");
+    setSearchParams(params, { replace: true });
   };
 
   const handleAdd = async (
@@ -205,7 +231,7 @@ export default function DatabasePage() {
         <>
           <CardGrid
             cards={cardList}
-            onSelect={setSelectedCard}
+            onSelect={handleSelectCard}
             ownedCardIds={user ? ownedCardIds : undefined}
             ownedQuantities={user ? ownedQuantities : undefined}
           />
@@ -224,14 +250,14 @@ export default function DatabasePage() {
         </>
       )}
 
-      {selectedCard && (
+      {detailCard && (
         <CardDetail
-          card={selectedCard}
-          onClose={() => setSelectedCard(null)}
+          card={detailCard}
+          onClose={handleCloseDetail}
           onAdd={user ? handleAdd : undefined}
           currentQuantity={
-            user && inventoryMap.has(selectedCard.id)
-              ? inventoryMap.get(selectedCard.id)
+            user && inventoryMap.has(detailCard.id)
+              ? inventoryMap.get(detailCard.id)
               : undefined
           }
         />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "react-router-dom";
-import { publicCollection as publicApi } from "../services/api";
+import { useParams, useSearchParams } from "react-router-dom";
+import { publicCollection as publicApi, cards as cardsApi } from "../services/api";
 import type { Card, InventoryStats, User } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardDetail from "../components/CardDetail";
@@ -13,13 +13,24 @@ interface PublicEntry {
 
 export default function PublicCollectionPage() {
   const { userId } = useParams<{ userId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [entries, setEntries] = useState<PublicEntry[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const cardId = searchParams.get("card");
+
+  useEffect(() => {
+    if (cardId) {
+      cardsApi.get(cardId).then(setDetailCard).catch(() => setDetailCard(null));
+    } else {
+      setDetailCard(null);
+    }
+  }, [cardId]);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -40,6 +51,18 @@ export default function PublicCollectionPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const handleSelectCard = (card: Card) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("card", card.id);
+    setSearchParams(params);
+  };
+
+  const handleCloseDetail = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("card");
+    setSearchParams(params, { replace: true });
+  };
 
   if (loading) {
     return (
@@ -116,7 +139,7 @@ export default function PublicCollectionPage() {
                     alt={card.name}
                     className="w-12 h-16 object-cover rounded cursor-pointer hover:ring-2 hover:ring-amber-400 transition-all flex-shrink-0"
                     loading="lazy"
-                    onClick={() => setSelectedCard(card)}
+                    onClick={() => handleSelectCard(card)}
                   />
                 ) : (
                   <div className="w-12 h-16 bg-gray-800 rounded flex items-center justify-center text-xs text-gray-500 flex-shrink-0">
@@ -152,10 +175,10 @@ export default function PublicCollectionPage() {
         </div>
       )}
 
-      {selectedCard && (
+      {detailCard && (
         <CardDetail
-          card={selectedCard}
-          onClose={() => setSelectedCard(null)}
+          card={detailCard}
+          onClose={handleCloseDetail}
           currentQuantity={undefined}
         />
       )}
