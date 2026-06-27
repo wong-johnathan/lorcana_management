@@ -132,23 +132,33 @@ export default function CardDetail({
               </div>
             )}
 
-            {/* eBay links */}
-            <div className="flex gap-2 pt-1">
+            {/* Market links */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex gap-2">
+                <a
+                  href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${card.cardNumber}`)}&LH_Sold=1&LH_Complete=1`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 text-center text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-700/50 rounded-md px-2 py-1.5 transition-colors"
+                >
+                  💰 Sold
+                </a>
+                <a
+                  href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${card.cardNumber}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 text-center text-xs bg-blue-700/30 hover:bg-blue-700/50 text-blue-400 border border-blue-700/50 rounded-md px-2 py-1.5 transition-colors"
+                >
+                  🛒 Active
+                </a>
+              </div>
               <a
-                href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${card.cardNumber}`)}&LH_Sold=1&LH_Complete=1`}
+                href={`https://www.tcgplayer.com/search/lorcana/product?productName=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 text-center text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-700/50 rounded-md px-3 py-1.5 transition-colors"
+                className="block text-center text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border border-purple-700/50 rounded-md px-3 py-1.5 transition-colors"
               >
-                💰 Sold listings
-              </a>
-              <a
-                href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${card.cardNumber}`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 text-center text-xs bg-blue-700/30 hover:bg-blue-700/50 text-blue-400 border border-blue-700/50 rounded-md px-3 py-1.5 transition-colors"
-              >
-                🛒 Active listings
+                📊 TCGPlayer
               </a>
             </div>
 
