@@ -18,6 +18,8 @@ export default function CardDetail({
   const [foilQuantity, setFoilQuantity] = useState("0");
   const [added, setAdded] = useState(false);
 
+  const shortNumber = card.cardNumber.split("•")[0]?.trim() || card.cardNumber;
+
   const qtyNum = parseInt(quantity) || 0;
   const foilNum = parseInt(foilQuantity) || 0;
 
@@ -136,7 +138,7 @@ export default function CardDetail({
             <div className="space-y-1.5 pt-1">
               <div className="flex gap-2">
                 <a
-                  href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${card.cardNumber}`)}&LH_Sold=1&LH_Complete=1`}
+                  href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}&LH_Sold=1&LH_Complete=1`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 text-center text-xs bg-green-700/30 hover:bg-green-700/50 text-green-400 border border-green-700/50 rounded-md px-2 py-1.5 transition-colors"
@@ -144,7 +146,7 @@ export default function CardDetail({
                   💰 Sold
                 </a>
                 <a
-                  href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${card.cardNumber}`)}`}
+                  href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 text-center text-xs bg-blue-700/30 hover:bg-blue-700/50 text-blue-400 border border-blue-700/50 rounded-md px-2 py-1.5 transition-colors"
