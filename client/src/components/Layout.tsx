@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -11,6 +12,15 @@ const NAV_ICONS = {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const [showTop, setShowTop] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   const navItems = user
     ? [
@@ -77,6 +87,18 @@ export default function Layout() {
           ))}
         </div>
       </nav>
+
+      {showTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-20 right-4 md:bottom-6 z-40 w-10 h-10 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-full flex items-center justify-center text-gray-300 hover:text-amber-400 shadow-lg transition-all"
+          aria-label="Back to top"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
