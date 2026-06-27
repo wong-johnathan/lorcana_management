@@ -155,7 +155,7 @@ export default function CardDetail({
                 </a>
               </div>
               <a
-                href={`https://www.tcgplayer.com/search/lorcana/product?productName=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}`}
+                href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-center text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border border-purple-700/50 rounded-md px-3 py-1.5 transition-colors"
