@@ -110,7 +110,10 @@ export interface PublicCollection {
 }
 
 export interface CardAnalysis {
-  analysis: string;
+  summary: string | null;
+  lastSold: string | null;
+  currentAverage: string | null;
+  fullAnalysis: string | null;
   status: "pending" | "completed" | "error";
   createdAt: string;
   updatedAt: string;

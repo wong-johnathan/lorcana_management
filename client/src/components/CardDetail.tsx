@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Card, CardAnalysis } from "../types";
 import { analysis as analysisApi } from "../services/api";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface CardDetailProps {
   card: Card;
@@ -21,6 +23,7 @@ export default function CardDetail({
   const [analysisData, setAnalysisData] = useState<CardAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
 
   const isLoggedIn = !!localStorage.getItem("token");
 
@@ -49,7 +52,7 @@ export default function CardDetail({
     setAnalysisError(null);
     try {
       await analysisApi.analyze(card.id);
-      setAnalysisData({ analysis: "", status: "pending", createdAt: "", updatedAt: "" });
+      setAnalysisData({ summary: null, lastSold: null, currentAverage: null, fullAnalysis: null, status: "pending", createdAt: "", updatedAt: "" });
     } catch (err: any) {
       setAnalysisError(err.message || "Failed to start analysis");
     } finally {
@@ -261,7 +264,7 @@ export default function CardDetail({
                 </div>
               )}
 
-              {analysisData?.status === "completed" && analysisData.analysis && (
+              {analysisData?.status === "completed" && (analysisData.fullAnalysis || analysisData.summary) && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-gray-500">
@@ -277,9 +280,55 @@ export default function CardDetail({
                       </button>
                     )}
                   </div>
-                  <div className="text-xs text-gray-300 leading-relaxed max-h-64 overflow-y-auto space-y-1 prose prose-invert prose-xs [&_h1]:text-sm [&_h1]:font-bold [&_h2]:text-xs [&_h2]:font-semibold [&_h2]:text-indigo-300 [&_h3]:text-xs [&_h3]:font-medium [&_strong]:text-gray-200 [&_ul]:pl-3 [&_ol]:pl-3"
-                    dangerouslySetInnerHTML={{ __html: analysisData.analysis.replace(/\n/g, "<br/>").replace(/^### (.+)$/gm, "<h3>$1</h3>").replace(/^## (.+)$/gm, "<h2>$1</h2>").replace(/^# (.+)$/gm, "<h1>$1</h1>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/^- (.+)$/gm, "• $1") }}
-                  />
+
+                  {/* Fixed summary fields */}
+                  <div className="space-y-1.5 mb-2">
+                    {analysisData.summary && (
+                      <div className="bg-gray-800/50 rounded-md p-2">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500">Summary</span>
+                        <p className="text-xs text-gray-300 mt-0.5">{analysisData.summary}</p>
+                      </div>
+                    )}
+                    {analysisData.lastSold && (
+                      <div className="flex justify-between text-xs bg-gray-800/50 rounded-md p-2">
+                        <span className="text-gray-500">Last Sold</span>
+                        <span className="text-gray-200 font-medium">{analysisData.lastSold}</span>
+                      </div>
+                    )}
+                    {analysisData.currentAverage && (
+                      <div className="flex justify-between text-xs bg-gray-800/50 rounded-md p-2">
+                        <span className="text-gray-500">Current Avg</span>
+                        <span className="text-gray-200 font-medium">{analysisData.currentAverage}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expandable full analysis */}
+                  {analysisData.fullAnalysis && (
+                    <div>
+                      <button
+                        onClick={() => setShowFullAnalysis(!showFullAnalysis)}
+                        className="w-full text-xs text-indigo-400 hover:text-indigo-300 py-1.5 border border-indigo-800/50 rounded-md bg-indigo-900/20 hover:bg-indigo-900/30 transition-colors"
+                      >
+                        {showFullAnalysis ? "▲ Hide full analysis" : "▼ View full analysis"}
+                      </button>
+                      {showFullAnalysis && (
+                        <div className="mt-2 text-xs text-gray-300 leading-relaxed max-h-80 overflow-y-auto p-3 bg-gray-800/30 rounded-md prose prose-invert prose-xs 
+                          [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-indigo-300 [&_h2]:mt-3 [&_h2]:mb-1
+                          [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-indigo-200
+                          [&_strong]:text-gray-200
+                          [&_ul]:pl-3 [&_ol]:pl-3
+                          [&_table]:w-full [&_table]:text-[10px] [&_table]:border-collapse
+                          [&_th]:bg-gray-700/50 [&_th]:p-1 [&_th]:text-left [&_th]:border [&_th]:border-gray-600
+                          [&_td]:p-1 [&_td]:border [&_td]:border-gray-700
+                          [&_p]:mb-1.5">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {analysisData.fullAnalysis}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

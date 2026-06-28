@@ -76,6 +76,13 @@ function stripHtml(str: string): string {
     .replace(/&nbsp;/g, " ").trim();
 }
 
+export interface AnalysisResult {
+  summary: string;
+  lastSold: string;
+  currentAverage: string;
+  fullAnalysis: string;
+}
+
 export async function analyzeCardMarket(
   card: { name: string; subtitle: string; color: string; rarity: string; setName: string; inkCost: number; cardType: string; types: string[]; abilities: string }
 ): Promise<string> {
@@ -104,31 +111,16 @@ export async function analyzeCardMarket(
 ${searchContext}
 
 ## Instructions
-Provide a deep, comprehensive market analysis covering ALL of the following:
+You MUST return a valid JSON object with exactly these fields. No other text outside the JSON.
 
-### 1. Estimated Market Price Range
-Based on the search results and your knowledge, estimate the current price range for this card (raw/non-foil and foil if applicable). If exact prices are found in the search data, cite them. Otherwise, provide a well-reasoned estimate based on comparable cards.
+{
+  "summary": "2-3 sentence executive summary of the card's market position, key price point, and trend",
+  "lastSold": "Most recent confirmed sale price with date/context (e.g. '$92.70 — June 2026 eBay sold listing'). If no specific sale found, use 'N/A — no recent confirmed sales found'",
+  "currentAverage": "Current estimated market price range (e.g. '$90–95' for raw, '$200–250' for foil). If no data, use 'N/A — insufficient data'",
+  "fullAnalysis": "Full detailed markdown analysis covering:\n\n### 1. Estimated Market Price Range\nBased on search results and knowledge, estimate current price range. Cite specific sources when available.\n\n### 2. Price Trend\nRising, falling, or stable? What's driving it?\n\n### 3. Value Drivers\n- Rarity & scarcity\n- Meta relevance (competitive decks, archetypes)\n- Collectibility (character popularity, art appeal)\n- Set context (in print? out of print?)\n\n### 4. Competitive Viability\nWhere does this card fit in the current meta? Staple or niche?\n\n### 5. Investment Outlook\nShort-term (3-6 months) and long-term (1-2 years). Hold, buy, or sell?\n\n### 6. Comparable Cards\nTable format: | Card | Set | Rarity | Current Price | Notes |\n\nEnd with a one-sentence verdict.\n\nUse dollar ranges, cite sources, be specific."
+}
 
-### 2. Price Trend
-Is this card's value rising, falling, or stable? What's driving the trend?
-
-### 3. Value Drivers
-Analyze the factors affecting this card's market value:
-- **Rarity & Scarcity:** How rare is it? Print run context.
-- **Meta Relevance:** Is it played in competitive decks? Which archetypes?
-- **Collectibility:** Character popularity, art appeal, enchanted/alternate art potential.
-- **Set Context:** Where does this set sit in the meta? Is it still in print?
-
-### 4. Competitive Viability
-How does this card perform in the current competitive meta? What decks use it? Is it a staple or niche?
-
-### 5. Investment Outlook
-Short-term (3-6 months) and long-term (1-2 years) outlook. Is this a hold, buy, or sell?
-
-### 6. Comparable Cards
-What other cards in the same color/rarity/cost bracket serve as price references?
-
-Format your response in clear sections with markdown headers. Be specific, cite sources from the search results when possible, and provide dollar ranges rather than vague statements. If the search results contain specific prices, ALWAYS include them. End with a one-sentence verdict.`;
+CRITICAL: The fullAnalysis field must contain well-structured markdown with proper headers (##), tables, and formatting. The summary, lastSold, and currentAverage fields are plain text — no markdown in them.`;
 
   // 3. Call DeepSeek
   if (!DEEPSEEK_API_KEY) {
@@ -144,11 +136,12 @@ Format your response in clear sections with markdown headers. Be specific, cite 
     body: JSON.stringify({
       model: "deepseek-chat",
       messages: [
-        { role: "system", content: "You are an expert Lorcana TCG market analyst. You provide detailed, specific, and well-reasoned market analysis. You always cite prices when available and give dollar ranges, not vague statements. Respond in well-structured markdown." },
+        { role: "system", content: "You are an expert Lorcana TCG market analyst. You provide detailed, specific, and well-reasoned market analysis. You always cite prices when available and give dollar ranges, not vague statements. You respond exclusively in valid JSON — no markdown, no commentary outside the JSON object." },
         { role: "user", content: prompt },
       ],
       temperature: 0.4,
       max_tokens: 2500,
+      response_format: { type: "json_object" },
     }),
     signal: AbortSignal.timeout(60000),
   });
@@ -159,11 +152,31 @@ Format your response in clear sections with markdown headers. Be specific, cite 
   }
 
   const data = await deepseekRes.json() as any;
-  const analysis = data.choices?.[0]?.message?.content;
+  const raw = data.choices?.[0]?.message?.content;
 
-  if (!analysis) {
+  if (!raw) {
     throw new Error("DeepSeek returned empty response");
   }
 
-  return analysis;
+  // Parse and validate the JSON
+  let parsed: AnalysisResult;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Fallback: treat the entire response as fullAnalysis
+    return JSON.stringify({
+      summary: "Analysis completed — tap to view details",
+      lastSold: "See full analysis",
+      currentAverage: "See full analysis",
+      fullAnalysis: raw,
+    });
+  }
+
+  // Validate required fields
+  return JSON.stringify({
+    summary: parsed.summary || "Analysis completed",
+    lastSold: parsed.lastSold || "No data available",
+    currentAverage: parsed.currentAverage || "No data available",
+    fullAnalysis: parsed.fullAnalysis || raw,
+  });
 }
