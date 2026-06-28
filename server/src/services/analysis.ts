@@ -1,6 +1,3 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
 
 const SEARXNG_URL = process.env.SEARXNG_URL || "http://searxng:8080";
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";

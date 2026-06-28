@@ -10,6 +10,7 @@ import type {
   BatchResult,
   UserSettings,
   PublicCollection,
+  CardAnalysis,
 } from "../types";
 
 const API_BASE = "/api";
@@ -113,4 +114,12 @@ export const publicCollection = {
     const query = params ? "?" + new URLSearchParams(params).toString() : "";
     return request<PublicCollection>(`/public/collection/${userId}${query}`);
   },
+};
+
+export const analysis = {
+  get: (cardId: string) => request<CardAnalysis>(`/cards/${cardId}/analysis`),
+  analyze: (cardId: string) =>
+    request<{ status: string; message: string }>(`/cards/${cardId}/analyze`, {
+      method: "POST",
+    }),
 };

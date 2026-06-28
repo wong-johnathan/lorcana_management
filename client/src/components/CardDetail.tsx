@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { Card } from "../types";
+import { useState, useEffect, useCallback } from "react";
+import type { Card, CardAnalysis } from "../types";
+import { analysis as analysisApi } from "../services/api";
 
 interface CardDetailProps {
   card: Card;
@@ -17,6 +18,56 @@ export default function CardDetail({
   const [quantity, setQuantity] = useState("1");
   const [foilQuantity, setFoilQuantity] = useState("0");
   const [added, setAdded] = useState(false);
+  const [analysisData, setAnalysisData] = useState<CardAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  const isLoggedIn = !!localStorage.getItem("token");
+
+  const fetchAnalysis = useCallback(async () => {
+    try {
+      const data = await analysisApi.get(card.id);
+      setAnalysisData(data);
+    } catch {
+      setAnalysisData(null);
+    }
+  }, [card.id]);
+
+  useEffect(() => {
+    fetchAnalysis();
+  }, [fetchAnalysis]);
+
+  // Poll when pending
+  useEffect(() => {
+    if (analysisData?.status !== "pending") return;
+    const interval = setInterval(fetchAnalysis, 3000);
+    return () => clearInterval(interval);
+  }, [analysisData?.status, fetchAnalysis]);
+
+  const handleAnalyze = async () => {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    try {
+      await analysisApi.analyze(card.id);
+      setAnalysisData({ analysis: "", status: "pending", createdAt: "", updatedAt: "" });
+    } catch (err: any) {
+      setAnalysisError(err.message || "Failed to start analysis");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const formatTimeAgo = (dateStr: string) => {
+    if (!dateStr) return "";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   const shortNumber = card.cardNumber.split("•")[0]?.trim() || card.cardNumber;
 
@@ -162,6 +213,89 @@ export default function CardDetail({
               >
                 📊 TCGPlayer
               </a>
+            </div>
+
+            {/* AI Market Analysis */}
+            <div className="border-t border-gray-700 pt-3 mt-2">
+              {!analysisData && !analysisLoading && (
+                <div className="text-center">
+                  {isLoggedIn ? (
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={analysisLoading}
+                      className="w-full text-xs bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300 border border-indigo-700/50 rounded-md px-3 py-2 transition-colors disabled:opacity-50"
+                    >
+                      🤖 Analyze Market Price with AI
+                    </button>
+                  ) : (
+                    <p className="text-xs text-gray-500 text-center">
+                      🤖 AI market analysis available — <a href="/login" className="text-indigo-400 hover:underline">log in</a> to analyze
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {analysisLoading && (
+                <div className="text-center py-3">
+                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-400 border-t-transparent"></div>
+                  <p className="text-xs text-gray-400 mt-1">Starting analysis...</p>
+                </div>
+              )}
+
+              {analysisError && (
+                <div className="bg-red-900/30 border border-red-700/50 rounded-md p-2">
+                  <p className="text-xs text-red-400">{analysisError}</p>
+                  <button
+                    onClick={handleAnalyze}
+                    className="text-xs text-red-300 hover:underline mt-1"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {analysisData?.status === "pending" && (
+                <div className="text-center py-3">
+                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-400 border-t-transparent"></div>
+                  <p className="text-xs text-indigo-400 mt-1">DeepSeek is analyzing this card...</p>
+                </div>
+              )}
+
+              {analysisData?.status === "completed" && analysisData.analysis && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500">
+                      🤖 AI Analysis · {formatTimeAgo(analysisData.updatedAt)}
+                    </span>
+                    {isLoggedIn && (
+                      <button
+                        onClick={handleAnalyze}
+                        disabled={analysisLoading}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
+                      >
+                        🔄 Re-analyze
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-300 leading-relaxed max-h-64 overflow-y-auto space-y-1 prose prose-invert prose-xs [&_h1]:text-sm [&_h1]:font-bold [&_h2]:text-xs [&_h2]:font-semibold [&_h2]:text-indigo-300 [&_h3]:text-xs [&_h3]:font-medium [&_strong]:text-gray-200 [&_ul]:pl-3 [&_ol]:pl-3"
+                    dangerouslySetInnerHTML={{ __html: analysisData.analysis.replace(/\n/g, "<br/>").replace(/^### (.+)$/gm, "<h3>$1</h3>").replace(/^## (.+)$/gm, "<h2>$1</h2>").replace(/^# (.+)$/gm, "<h1>$1</h1>").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/^- (.+)$/gm, "• $1") }}
+                  />
+                </div>
+              )}
+
+              {analysisData?.status === "error" && (
+                <div className="bg-red-900/30 border border-red-700/50 rounded-md p-2">
+                  <p className="text-xs text-red-400">Analysis failed</p>
+                  {isLoggedIn && (
+                    <button
+                      onClick={handleAnalyze}
+                      className="text-xs text-red-300 hover:underline mt-1"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {currentQuantity && (

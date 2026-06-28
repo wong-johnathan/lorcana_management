@@ -25,6 +25,8 @@ services:
       DATABASE_URL: postgresql://lorcana:lorcana@db:5432/lorcana_inventory
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       PORT: "3001"
     depends_on:
       db:

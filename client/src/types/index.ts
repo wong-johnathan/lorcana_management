@@ -108,3 +108,10 @@ export interface PublicCollection {
   cards: { card: Card; quantity: number; foilQuantity: number }[];
   stats: InventoryStats;
 }
+
+export interface CardAnalysis {
+  analysis: string;
+  status: "pending" | "completed" | "error";
+  createdAt: string;
+  updatedAt: string;
+}
