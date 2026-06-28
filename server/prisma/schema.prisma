@@ -28,6 +28,7 @@ model Card {
   imageUrl   String   @default("")
 
   inventoryEntries InventoryEntry[]
+  analysis        CardAnalysis?
 
   @@index([name])
   @@index([color])
@@ -58,4 +59,14 @@ model InventoryEntry {
 
   @@unique([userId, cardId])
   @@index([userId])
+}
+
+model CardAnalysis {
+  id        String   @id @default(cuid())
+  cardId    String   @unique
+  card      Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  analysis  String
+  status    String   @default("completed")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

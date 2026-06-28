@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { recognizeCard } from "../services/cardRecognition.js";
+import { analyzeCardMarket } from "../services/analysis.js";
 import type { AuthPayload } from "../middleware/auth.js";
 
 const prisma = new PrismaClient();
@@ -132,6 +133,79 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Filters error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+cardsRouter.get("/:id/analysis", async (req: Request, res: Response) => {
+  try {
+    const cardId = req.params.id as string;
+    const analysis = await prisma.cardAnalysis.findUnique({ where: { cardId } });
+    if (!analysis) {
+      res.status(404).json({ error: "No analysis found" });
+      return;
+    }
+    res.json({
+      analysis: analysis.analysis,
+      status: analysis.status,
+      createdAt: analysis.createdAt,
+      updatedAt: analysis.updatedAt,
+    });
+  } catch (error) {
+    console.error("Analysis fetch error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+cardsRouter.post("/:id/analyze", async (req: Request, res: Response) => {
+  try {
+    const cardId = req.params.id as string;
+    const userId = getUserIdFromRequest(req);
+    if (!userId) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    // Verify card exists
+    const card = await prisma.card.findUnique({ where: { id: cardId } });
+    if (!card) {
+      res.status(404).json({ error: "Card not found" });
+      return;
+    }
+
+    // Check for in-progress analysis (prevent double-trigger)
+    const existing = await prisma.cardAnalysis.findUnique({ where: { cardId } });
+    if (existing?.status === "pending") {
+      res.status(409).json({ error: "Analysis already in progress" });
+      return;
+    }
+
+    // Mark as pending
+    await prisma.cardAnalysis.upsert({
+      where: { cardId },
+      create: { cardId, analysis: "", status: "pending" },
+      update: { status: "pending" },
+    });
+
+    // Run analysis (don't await in the response — respond immediately)
+    analyzeCardMarket(card)
+      .then(async (analysis) => {
+        await prisma.cardAnalysis.update({
+          where: { cardId },
+          data: { analysis, status: "completed" },
+        });
+      })
+      .catch(async (err) => {
+        console.error(`Analysis failed for card ${cardId}:`, err.message);
+        await prisma.cardAnalysis.update({
+          where: { cardId },
+          data: { status: "error", analysis: `Error: ${err.message}` },
+        });
+      });
+
+    res.json({ status: "pending", message: "Analysis started" });
+  } catch (error) {
+    console.error("Analysis trigger error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
