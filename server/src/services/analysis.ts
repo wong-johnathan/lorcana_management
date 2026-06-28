@@ -303,15 +303,21 @@ ${priceSection}
 
 2. The prices extracted above come from current web search snippets (eBay sold listings, TCGPlayer market prices, PriceCharting). Use them as your primary data source.
 
-3. For **lastSold**, use the most recent confirmed sale price from the eBay data if available. For **currentAverage**, synthesize the prices across all three sources into a realistic range.
+3. **CRITICAL: SEPARATE RAW AND GRADED PRICES.** Always distinguish between:
+   - **Raw (ungraded/near mint):** prices for ungraded cards
+   - **Graded:** PSA 10, PSA 9, PSA 8, BGS 9.5, TAG 10 etc. — always specify the grade
+   
+4. For **lastSold**, report the most recent confirmed sale for BOTH raw and graded (if available). Format: "Raw: $X.XX — [source], [date] | PSA 10: $Y.YY — [source], [date]". If only raw data exists, just show raw. If no data, say so.
 
-4. You MUST return a valid JSON object with exactly these fields:
+5. For **currentAverage**, synthesize the price ranges separately for raw and each graded tier. Format: "Raw: $X–$Y | PSA 10: $A–$B | PSA 9: $C–$D". Drop tiers with no data.
+
+6. You MUST return a valid JSON object with exactly these fields:
 
 {
-  "summary": "2-3 sentence executive summary: state the card's market price from the data above, note which variant you're analyzing, and mention the general trend",
-  "lastSold": "Most recent confirmed sale price with source and date. Format: '$X.XX — [source], [date/context]'. If no specific sale found, use 'No recent confirmed sale found'",
-  "currentAverage": "Current market price range synthesized from the 3 sources. Format: '$X.XX–$Y.YY (raw), $A–$B (foil)' if foil data exists. Use the actual prices found above.",
-  "fullAnalysis": "Full markdown analysis with these sections:\n\n### 1. Price Summary\nCurrent prices from eBay, TCGPlayer, and PriceCharting — cite the specific dollar amounts found above.\n\n### 2. Price Trend\nIs this card's value rising, falling, or stable? What's driving it?\n\n### 3. Value Drivers\n- Rarity & scarcity (${card.rarity}, ${card.setName})\n- Meta relevance (competitive decks, archetypes)\n- Collectibility (character popularity, art appeal)\n- Set context (is ${card.setName} still in print?)\n\n### 4. Competitive Viability\nHow does this card perform in the current meta? Staple or niche?\n\n### 5. Investment Outlook\nShort-term and long-term outlook.\n\n### 6. Comparable Cards\nTable: | Card | Set | Rarity | Price | Notes |\n\nEnd with a one-sentence verdict."
+  "summary": "2-3 sentence executive summary: state the card's market price with raw AND graded ranges, note the card number and variant, mention trend",
+  "lastSold": "Most recent confirmed sales — MUST separate raw and graded. Format: 'Raw: $X.XX — source, date | PSA 10: $Y.YY — source, date'. Skip tiers with no data.",
+  "currentAverage": "Current market price ranges — MUST separate by condition. Format: 'Raw: $X–$Y | PSA 9: $A–$B | PSA 10: $C–$D'. Include only tiers with actual data.",
+  "fullAnalysis": "Full markdown analysis with these sections:\n\n### 1. Price Summary — Raw vs Graded\nSeparate raw (ungraded) and graded prices across eBay, TCGPlayer, and PriceCharting. Use a table:\n| Condition | Price Range | Source |\n|-----------|------------|--------|\n| Raw (NM) | $X–$Y | eBay/TCGPlayer |\n| PSA 10 | $A–$B | eBay sold |\n(etc.)\n\n### 2. Price Trend\nRising, falling, or stable? Raw vs graded trends may differ.\n\n### 3. Value Drivers\n- Rarity & scarcity (${card.rarity}, ${card.setName})\n- Meta relevance\n- Collectibility\n- Set context\n\n### 4. Competitive Viability\n### 5. Investment Outlook\nShort-term and long-term — note that graded cards have different investment profiles than raw.\n### 6. Comparable Cards\nTable: | Card | Set | Rarity | Raw Price | PSA 10 Price | Notes |\n\nEnd with a one-sentence verdict."
 }
 
 DO NOT include prices for promo/challenge/enchanted variants unless this card IS that variant. DO NOT confuse the regular printing with the Challenge promo 6/C2 version.`;
