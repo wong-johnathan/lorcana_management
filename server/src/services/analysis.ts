@@ -104,20 +104,40 @@ function extractPricesFromSnippet(snippet: string): string[] {
 // ── Variant disambiguation ────────────────────────────────────────────────
 
 const PROMO_VARIANT_KEYWORDS = [
-  /promo/i, /challenge/i, /dlc\s/i, /prize/i, /\b6\/C2\b/i, /\b6c2\b/i,
+  /promo/i, /challenge/i, /dlc\s/i, /prize/i, /\b\d+\/C\d*\b/i, /\b\dc\d\b/i,
   /enchanted/i, /palace\s*heist/i, /top\s*prize/i,
 ];
 
-function isDifferentVariant(snippet: string, title: string, cardNumber: string): boolean {
+function isCardPromo(cardNumber: string, setName: string): boolean {
+  // A card is a promo if it has a C-prefixed number (6/C2) or is in a Promo set
   const shortNumber = cardNumber.split("•")[0]?.trim() || cardNumber;
-  const numberPart = shortNumber.split("/")[0]?.trim(); // "69" from "69/204"
+  if (/\/C\d/i.test(shortNumber)) return true;
+  if (/promo|challenge/i.test(setName)) return true;
+  return false;
+}
 
-  // If the snippet or title contains our card number, it's our variant
-  if (numberPart && (snippet.includes(`#${numberPart}`) || snippet.includes(`${numberPart}/`))) {
-    return false;
+function isDifferentVariant(
+  snippet: string,
+  title: string,
+  cardNumber: string,
+  cardIsPromo: boolean
+): boolean {
+  const shortNumber = cardNumber.split("•")[0]?.trim() || cardNumber;
+  const numberPart = shortNumber.split("/")[0]?.trim(); // "69" or "6"
+
+  // If the snippet/title explicitly contains our exact card number, it's our variant
+  if (numberPart && shortNumber.length > 1) {
+    // Match the full short number like "69/204" or "6/C2"
+    const escapedNum = shortNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(escapedNum, 'i').test(`${title} ${snippet}`)) {
+      return false;
+    }
   }
 
-  // If it matches promo/challenge/enchanted keywords, it's a different variant
+  // If the card IS a promo, do NOT filter out promo results — we want them
+  if (cardIsPromo) return false;
+
+  // Card is NOT a promo — filter out any snippet that references promo/challenge/enchanted
   const combined = `${title} ${snippet}`;
   return PROMO_VARIANT_KEYWORDS.some(p => p.test(combined));
 }
@@ -129,7 +149,8 @@ async function searchSourcePrices(
   subtitle: string,
   cardNumber: string,
   setName: string,
-  source: "ebay" | "tcgplayer" | "pricecharting"
+  source: "ebay" | "tcgplayer" | "pricecharting",
+  cardIsPromo: boolean
 ): Promise<PriceData | null> {
   // Build a targeted query that includes card number to disambiguate variants
   const shortNumber = cardNumber.split("•")[0]?.trim() || cardNumber;
@@ -138,14 +159,18 @@ async function searchSourcePrices(
   let query: string;
   switch (source) {
     case "ebay":
-      // "Elsa Ice Maker" "69/204" lorcana ebay sold
-      query = `"${fullName}" "${shortNumber}" lorcana ebay sold`;
+      // For promo cards, include "challenge" or "promo" in the search
+      if (cardIsPromo) {
+        query = `"${fullName}" "${shortNumber}" lorcana promo ebay sold`;
+      } else {
+        query = `"${fullName}" "${shortNumber}" lorcana ebay sold`;
+      }
       break;
     case "tcgplayer":
       query = `"${fullName}" "${shortNumber}" lorcana tcgplayer price`;
       break;
     case "pricecharting":
-      query = `"${fullName}" "#${shortNumber.split("/")[0]}" lorcana pricecharting`;
+      query = `"${fullName}" "${shortNumber}" lorcana pricecharting`;
       break;
   }
 
@@ -164,7 +189,7 @@ async function searchSourcePrices(
 
   for (const r of results.slice(0, 8)) {
     // Skip results that clearly refer to a different variant (promo/challenge/enchanted)
-    if (isDifferentVariant(r.content, r.title, cardNumber)) {
+    if (isDifferentVariant(r.content, r.title, cardNumber, cardIsPromo)) {
       console.log(`[analysis] Skipping different variant: ${r.title.slice(0, 80)}`);
       continue;
     }
@@ -240,11 +265,14 @@ export async function analyzeCardMarket(
     abilities: string;
   }
 ): Promise<string> {
-  // 1. Run 3 targeted searches in parallel
+  // 1. Determine if this card is a promo variant
+  const cardIsPromo = isCardPromo(card.cardNumber, card.setName);
+
+  // 2. Run 3 targeted searches in parallel
   const [ebayData, tcgData, pcData] = await Promise.all([
-    searchSourcePrices(card.name, card.subtitle, card.cardNumber, card.setName, "ebay"),
-    searchSourcePrices(card.name, card.subtitle, card.cardNumber, card.setName, "tcgplayer"),
-    searchSourcePrices(card.name, card.subtitle, card.cardNumber, card.setName, "pricecharting"),
+    searchSourcePrices(card.name, card.subtitle, card.cardNumber, card.setName, "ebay", cardIsPromo),
+    searchSourcePrices(card.name, card.subtitle, card.cardNumber, card.setName, "tcgplayer", cardIsPromo),
+    searchSourcePrices(card.name, card.subtitle, card.cardNumber, card.setName, "pricecharting", cardIsPromo),
   ]);
 
   const priceSection = buildPriceSection([ebayData, tcgData, pcData]);
