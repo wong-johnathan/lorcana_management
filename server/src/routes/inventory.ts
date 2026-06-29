@@ -86,6 +86,58 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
   }
 });
 
+inventoryRouter.get("/export/csv", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const entries = await prisma.inventoryEntry.findMany({
+      where: { userId },
+      include: { card: true },
+      orderBy: { card: { name: "asc" } },
+    });
+
+    const lines = entries.map((e) => {
+      const num = e.card.cardNumber || "";
+      const name = e.card.subtitle
+        ? `${e.card.name} - ${e.card.subtitle}`
+        : e.card.name;
+      return `${e.quantity},${e.foilQuantity},${num},${name}`;
+    });
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=lorcana_collection.csv");
+    res.send(lines.join("\n"));
+  } catch (error) {
+    console.error("Export CSV error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.get("/export/decklist", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const entries = await prisma.inventoryEntry.findMany({
+      where: { userId },
+      include: { card: true },
+      orderBy: { card: { name: "asc" } },
+    });
+
+    const lines = entries.map((e) => {
+      const total = e.quantity + e.foilQuantity;
+      const name = e.card.subtitle
+        ? `${e.card.name} - ${e.card.subtitle}`
+        : e.card.name;
+      return `${total} ${name}`;
+    });
+
+    res.setHeader("Content-Type", "text/plain");
+    res.setHeader("Content-Disposition", "attachment; filename=lorcana_decklist.txt");
+    res.send(lines.join("\n"));
+  } catch (error) {
+    console.error("Export decklist error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 inventoryRouter.post("/batch", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;

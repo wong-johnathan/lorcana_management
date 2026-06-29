@@ -72,6 +72,21 @@ export default function InventoryPage() {
     }
   };
 
+  const handleExport = (format: "csv" | "decklist") => {
+    const token = localStorage.getItem("token");
+    const url = `/api/inventory/export/${format}`;
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.blob())
+      .then((blob) => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = format === "csv" ? "lorcana_collection.csv" : "lorcana_decklist.txt";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      })
+      .catch((err) => console.error("Export failed:", err));
+  };
+
   const handleSelectCard = (card: Card) => {
     const params = new URLSearchParams(searchParams);
     params.set("card", card.id);
@@ -113,7 +128,29 @@ export default function InventoryPage() {
       )}
 
       <div className="p-3">
-        <h2 className="text-lg font-semibold mb-2">My Collection</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold">My Collection</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleExport("csv")}
+              className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors text-gray-300"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              CSV
+            </button>
+            <button
+              onClick={() => handleExport("decklist")}
+              className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors text-gray-300"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Deck List
+            </button>
+          </div>
+        </div>
         <FilterBar filters={filters} onChange={setFilters} />
       </div>
 
