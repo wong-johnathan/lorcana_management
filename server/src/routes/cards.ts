@@ -152,14 +152,14 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
   try {
     const [colors, sets, rarities, cardTypes] = await Promise.all([
       prisma.card.findMany({ select: { color: true }, distinct: ["color"], orderBy: { color: "asc" } }),
-      prisma.card.findMany({ select: { setName: true, setCode: true }, distinct: ["setName"], orderBy: { setCode: "asc" } }),
+      prisma.card.findMany({ select: { setName: true, setCode: true }, distinct: ["setName"] }),
       prisma.card.findMany({ select: { rarity: true }, distinct: ["rarity"], orderBy: { rarity: "asc" } }),
       prisma.card.findMany({ select: { cardType: true }, distinct: ["cardType"], orderBy: { cardType: "asc" } }),
     ]);
 
     res.json({
       colors: colors.map((c) => c.color),
-      sets: sets.map((s) => s.setName),
+      sets: sets.sort((a, b) => (parseInt(a.setCode, 10) || 0) - (parseInt(b.setCode, 10) || 0)).map((s) => s.setName),
       rarities: rarities.map((r) => r.rarity),
       cardTypes: cardTypes.map((t) => t.cardType),
     });
