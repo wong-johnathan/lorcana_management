@@ -317,6 +317,11 @@ cardsRouter.post("/:id/analyze", async (req: Request, res: Response) => {
       return;
     }
 
+    if (batchStatus.status === "running") {
+      res.status(409).json({ error: "Batch analysis is currently running. Please wait until it completes." });
+      return;
+    }
+
     // Check for in-progress analysis (prevent double-trigger)
     const existing = await prisma.cardAnalysis.findUnique({ where: { cardId } });
     if (existing?.status === "pending") {
