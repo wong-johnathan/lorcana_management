@@ -98,7 +98,7 @@ inventoryRouter.get("/export/csv", async (req: AuthRequest, res: Response) => {
     const lines = ["Set Number,Card Number,Variant,Count"];
     for (const e of entries) {
       const setNum = e.card.setCode || "";
-      const cardNum = (e.card.cardNumber || "").split("/")[0];
+      const cardNum = (e.card.cardNumber || "").split(/[/•]/)[0].trim();
       if (e.quantity > 0) lines.push(`${setNum},${cardNum},normal,${e.quantity}`);
       if (e.foilQuantity > 0) lines.push(`${setNum},${cardNum},foil,${e.foilQuantity}`);
     }
