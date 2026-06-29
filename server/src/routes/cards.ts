@@ -112,7 +112,7 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
         where,
         skip,
         take: limitNum,
-        orderBy: [{ setName: "asc" }, { name: "asc" }],
+        orderBy: [{ setCode: "asc" }, { name: "asc" }],
       }),
       prisma.card.count({ where }),
     ]);
@@ -152,7 +152,7 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
   try {
     const [colors, sets, rarities, cardTypes] = await Promise.all([
       prisma.card.findMany({ select: { color: true }, distinct: ["color"], orderBy: { color: "asc" } }),
-      prisma.card.findMany({ select: { setName: true }, distinct: ["setName"], orderBy: { setName: "asc" } }),
+      prisma.card.findMany({ select: { setName: true, setCode: true }, distinct: ["setName"], orderBy: { setCode: "asc" } }),
       prisma.card.findMany({ select: { rarity: true }, distinct: ["rarity"], orderBy: { rarity: "asc" } }),
       prisma.card.findMany({ select: { cardType: true }, distinct: ["cardType"], orderBy: { cardType: "asc" } }),
     ]);
