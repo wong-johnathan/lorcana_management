@@ -34,12 +34,55 @@ export default function Layout() {
         { to: "/login", label: "Sign In", icon: NAV_ICONS.login },
       ];
 
+  const navLinks = navItems.map(({ to, label, icon }) => (
+    <NavLink
+      key={to}
+      to={to}
+      className={({ isActive }) =>
+        `flex items-center gap-1.5 py-2 px-3 text-xs transition-colors ${
+          isActive
+            ? "text-amber-400"
+            : "text-gray-400 hover:text-gray-200"
+        } md:flex-row md:text-sm`
+      }
+    >
+      <svg
+        className="w-6 h-6 md:w-5 md:h-5"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        strokeWidth={1.5}
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+      </svg>
+      <span className="md:inline">{label}</span>
+    </NavLink>
+  ));
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
         <Link to="/" className="text-xl font-bold text-amber-400 hover:text-amber-300 transition-colors">Lorcana Inventory</Link>
+
+        {/* Desktop nav — inline in header */}
+        <div className="hidden md:flex items-center gap-1">
+          {navLinks}
+          {user && (
+            <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-700">
+              <span className="text-sm text-gray-400">{user.username}</span>
+              <button
+                onClick={logout}
+                className="text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile: just show user/logout */}
         {user && (
-          <div className="flex items-center gap-3">
+          <div className="flex md:hidden items-center gap-3">
             <span className="text-sm text-gray-400">{user.username}</span>
             <button
               onClick={logout}
@@ -55,36 +98,10 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 md:relative md:border-t-0 md:border-b md:border-gray-800">
+      {/* Mobile bottom nav */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 md:hidden">
         <div className="flex justify-around max-w-lg mx-auto">
-          {navItems.map(({ to, label, icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                `flex flex-col items-center py-2 px-4 text-xs transition-colors ${
-                  isActive
-                    ? "text-amber-400"
-                    : "text-gray-400 hover:text-gray-200"
-                }`
-              }
-            >
-              <svg
-                className="w-6 h-6 mb-1"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d={icon}
-                />
-              </svg>
-              {label}
-            </NavLink>
-          ))}
+          {navLinks}
         </div>
       </nav>
 
