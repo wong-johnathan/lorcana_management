@@ -109,11 +109,21 @@ export interface PublicCollection {
   stats: InventoryStats;
 }
 
+export interface PillarScore {
+  name: string;
+  score: number;
+  maxScore: number;
+  details: string;
+}
+
 export interface CardAnalysis {
   summary: string | null;
   lastSold: string | null;
   currentAverage: string | null;
   fullAnalysis: string | null;
+  investmentScore: number | null;
+  investmentTier: string | null;
+  pillarScores: PillarScore[] | null;
   status: "pending" | "completed" | "error";
   createdAt: string;
   updatedAt: string;
