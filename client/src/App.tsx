@@ -7,6 +7,7 @@ import InventoryPage from "./pages/InventoryPage";
 import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
 import PublicCollectionPage from "./pages/PublicCollectionPage";
+import CardDetailPage from "./pages/CardDetailPage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -23,6 +24,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/database" element={<DatabasePage />} />
+        <Route path="/database/:cardId" element={<CardDetailPage />} />
         <Route path="/collection/:userId" element={<PublicCollectionPage />} />
         {user ? (
           <>

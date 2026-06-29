@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Card, CardAnalysis } from "../types";
 import { analysis as analysisApi } from "../services/api";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 interface CardDetailProps {
   card: Card;
@@ -17,13 +16,13 @@ export default function CardDetail({
   onAdd,
   currentQuantity,
 }: CardDetailProps) {
+  const navigate = useNavigate();
   const [quantity, setQuantity] = useState("1");
   const [foilQuantity, setFoilQuantity] = useState("0");
   const [added, setAdded] = useState(false);
   const [analysisData, setAnalysisData] = useState<CardAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
 
   const isLoggedIn = !!localStorage.getItem("token");
 
@@ -303,79 +302,31 @@ export default function CardDetail({
                     )}
                   </div>
 
-                  {/* LCIF Investment Score */}
+                  {/* LCIF Investment Score - compact */}
                   {analysisData.investmentScore != null && (
-                    <div className="mb-2">
-                      <div className={`rounded-md p-2.5 border ${
-                        analysisData.investmentTier === "S-Grade" ? "bg-yellow-900/30 border-yellow-600/50" :
-                        analysisData.investmentTier === "A-Grade" ? "bg-green-900/30 border-green-600/50" :
-                        analysisData.investmentTier === "B-Grade" ? "bg-blue-900/30 border-blue-600/50" :
-                        "bg-gray-800/50 border-gray-600/50"
-                      }`}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] uppercase tracking-wider text-gray-400">LCIF Investment Score</span>
-                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                    <div className="flex items-center justify-between text-xs bg-gray-800/50 rounded-md p-2">
+                      <span className="text-gray-500">LCIF Score</span>
+                      <span className="font-medium">
+                        <span className="text-white">{analysisData.investmentScore}/100</span>
+                        {analysisData.investmentTier && (
+                          <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
                             analysisData.investmentTier === "S-Grade" ? "bg-yellow-700/50 text-yellow-300" :
                             analysisData.investmentTier === "A-Grade" ? "bg-green-700/50 text-green-300" :
                             analysisData.investmentTier === "B-Grade" ? "bg-blue-700/50 text-blue-300" :
                             "bg-gray-700/50 text-gray-300"
                           }`}>{analysisData.investmentTier}</span>
-                        </div>
-                        <div className="flex items-end gap-2 mb-2">
-                          <span className="text-2xl font-bold text-white">{analysisData.investmentScore}</span>
-                          <span className="text-xs text-gray-500 mb-1">/ 100</span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-1.5 mb-2">
-                          <div className={`h-1.5 rounded-full ${
-                            analysisData.investmentScore >= 90 ? "bg-yellow-400" :
-                            analysisData.investmentScore >= 75 ? "bg-green-400" :
-                            analysisData.investmentScore >= 60 ? "bg-blue-400" :
-                            "bg-gray-400"
-                          }`} style={{ width: `${analysisData.investmentScore}%` }}></div>
-                        </div>
-                        {analysisData.pillarScores && (
-                          <div className="space-y-1">
-                            {analysisData.pillarScores.map((p) => (
-                              <div key={p.name} className="flex items-center gap-2 text-[11px]">
-                                <span className="text-gray-400 w-24 shrink-0 truncate" title={p.name}>{p.name}</span>
-                                <div className="flex-1 bg-gray-700 rounded-full h-1">
-                                  <div className="bg-indigo-400 h-1 rounded-full" style={{ width: `${(p.score / p.maxScore) * 100}%` }}></div>
-                                </div>
-                                <span className="text-gray-300 w-10 text-right">{p.score}/{p.maxScore}</span>
-                              </div>
-                            ))}
-                          </div>
                         )}
-                      </div>
+                      </span>
                     </div>
                   )}
 
-                  {/* Expandable full analysis */}
-                  {analysisData.fullAnalysis && (
-                    <div>
-                      <button
-                        onClick={() => setShowFullAnalysis(!showFullAnalysis)}
-                        className="w-full text-xs text-indigo-400 hover:text-indigo-300 py-1.5 border border-indigo-800/50 rounded-md bg-indigo-900/20 hover:bg-indigo-900/30 transition-colors"
-                      >
-                        {showFullAnalysis ? "▲ Hide full analysis" : "▼ View full analysis"}
-                      </button>
-                      {showFullAnalysis && (
-                        <div className="mt-2 text-xs text-gray-300 leading-relaxed max-h-80 overflow-y-auto p-3 bg-gray-800/30 rounded-md prose prose-invert prose-xs 
-                          [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-indigo-300 [&_h2]:mt-3 [&_h2]:mb-1
-                          [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-indigo-200
-                          [&_strong]:text-gray-200
-                          [&_ul]:pl-3 [&_ol]:pl-3
-                          [&_table]:w-full [&_table]:text-[10px] [&_table]:border-collapse
-                          [&_th]:bg-gray-700/50 [&_th]:p-1 [&_th]:text-left [&_th]:border [&_th]:border-gray-600
-                          [&_td]:p-1 [&_td]:border [&_td]:border-gray-700
-                          [&_p]:mb-1.5">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {analysisData.fullAnalysis}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {/* Link to full detail page */}
+                  <button
+                    onClick={() => { onClose(); navigate(`/database/${card.id}`); }}
+                    className="w-full text-xs text-indigo-400 hover:text-indigo-300 py-1.5 border border-indigo-800/50 rounded-md bg-indigo-900/20 hover:bg-indigo-900/30 transition-colors"
+                  >
+                    View full analysis →
+                  </button>
                 </div>
               )}
 
