@@ -122,4 +122,10 @@ export const analysis = {
     request<{ status: string; message: string }>(`/cards/${cardId}/analyze`, {
       method: "POST",
     }),
+  batchAnalyze: () =>
+    request<{ status: string; message: string; total: number }>("/cards/analyze-batch", {
+      method: "POST",
+    }),
+  batchStatus: () =>
+    request<{ status: string; total: number; completed: number; failed: number; currentCard: string | null; startedAt: string | null }>("/cards/analyze-batch/status"),
 };
