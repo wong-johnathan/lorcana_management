@@ -9,6 +9,18 @@ const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 export const cardsRouter = Router();
 
+const ADMIN_USERNAME = "jw1005";
+const BATCH_RARITIES = ["Enchanted", "Special", "Iconic"];
+
+let batchStatus: {
+  status: "idle" | "running" | "completed" | "error";
+  total: number;
+  completed: number;
+  failed: number;
+  currentCard: string | null;
+  startedAt: string | null;
+} = { status: "idle", total: 0, completed: 0, failed: 0, currentCard: null, startedAt: null };
+
 function getUserIdFromRequest(req: Request): string | null {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -16,6 +28,17 @@ function getUserIdFromRequest(req: Request): string | null {
   try {
     const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
     return payload.userId;
+  } catch {
+    return null;
+  }
+}
+
+function getAuthPayload(req: Request): AuthPayload | null {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET) as AuthPayload;
   } catch {
     return null;
   }
@@ -142,6 +165,92 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Filters error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Batch analysis (admin only) ─────────────────────────────────────────
+
+cardsRouter.get("/analyze-batch/status", async (_req: Request, res: Response) => {
+  res.json(batchStatus);
+});
+
+cardsRouter.post("/analyze-batch", async (req: Request, res: Response) => {
+  try {
+    const auth = getAuthPayload(req);
+    if (!auth || auth.username !== ADMIN_USERNAME) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (batchStatus.status === "running") {
+      res.status(409).json({ error: "Batch analysis already in progress", ...batchStatus });
+      return;
+    }
+
+    const cards = await prisma.card.findMany({
+      where: {
+        rarity: { in: BATCH_RARITIES },
+        OR: [
+          { analysis: null },
+          { analysis: { status: { not: "completed" } } },
+        ],
+      },
+    });
+
+    if (cards.length === 0) {
+      res.json({ status: "completed", message: "All cards already analyzed", total: 0 });
+      return;
+    }
+
+    batchStatus = {
+      status: "running",
+      total: cards.length,
+      completed: 0,
+      failed: 0,
+      currentCard: null,
+      startedAt: new Date().toISOString(),
+    };
+
+    res.json({ status: "running", message: `Batch analysis started for ${cards.length} cards`, total: cards.length });
+
+    // Process sequentially in background
+    (async () => {
+      for (const card of cards) {
+        batchStatus.currentCard = `${card.name}${card.subtitle ? ` - ${card.subtitle}` : ""}`;
+        try {
+          await prisma.cardAnalysis.upsert({
+            where: { cardId: card.id },
+            create: { cardId: card.id, analysis: "", status: "pending" },
+            update: { status: "pending" },
+          });
+
+          const analysis = await analyzeCardMarket(card);
+          await prisma.cardAnalysis.update({
+            where: { cardId: card.id },
+            data: { analysis, status: "completed" },
+          });
+          batchStatus.completed++;
+          console.log(`[batch] ✓ ${batchStatus.completed}/${batchStatus.total} ${card.name}`);
+        } catch (err: any) {
+          batchStatus.failed++;
+          console.error(`[batch] ✗ ${card.name}: ${err.message}`);
+          await prisma.cardAnalysis.upsert({
+            where: { cardId: card.id },
+            create: { cardId: card.id, analysis: `Error: ${err.message}`, status: "error" },
+            update: { status: "error", analysis: `Error: ${err.message}` },
+          }).catch(() => {});
+        }
+        // Delay between requests to avoid rate limiting
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      batchStatus.status = batchStatus.failed === batchStatus.total ? "error" : "completed";
+      batchStatus.currentCard = null;
+      console.log(`[batch] Done: ${batchStatus.completed} completed, ${batchStatus.failed} failed`);
+    })();
+  } catch (error) {
+    console.error("Batch analysis error:", error);
+    batchStatus.status = "error";
     res.status(500).json({ error: "Internal server error" });
   }
 });
