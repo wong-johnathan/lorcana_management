@@ -144,6 +144,16 @@ export default function FilterBar({
         ))}
       </select>
 
+      <select
+        value={filters.analyzed || ""}
+        onChange={(e) => update("analyzed", e.target.value)}
+        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
+      >
+        <option value="">AI Analysis</option>
+        <option value="yes">Analyzed</option>
+        <option value="no">Not Analyzed</option>
+      </select>
+
       {showOwnership && (
         <select
           value={filters.ownership || ""}
