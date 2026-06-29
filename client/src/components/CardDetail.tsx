@@ -215,6 +215,14 @@ export default function CardDetail({
               >
                 📊 TCGPlayer
               </a>
+              <a
+                href={`https://www.facebook.com/search/top?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&filters=${encodeURIComponent(btoa(JSON.stringify({"recent_posts:0": JSON.stringify({ name: "recent_posts", args: "" })})))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center text-xs bg-sky-700/30 hover:bg-sky-700/50 text-sky-400 border border-sky-700/50 rounded-md px-3 py-1.5 transition-colors"
+              >
+                📘 Facebook
+              </a>
             </div>
 
             {/* AI Market Analysis */}
