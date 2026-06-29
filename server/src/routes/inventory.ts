@@ -95,13 +95,13 @@ inventoryRouter.get("/export/csv", async (req: AuthRequest, res: Response) => {
       orderBy: { card: { name: "asc" } },
     });
 
-    const lines = entries.map((e) => {
-      const num = e.card.cardNumber || "";
-      const name = e.card.subtitle
-        ? `${e.card.name} - ${e.card.subtitle}`
-        : e.card.name;
-      return `${e.quantity},${e.foilQuantity},${num},${name}`;
-    });
+    const lines = ["Set Number,Card Number,Variant,Count"];
+    for (const e of entries) {
+      const setNum = e.card.setCode || "";
+      const cardNum = e.card.cardNumber || "";
+      if (e.quantity > 0) lines.push(`${setNum},${cardNum},normal,${e.quantity}`);
+      if (e.foilQuantity > 0) lines.push(`${setNum},${cardNum},foil,${e.foilQuantity}`);
+    }
 
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", "attachment; filename=lorcana_collection.csv");
