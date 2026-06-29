@@ -32,6 +32,7 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       character,
       cardType,
       ownership,
+      analyzed,
       page = "1",
       limit = "40",
     } = req.query;
@@ -52,6 +53,14 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       where.character = { contains: character, mode: "insensitive" };
     }
     if (cardType && typeof cardType === "string") where.cardType = cardType;
+
+    if (analyzed && typeof analyzed === "string") {
+      if (analyzed === "yes") {
+        where.analysis = { status: "completed" };
+      } else if (analyzed === "no") {
+        where.analysis = null;
+      }
+    }
 
     if (ownership && typeof ownership === "string") {
       const userId = getUserIdFromRequest(req);
