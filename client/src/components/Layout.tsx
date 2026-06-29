@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const NAV_ICONS = {
@@ -37,7 +37,7 @@ export default function Layout() {
   return (
     <div className="flex flex-col min-h-screen">
       <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-amber-400">Lorcana Inventory</h1>
+        <Link to="/" className="text-xl font-bold text-amber-400 hover:text-amber-300 transition-colors">Lorcana Inventory</Link>
         {user && (
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-400">{user.username}</span>
