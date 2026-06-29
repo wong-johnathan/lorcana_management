@@ -145,19 +145,24 @@ cardsRouter.get("/:id/analysis", async (req: Request, res: Response) => {
       res.status(404).json({ error: "No analysis found" });
       return;
     }
-    // Parse analysis JSON if possible — structured format has summary/lastSold/currentAverage/fullAnalysis
+    // Parse analysis JSON if possible — structured format has summary/lastSold/currentAverage/fullAnalysis + LCIF scores
     let summary: string | null = null;
     let lastSold: string | null = null;
     let currentAverage: string | null = null;
     let fullAnalysis: string | null = null;
+    let investmentScore: number | null = null;
+    let investmentTier: string | null = null;
+    let pillarScores: any[] | null = null;
     try {
       const parsed = JSON.parse(analysis.analysis);
       summary = parsed.summary || null;
       lastSold = parsed.lastSold || null;
       currentAverage = parsed.currentAverage || null;
       fullAnalysis = parsed.fullAnalysis || null;
+      investmentScore = parsed.investmentScore ?? null;
+      investmentTier = parsed.investmentTier || null;
+      pillarScores = parsed.pillarScores || null;
     } catch {
-      // Legacy format: raw markdown — treat as fullAnalysis only
       fullAnalysis = analysis.analysis;
     }
     res.json({
@@ -165,6 +170,9 @@ cardsRouter.get("/:id/analysis", async (req: Request, res: Response) => {
       lastSold,
       currentAverage,
       fullAnalysis,
+      investmentScore,
+      investmentTier,
+      pillarScores,
       status: analysis.status,
       createdAt: analysis.createdAt,
       updatedAt: analysis.updatedAt,

@@ -52,7 +52,7 @@ export default function CardDetail({
     setAnalysisError(null);
     try {
       await analysisApi.analyze(card.id);
-      setAnalysisData({ summary: null, lastSold: null, currentAverage: null, fullAnalysis: null, status: "pending", createdAt: "", updatedAt: "" });
+      setAnalysisData({ summary: null, lastSold: null, currentAverage: null, fullAnalysis: null, investmentScore: null, investmentTier: null, pillarScores: null, status: "pending", createdAt: "", updatedAt: "" });
     } catch (err: any) {
       setAnalysisError(err.message || "Failed to start analysis");
     } finally {
@@ -302,6 +302,53 @@ export default function CardDetail({
                       </div>
                     )}
                   </div>
+
+                  {/* LCIF Investment Score */}
+                  {analysisData.investmentScore != null && (
+                    <div className="mb-2">
+                      <div className={`rounded-md p-2.5 border ${
+                        analysisData.investmentTier === "S-Grade" ? "bg-yellow-900/30 border-yellow-600/50" :
+                        analysisData.investmentTier === "A-Grade" ? "bg-green-900/30 border-green-600/50" :
+                        analysisData.investmentTier === "B-Grade" ? "bg-blue-900/30 border-blue-600/50" :
+                        "bg-gray-800/50 border-gray-600/50"
+                      }`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] uppercase tracking-wider text-gray-400">LCIF Investment Score</span>
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                            analysisData.investmentTier === "S-Grade" ? "bg-yellow-700/50 text-yellow-300" :
+                            analysisData.investmentTier === "A-Grade" ? "bg-green-700/50 text-green-300" :
+                            analysisData.investmentTier === "B-Grade" ? "bg-blue-700/50 text-blue-300" :
+                            "bg-gray-700/50 text-gray-300"
+                          }`}>{analysisData.investmentTier}</span>
+                        </div>
+                        <div className="flex items-end gap-2 mb-2">
+                          <span className="text-2xl font-bold text-white">{analysisData.investmentScore}</span>
+                          <span className="text-xs text-gray-500 mb-1">/ 100</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-1.5 mb-2">
+                          <div className={`h-1.5 rounded-full ${
+                            analysisData.investmentScore >= 90 ? "bg-yellow-400" :
+                            analysisData.investmentScore >= 75 ? "bg-green-400" :
+                            analysisData.investmentScore >= 60 ? "bg-blue-400" :
+                            "bg-gray-400"
+                          }`} style={{ width: `${analysisData.investmentScore}%` }}></div>
+                        </div>
+                        {analysisData.pillarScores && (
+                          <div className="space-y-1">
+                            {analysisData.pillarScores.map((p) => (
+                              <div key={p.name} className="flex items-center gap-2 text-[11px]">
+                                <span className="text-gray-400 w-24 shrink-0 truncate" title={p.name}>{p.name}</span>
+                                <div className="flex-1 bg-gray-700 rounded-full h-1">
+                                  <div className="bg-indigo-400 h-1 rounded-full" style={{ width: `${(p.score / p.maxScore) * 100}%` }}></div>
+                                </div>
+                                <span className="text-gray-300 w-10 text-right">{p.score}/{p.maxScore}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Expandable full analysis */}
                   {analysisData.fullAnalysis && (
