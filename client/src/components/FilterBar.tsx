@@ -15,7 +15,9 @@ export default function FilterBar({
 }: FilterBarProps) {
   const [options, setOptions] = useState<FilterOptions | null>(null);
   const [rarityOpen, setRarityOpen] = useState(false);
+  const [setOpen, setSetOpen] = useState(false);
   const rarityRef = useRef<HTMLDivElement>(null);
+  const setRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     cardsApi.filters().then(setOptions).catch(console.error);
@@ -26,12 +28,15 @@ export default function FilterBar({
       if (rarityRef.current && !rarityRef.current.contains(e.target as Node)) {
         setRarityOpen(false);
       }
+      if (setRef.current && !setRef.current.contains(e.target as Node)) {
+        setSetOpen(false);
+      }
     }
-    if (rarityOpen) {
+    if (rarityOpen || setOpen) {
       document.addEventListener("mousedown", handleClick);
     }
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [rarityOpen]);
+  }, [rarityOpen, setOpen]);
 
   const update = (key: string, value: string) => {
     const next = { ...filters };
@@ -55,6 +60,20 @@ export default function FilterBar({
       set.add(rarity);
     }
     update("rarity", Array.from(set).join(","));
+  };
+
+  const selectedSets = filters.set
+    ? filters.set.split(",").filter(Boolean)
+    : [];
+
+  const toggleSet = (setName: string) => {
+    const set = new Set(selectedSets);
+    if (set.has(setName)) {
+      set.delete(setName);
+    } else {
+      set.add(setName);
+    }
+    update("set", Array.from(set).join(","));
   };
 
   if (!options) return null;
@@ -82,18 +101,41 @@ export default function FilterBar({
         ))}
       </select>
 
-      <select
-        value={filters.set || ""}
-        onChange={(e) => update("set", e.target.value)}
-        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
-      >
-        <option value="">All Sets</option>
-        {options.sets.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      {/* Set multi-select */}
+      <div ref={setRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setSetOpen((o) => !o)}
+          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 hover:border-gray-600 focus:outline-none focus:border-amber-500 min-w-[130px] text-left whitespace-nowrap"
+        >
+          {selectedSets.length === 0
+            ? "All Sets"
+            : selectedSets.length === 1
+              ? selectedSets[0]
+              : `${selectedSets.length} selected`}
+        </button>
+        {setOpen && (
+          <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-30 py-1 min-w-[220px] max-h-64 overflow-y-auto">
+            {options.sets.map((s) => {
+              const checked = selectedSets.includes(s);
+              return (
+                <label
+                  key={s}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700 cursor-pointer text-sm text-gray-100"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleSet(s)}
+                    className="rounded accent-amber-500"
+                  />
+                  {s}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Rarity multi-select */}
       <div ref={rarityRef} className="relative">

@@ -23,7 +23,7 @@ inventoryRouter.get("/", async (req: AuthRequest, res: Response) => {
       ];
     }
     if (color && typeof color === "string") cardWhere.color = color;
-    if (set && typeof set === "string") cardWhere.setName = set;
+    if (set && typeof set === "string") cardWhere.setName = { in: set.split(",") };
     if (rarity && typeof rarity === "string") cardWhere.rarity = { in: rarity.split(",") };
     if (type && typeof type === "string") cardWhere.types = { has: type };
     if (character && typeof character === "string") {
