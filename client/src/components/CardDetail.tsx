@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Card, CardAnalysis } from "../types";
-import { analysis as analysisApi } from "../services/api";
+import type { Card } from "../types";
 
 interface CardDetailProps {
   card: Card;
@@ -20,56 +19,6 @@ export default function CardDetail({
   const [quantity, setQuantity] = useState("1");
   const [foilQuantity, setFoilQuantity] = useState("0");
   const [added, setAdded] = useState(false);
-  const [analysisData, setAnalysisData] = useState<CardAnalysis | null>(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
-
-  const isLoggedIn = !!localStorage.getItem("token");
-
-  const fetchAnalysis = useCallback(async () => {
-    try {
-      const data = await analysisApi.get(card.id);
-      setAnalysisData(data);
-    } catch {
-      setAnalysisData(null);
-    }
-  }, [card.id]);
-
-  useEffect(() => {
-    fetchAnalysis();
-  }, [fetchAnalysis]);
-
-  // Poll when pending
-  useEffect(() => {
-    if (analysisData?.status !== "pending") return;
-    const interval = setInterval(fetchAnalysis, 3000);
-    return () => clearInterval(interval);
-  }, [analysisData?.status, fetchAnalysis]);
-
-  const handleAnalyze = async () => {
-    setAnalysisLoading(true);
-    setAnalysisError(null);
-    try {
-      await analysisApi.analyze(card.id);
-      setAnalysisData({ summary: null, lastSold: null, currentAverage: null, fullAnalysis: null, investmentScore: null, investmentTier: null, pillarScores: null, status: "pending", createdAt: "", updatedAt: "" });
-    } catch (err: any) {
-      setAnalysisError(err.message || "Failed to start analysis");
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    if (!dateStr) return "";
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  };
 
   const shortNumber = card.cardNumber.split("•")[0]?.trim() || card.cardNumber;
 
@@ -118,77 +67,8 @@ export default function CardDetail({
           </div>
 
           <div className="md:w-1/2 space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-gray-500">Color</span>
-                <p className="font-medium">{card.color}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Set</span>
-                <p className="font-medium">{card.setName}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Rarity</span>
-                <p className="font-medium">{card.rarity}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Ink Cost</span>
-                <p className="font-medium">{card.inkCost}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Strength</span>
-                <p className="font-medium">{card.strength}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Willpower</span>
-                <p className="font-medium">{card.willpower}</p>
-              </div>
-              {card.lore > 0 && (
-                <div>
-                  <span className="text-gray-500">Lore</span>
-                  <p className="font-medium">{card.lore}</p>
-                </div>
-              )}
-              <div>
-                <span className="text-gray-500">Card #</span>
-                <p className="font-medium">{card.cardNumber}</p>
-              </div>
-            </div>
-
-            {card.types.length > 0 && (
-              <div>
-                <span className="text-gray-500 text-sm">Types</span>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {card.types.map((t) => (
-                    <span
-                      key={t}
-                      className="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded"
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {card.cardType && (
-              <div>
-                <span className="text-gray-500 text-sm">Card Type</span>
-                <p className="text-sm font-medium">{card.cardType}</p>
-              </div>
-            )}
-
-            {card.abilities && (
-              <div>
-                <span className="text-gray-500 text-sm">Abilities</span>
-                <p className="text-sm mt-1 whitespace-pre-wrap">
-                  {card.abilities}
-                </p>
-              </div>
-            )}
-
             {/* Market links */}
-            <div className="space-y-1.5 pt-1">
+            <div className="space-y-1.5">
               <div className="flex gap-2">
                 <a
                   href={`https://www.ebay.com.sg/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}&LH_Sold=1&LH_Complete=1`}
@@ -233,134 +113,6 @@ export default function CardDetail({
               </a>
             </div>
 
-            {/* AI Market Analysis */}
-            <div className="border-t border-gray-700 pt-3 mt-2">
-              {!analysisData && !analysisLoading && (
-                <div className="text-center">
-                  {isLoggedIn ? (
-                    <button
-                      onClick={handleAnalyze}
-                      disabled={analysisLoading}
-                      className="w-full text-xs bg-indigo-700/30 hover:bg-indigo-700/50 text-indigo-300 border border-indigo-700/50 rounded-md px-3 py-2 transition-colors disabled:opacity-50"
-                    >
-                      🤖 Analyze Market Price with AI
-                    </button>
-                  ) : (
-                    <p className="text-xs text-gray-500 text-center">
-                      🤖 AI market analysis available — <a href="/login" className="text-indigo-400 hover:underline">log in</a> to analyze
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {analysisLoading && (
-                <div className="text-center py-3">
-                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-400 border-t-transparent"></div>
-                  <p className="text-xs text-gray-400 mt-1">Starting analysis...</p>
-                </div>
-              )}
-
-              {analysisError && (
-                <div className="bg-red-900/30 border border-red-700/50 rounded-md p-2">
-                  <p className="text-xs text-red-400">{analysisError}</p>
-                  <button
-                    onClick={handleAnalyze}
-                    className="text-xs text-red-300 hover:underline mt-1"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-
-              {analysisData?.status === "pending" && (
-                <div className="text-center py-3">
-                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-400 border-t-transparent"></div>
-                  <p className="text-xs text-indigo-400 mt-1">DeepSeek is analyzing this card...</p>
-                </div>
-              )}
-
-              {analysisData?.status === "completed" && (analysisData.fullAnalysis || analysisData.summary) && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-gray-500">
-                      🤖 AI Analysis · {formatTimeAgo(analysisData.updatedAt)}
-                    </span>
-                    {isLoggedIn && (
-                      <button
-                        onClick={handleAnalyze}
-                        disabled={analysisLoading}
-                        className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50"
-                      >
-                        🔄 Re-analyze
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Fixed summary fields */}
-                  <div className="space-y-1.5 mb-2">
-                    {analysisData.summary && (
-                      <div className="bg-gray-800/50 rounded-md p-2">
-                        <span className="text-[10px] uppercase tracking-wider text-gray-500">Summary</span>
-                        <p className="text-xs text-gray-300 mt-0.5">{analysisData.summary}</p>
-                      </div>
-                    )}
-                    {analysisData.lastSold && (
-                      <div className="flex justify-between text-xs bg-gray-800/50 rounded-md p-2">
-                        <span className="text-gray-500">Last Sold</span>
-                        <span className="text-gray-200 font-medium">{analysisData.lastSold}</span>
-                      </div>
-                    )}
-                    {analysisData.currentAverage && (
-                      <div className="flex justify-between text-xs bg-gray-800/50 rounded-md p-2">
-                        <span className="text-gray-500">Current Avg</span>
-                        <span className="text-gray-200 font-medium">{analysisData.currentAverage}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* LCIF Investment Score - compact */}
-                  {analysisData.investmentScore != null && (
-                    <div className="flex items-center justify-between text-xs bg-gray-800/50 rounded-md p-2">
-                      <span className="text-gray-500">LCIF Score</span>
-                      <span className="font-medium">
-                        <span className="text-white">{analysisData.investmentScore}/100</span>
-                        {analysisData.investmentTier && (
-                          <span className={`ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                            analysisData.investmentTier === "S-Grade" ? "bg-yellow-700/50 text-yellow-300" :
-                            analysisData.investmentTier === "A-Grade" ? "bg-green-700/50 text-green-300" :
-                            analysisData.investmentTier === "B-Grade" ? "bg-blue-700/50 text-blue-300" :
-                            "bg-gray-700/50 text-gray-300"
-                          }`}>{analysisData.investmentTier}</span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Link to full detail page */}
-                  <button
-                    onClick={() => { onClose(); navigate(`/database/${card.id}`); }}
-                    className="w-full text-xs text-indigo-400 hover:text-indigo-300 py-1.5 border border-indigo-800/50 rounded-md bg-indigo-900/20 hover:bg-indigo-900/30 transition-colors"
-                  >
-                    View full analysis →
-                  </button>
-                </div>
-              )}
-
-              {analysisData?.status === "error" && (
-                <div className="bg-red-900/30 border border-red-700/50 rounded-md p-2">
-                  <p className="text-xs text-red-400">Analysis failed</p>
-                  {isLoggedIn && (
-                    <button
-                      onClick={handleAnalyze}
-                      className="text-xs text-red-300 hover:underline mt-1"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
             {currentQuantity && (
               <div className="bg-gray-800 rounded-md p-2 text-sm">
                 <span className="text-gray-400">In your collection: </span>
@@ -373,7 +125,7 @@ export default function CardDetail({
             )}
 
             {onAdd && (
-              <div className="border-t border-gray-800 pt-3 space-y-2">
+              <div className="space-y-2">
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <label className="text-xs text-gray-500 block mb-1">
@@ -411,6 +163,13 @@ export default function CardDetail({
                 </button>
               </div>
             )}
+
+            <button
+              onClick={() => { onClose(); navigate(`/database/${card.id}`); }}
+              className="w-full text-xs border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600 rounded-md px-3 py-2 transition-colors"
+            >
+              View more →
+            </button>
           </div>
         </div>
       </div>
