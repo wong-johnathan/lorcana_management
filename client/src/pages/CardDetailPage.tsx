@@ -121,7 +121,7 @@ export default function CardDetailPage() {
             </div>
             <div className="bg-gray-800/50 rounded-lg p-3">
               <span className="text-gray-500 text-xs block">Set</span>
-              <p className="font-medium">{card.setName}</p>
+              <p className="font-medium">{card.setName} (set {card.setCode})</p>
             </div>
             <div className="bg-gray-800/50 rounded-lg p-3">
               <span className="text-gray-500 text-xs block">Rarity</span>

@@ -42,6 +42,9 @@ export default function CardDetail({
             {card.subtitle && (
               <p className="text-gray-400">{card.subtitle}</p>
             )}
+            <p className="text-xs text-gray-500 mt-0.5">
+              {card.setName} (set {card.setCode})
+            </p>
           </div>
           <button
             onClick={onClose}
