@@ -53,6 +53,7 @@ export interface FilterOptions {
   sets: string[];
   rarities: string[];
   cardTypes: string[];
+  types: string[];
 }
 
 export interface RecognizedCard {

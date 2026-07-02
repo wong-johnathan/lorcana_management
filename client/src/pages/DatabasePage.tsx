@@ -9,7 +9,7 @@ import CardDetail from "../components/CardDetail";
 
 function filtersFromParams(params: URLSearchParams): Record<string, string> {
   const filters: Record<string, string> = {};
-  for (const key of ["search", "color", "set", "rarity", "cardType", "ownership", "analyzed"]) {
+  for (const key of ["search", "color", "set", "rarity", "type", "cardType", "ownership", "analyzed"]) {
     const val = params.get(key);
     if (val) filters[key] = val;
   }

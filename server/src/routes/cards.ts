@@ -68,10 +68,10 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
         { subtitle: { contains: search, mode: "insensitive" } },
       ];
     }
-    if (color && typeof color === "string") where.color = color;
+    if (color && typeof color === "string") where.color = { in: color.split(",") };
     if (set && typeof set === "string") where.setName = { in: set.split(",") };
     if (rarity && typeof rarity === "string") where.rarity = { in: rarity.split(",") };
-    if (type && typeof type === "string") where.types = { has: type };
+    if (type && typeof type === "string") where.types = { hasSome: type.split(",") };
     if (character && typeof character === "string") {
       where.character = { contains: character, mode: "insensitive" };
     }
@@ -150,18 +150,22 @@ cardsRouter.post("/recognize", async (req: Request, res: Response) => {
 
 cardsRouter.get("/filters", async (_req: Request, res: Response) => {
   try {
-    const [colors, sets, rarities, cardTypes] = await Promise.all([
+    const [colors, sets, rarities, cardTypes, typeValues] = await Promise.all([
       prisma.card.findMany({ select: { color: true }, distinct: ["color"], orderBy: { color: "asc" } }),
       prisma.card.findMany({ select: { setName: true, setCode: true }, distinct: ["setName"] }),
       prisma.card.findMany({ select: { rarity: true }, distinct: ["rarity"], orderBy: { rarity: "asc" } }),
       prisma.card.findMany({ select: { cardType: true }, distinct: ["cardType"], orderBy: { cardType: "asc" } }),
+      prisma.card.findMany({ select: { types: true } }),
     ]);
+
+    const allSubtypes = [...new Set(typeValues.flatMap((t) => t.types))].sort();
 
     res.json({
       colors: colors.map((c) => c.color),
       sets: sets.sort((a, b) => (parseInt(a.setCode, 10) || 0) - (parseInt(b.setCode, 10) || 0)).map((s) => s.setName),
       rarities: rarities.map((r) => r.rarity),
       cardTypes: cardTypes.map((t) => t.cardType),
+      types: allSubtypes,
     });
   } catch (error) {
     console.error("Filters error:", error);
