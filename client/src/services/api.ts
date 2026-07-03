@@ -52,6 +52,7 @@ export const auth = {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
+  config: () => request<{ registrationEnabled: boolean }>("/auth/config"),
 };
 
 export const cards = {

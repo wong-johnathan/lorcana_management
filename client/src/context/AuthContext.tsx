@@ -16,6 +16,7 @@ interface AuthContextType {
   register: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
+  registrationEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
 
   useEffect(() => {
     const savedToken = localStorage.getItem("token");
@@ -33,6 +35,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(JSON.parse(savedUser));
     }
     setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    authApi
+      .config()
+      .then((res) => setRegistrationEnabled(res.registrationEnabled))
+      .catch(() => setRegistrationEnabled(true));
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -60,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, login, register, logout, isLoading }}
+      value={{ user, token, login, register, logout, isLoading, registrationEnabled }}
     >
       {children}
     </AuthContext.Provider>

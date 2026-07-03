@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
-  const { login, register } = useAuth();
+  const { login, register, registrationEnabled } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -14,7 +14,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      if (isRegister) {
+      if (isRegister && registrationEnabled) {
         await register(username, password);
       } else {
         await login(username, password);
@@ -75,23 +75,25 @@ export default function LoginPage() {
           >
             {loading
               ? "Please wait..."
-              : isRegister
+              : isRegister && registrationEnabled
               ? "Create Account"
               : "Sign In"}
           </button>
         </form>
 
-        <button
-          onClick={() => {
-            setIsRegister(!isRegister);
-            setError("");
-          }}
-          className="w-full text-center text-sm text-gray-400 hover:text-amber-400 mt-4 transition-colors"
-        >
-          {isRegister
-            ? "Already have an account? Sign in"
-            : "Need an account? Register"}
-        </button>
+        {registrationEnabled && (
+          <button
+            onClick={() => {
+              setIsRegister(!isRegister);
+              setError("");
+            }}
+            className="w-full text-center text-sm text-gray-400 hover:text-amber-400 mt-4 transition-colors"
+          >
+            {isRegister
+              ? "Already have an account? Sign in"
+              : "Need an account? Register"}
+          </button>
+        )}
       </div>
     </div>
   );
