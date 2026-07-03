@@ -102,6 +102,12 @@ export async function syncGroupPrices(
                 },
               });
             }
+
+            const allPrices = await prisma.cardPrice.findMany({ where: { cardId: card.id } });
+            const displayPrice = allPrices.find((p) => p.variant === "Normal")?.marketPrice
+              ?? allPrices[0]?.marketPrice
+              ?? null;
+            await prisma.card.update({ where: { id: card.id }, data: { displayPrice } });
           }
           matched += matchingCards.length;
         }
