@@ -296,6 +296,16 @@ export default function FilterBar({
         <option value="no">Not Analyzed</option>
       </select>
 
+      <select
+        value={filters.sort || ""}
+        onChange={(e) => update("sort", e.target.value)}
+        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
+      >
+        <option value="">Sort: Default</option>
+        <option value="price_asc">Price: Low to High</option>
+        <option value="price_desc">Price: High to Low</option>
+      </select>
+
       {showOwnership && (
         <select
           value={filters.ownership || ""}
