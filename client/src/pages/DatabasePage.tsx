@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi, sync as syncApi, analysis as analysisApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import type { Card, InventoryEntry } from "../types";
+import type { Card, InventoryEntry, SyncStatus } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
@@ -29,10 +29,10 @@ export default function DatabasePage() {
   >(new Map());
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState("");
-  const [pricesSyncing, setPricesSyncing] = useState(false);
-  const [pricesSyncMessage, setPricesSyncMessage] = useState("");
+  const [cardSyncStatus, setCardSyncStatus] = useState<SyncStatus | null>(null);
+  const [priceSyncStatus, setPriceSyncStatus] = useState<SyncStatus | null>(null);
+  const cardSyncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const priceSyncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [batchStatus, setBatchStatus] = useState<{
     status: string; total: number; completed: number; failed: number; currentCard: string | null;
   } | null>(null);
@@ -123,39 +123,95 @@ export default function DatabasePage() {
     return () => observer.disconnect();
   }, [page, totalPages, loading, loadingMore, loadCards]);
 
+  const pollCardSync = useCallback(() => {
+    if (cardSyncPollRef.current) return;
+    cardSyncPollRef.current = setInterval(async () => {
+      try {
+        const s = await syncApi.refreshStatus();
+        setCardSyncStatus(s);
+        if (s.status !== "running") {
+          clearInterval(cardSyncPollRef.current!);
+          cardSyncPollRef.current = null;
+          if (s.status === "completed" || s.status === "error") {
+            setPage(1);
+            loadCards(1, false);
+          }
+        }
+      } catch {
+        clearInterval(cardSyncPollRef.current!);
+        cardSyncPollRef.current = null;
+      }
+    }, 3000);
+  }, [loadCards]);
+
+  const pollPriceSync = useCallback(() => {
+    if (priceSyncPollRef.current) return;
+    priceSyncPollRef.current = setInterval(async () => {
+      try {
+        const s = await syncApi.pricesStatus();
+        setPriceSyncStatus(s);
+        if (s.status !== "running") {
+          clearInterval(priceSyncPollRef.current!);
+          priceSyncPollRef.current = null;
+          if (s.status === "completed" || s.status === "error") {
+            setPage(1);
+            loadCards(1, false);
+          }
+        }
+      } catch {
+        clearInterval(priceSyncPollRef.current!);
+        priceSyncPollRef.current = null;
+      }
+    }, 3000);
+  }, [loadCards]);
+
+  useEffect(() => {
+    if (!user) return;
+    syncApi.refreshStatus().then((s) => {
+      setCardSyncStatus(s);
+      if (s.status === "running") pollCardSync();
+    }).catch(() => {});
+    syncApi.pricesStatus().then((s) => {
+      setPriceSyncStatus(s);
+      if (s.status === "running") pollPriceSync();
+    }).catch(() => {});
+    return () => {
+      if (cardSyncPollRef.current) clearInterval(cardSyncPollRef.current);
+      if (priceSyncPollRef.current) clearInterval(priceSyncPollRef.current);
+    };
+  }, [user, pollCardSync, pollPriceSync]);
+
   const handleSync = async () => {
-    setSyncing(true);
-    setSyncMessage("");
     try {
       const res = await syncApi.refresh();
-      setSyncMessage(res.message);
-      setTimeout(() => setSyncMessage(""), 5000);
-      setPage(1);
-      loadCards(1, false);
+      setCardSyncStatus({
+        status: "running",
+        total: res.total,
+        completed: 0,
+        failed: 0,
+        currentItem: null,
+        startedAt: new Date().toISOString(),
+      });
+      pollCardSync();
     } catch (err) {
-      setSyncMessage("Sync failed. Please try again.");
-      setTimeout(() => setSyncMessage(""), 5000);
       console.error("Sync error:", err);
-    } finally {
-      setSyncing(false);
     }
   };
 
   const handleSyncPrices = async () => {
-    setPricesSyncing(true);
-    setPricesSyncMessage("");
     try {
       const res = await syncApi.prices();
-      setPricesSyncMessage(res.message);
-      setTimeout(() => setPricesSyncMessage(""), 5000);
-      setPage(1);
-      loadCards(1, false);
+      setPriceSyncStatus({
+        status: "running",
+        total: res.total,
+        completed: 0,
+        failed: 0,
+        currentItem: null,
+        startedAt: new Date().toISOString(),
+      });
+      pollPriceSync();
     } catch (err) {
-      setPricesSyncMessage("Price sync failed. Please try again.");
-      setTimeout(() => setPricesSyncMessage(""), 5000);
       console.error("Price sync error:", err);
-    } finally {
-      setPricesSyncing(false);
     }
   };
 
@@ -267,11 +323,11 @@ export default function DatabasePage() {
               )}
               <button
                 onClick={handleSync}
-                disabled={syncing}
+                disabled={cardSyncStatus?.status === "running"}
                 className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-sm px-3 py-1.5 rounded-md transition-colors"
               >
                 <svg
-                  className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
+                  className={`w-4 h-4 ${cardSyncStatus?.status === "running" ? "animate-spin" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -283,15 +339,15 @@ export default function DatabasePage() {
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                {syncing ? "Syncing..." : "Sync Cards"}
+                {cardSyncStatus?.status === "running" ? "Syncing..." : "Sync Cards"}
               </button>
               <button
                 onClick={handleSyncPrices}
-                disabled={pricesSyncing}
+                disabled={priceSyncStatus?.status === "running"}
                 className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-sm px-3 py-1.5 rounded-md transition-colors"
               >
                 <svg
-                  className={`w-4 h-4 ${pricesSyncing ? "animate-spin" : ""}`}
+                  className={`w-4 h-4 ${priceSyncStatus?.status === "running" ? "animate-spin" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -303,19 +359,54 @@ export default function DatabasePage() {
                     d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {pricesSyncing ? "Syncing..." : "Sync Prices"}
+                {priceSyncStatus?.status === "running" ? "Syncing..." : "Sync Prices"}
               </button>
             </div>
           )}
         </div>
-        {syncMessage && (
-          <div className="mb-2 text-sm text-green-400 bg-green-400/10 px-3 py-1.5 rounded">
-            {syncMessage}
+        {cardSyncStatus && cardSyncStatus.status !== "idle" && (
+          <div className="mb-2 text-sm bg-gray-800/40 border border-gray-700/30 px-3 py-2 rounded">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-gray-300 font-medium">
+                {cardSyncStatus.status === "running" ? "Card Sync Running" : cardSyncStatus.status === "completed" ? "Card Sync Complete" : "Card Sync Error"}
+              </span>
+              <span className="text-gray-400">{cardSyncStatus.completed}/{cardSyncStatus.total}</span>
+            </div>
+            {cardSyncStatus.total > 0 && (
+              <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
+                <div
+                  className={`h-2 rounded-full transition-all ${cardSyncStatus.status === "completed" ? "bg-green-500" : cardSyncStatus.status === "error" ? "bg-red-500" : "bg-gray-400"}`}
+                  style={{ width: `${(cardSyncStatus.completed / cardSyncStatus.total) * 100}%` }}
+                />
+              </div>
+            )}
+            {cardSyncStatus.currentItem && (
+              <div className="text-xs text-gray-400 truncate">Syncing: {cardSyncStatus.currentItem}</div>
+            )}
+            {cardSyncStatus.failed > 0 && (
+              <div className="text-xs text-red-400">{cardSyncStatus.failed} failed</div>
+            )}
           </div>
         )}
-        {pricesSyncMessage && (
-          <div className="mb-2 text-sm text-green-400 bg-green-400/10 px-3 py-1.5 rounded">
-            {pricesSyncMessage}
+        {priceSyncStatus && priceSyncStatus.status !== "idle" && (
+          <div className="mb-2 text-sm bg-gray-800/40 border border-gray-700/30 px-3 py-2 rounded">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-gray-300 font-medium">
+                {priceSyncStatus.status === "running" ? "Price Sync Running" : priceSyncStatus.status === "completed" ? "Price Sync Complete" : "Price Sync Error"}
+              </span>
+              <span className="text-gray-400">{priceSyncStatus.completed}/{priceSyncStatus.total}</span>
+            </div>
+            {priceSyncStatus.total > 0 && (
+              <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
+                <div
+                  className={`h-2 rounded-full transition-all ${priceSyncStatus.status === "completed" ? "bg-green-500" : priceSyncStatus.status === "error" ? "bg-red-500" : "bg-gray-400"}`}
+                  style={{ width: `${(priceSyncStatus.completed / priceSyncStatus.total) * 100}%` }}
+                />
+              </div>
+            )}
+            {priceSyncStatus.currentItem && (
+              <div className="text-xs text-gray-400 truncate">Syncing: {priceSyncStatus.currentItem}</div>
+            )}
           </div>
         )}
         {batchStatus && batchStatus.status !== "idle" && user?.username === "jw1005" && (
