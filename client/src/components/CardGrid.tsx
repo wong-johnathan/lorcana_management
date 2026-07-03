@@ -1,5 +1,4 @@
 import type { Card } from "../types";
-import { shortCardNumber } from "../utils/format";
 
 interface CardGridProps {
   cards: Card[];
@@ -84,7 +83,7 @@ export default function CardGrid({
                 <span className="text-xs text-gray-500">{card.inkCost} ink</span>
               </div>
               <p className="text-[10px] text-gray-600 truncate mt-0.5">
-                {card.setName} · {shortCardNumber(card.cardNumber)}
+                {card.setName} (set {card.setCode})
               </p>
             </div>
           </button>

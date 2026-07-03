@@ -1,7 +1,3 @@
-export function shortCardNumber(cardNumber: string): string {
-  return cardNumber.split("•")[0]?.trim() || cardNumber;
-}
-
 export function formatTimeAgo(dateStr: string): string {
   if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
