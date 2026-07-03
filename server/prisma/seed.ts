@@ -27,6 +27,7 @@ interface LorcanaCard {
   number?: number;
   fullIdentifier?: string;
   images?: { full?: string };
+  externalLinks?: { tcgPlayerId?: number };
 }
 
 interface LorcanaSet {
@@ -60,6 +61,7 @@ async function main() {
       where: { externalId: card.id },
       create: {
         externalId: card.id,
+        tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
         name: card.name || "",
         subtitle: card.version || "",
         character: card.name || null,
@@ -78,6 +80,7 @@ async function main() {
         imageUrl: card.images?.full || "",
       },
       update: {
+        tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
         name: card.name || "",
         subtitle: card.version || "",
         character: card.name || null,
