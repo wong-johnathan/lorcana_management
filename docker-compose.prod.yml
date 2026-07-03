@@ -23,6 +23,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
+      REGISTER: ${REGISTER:-true}
       PORT: "3001"
     depends_on:
       db:
