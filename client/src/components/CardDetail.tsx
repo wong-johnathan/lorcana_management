@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Card } from "../types";
 import CardPriceTable from "./CardPriceTable";
+import MarketplaceLink from "./MarketplaceLink";
 
 interface CardDetailProps {
   card: Card;
@@ -101,18 +102,24 @@ export default function CardDetail({
                   🔨 Auction
                 </a>
               </div>
-              <a
-                href={
-                  card.tcgPlayerId != null
-                    ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}`
-                    : `https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-center text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border border-purple-700/50 rounded-md px-3 py-1.5 transition-colors"
-              >
-                📊 TCGPlayer
-              </a>
+              <MarketplaceLink
+                href={card.tcgPlayerId != null ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}` : null}
+                label="📊 TCGPlayer"
+                colorClass="bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border-purple-700/50"
+                className="block text-center"
+              />
+              <MarketplaceLink
+                href={card.cardTraderUrl}
+                label="🔄 CardTrader"
+                colorClass="bg-teal-700/30 hover:bg-teal-700/50 text-teal-300 border-teal-700/50"
+                className="block text-center"
+              />
+              <MarketplaceLink
+                href={card.cardmarketUrl}
+                label="🇪🇺 CardMarket"
+                colorClass="bg-orange-700/30 hover:bg-orange-700/50 text-orange-300 border-orange-700/50"
+                className="block text-center"
+              />
               <a
                 href={`https://www.facebook.com/search/top?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&filters=${encodeURIComponent(btoa(JSON.stringify({"recent_posts:0": JSON.stringify({ name: "recent_posts", args: "" })})))}`}
                 target="_blank"
