@@ -70,6 +70,19 @@ export default function CardDetail({
           </div>
 
           <div className="md:w-1/2 space-y-3">
+            {card.prices.length > 0 && (
+              <div className="bg-gray-800 rounded-md p-2 text-sm flex flex-wrap gap-x-4 gap-y-1">
+                {card.prices.map((p) => (
+                  <span key={p.variant}>
+                    <span className="text-gray-400">{p.variant}: </span>
+                    <span className="font-medium text-emerald-400">
+                      {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
+
             {/* Market links */}
             <div className="space-y-1.5">
               <div className="flex gap-2">

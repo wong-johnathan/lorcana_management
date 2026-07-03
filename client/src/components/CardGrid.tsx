@@ -34,6 +34,8 @@ export default function CardGrid({
         const borderClass = COLOR_CLASSES[card.color] || "border-gray-700";
         const isOwned = ownedCardIds?.has(card.id);
         const qty = ownedQuantities?.get(card.id);
+        const marketPrice = card.prices?.find((p) => p.variant === "Normal")?.marketPrice
+          ?? card.prices?.[0]?.marketPrice;
 
         return (
           <button
@@ -59,6 +61,12 @@ export default function CardGrid({
             {isOwned && qty && (
               <div className="absolute top-1 right-1 bg-amber-500 text-black text-xs font-bold px-1.5 py-0.5 rounded">
                 {qty.quantity + qty.foilQuantity}x
+              </div>
+            )}
+
+            {marketPrice != null && (
+              <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                ${marketPrice.toFixed(2)}
               </div>
             )}
 

@@ -98,6 +98,11 @@ export const sync = {
     request<{ message: string; count: number }>("/sync/refresh", {
       method: "POST",
     }),
+  prices: () =>
+    request<{ message: string; groups: number; matched: number; unmatched: number }>(
+      "/sync/prices",
+      { method: "POST" }
+    ),
 };
 
 export const settings = {

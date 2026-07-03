@@ -17,7 +17,8 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.5.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
@@ -25,6 +26,7 @@
     "@types/express": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.15.0",
+    "@types/node-cron": "^3.0.11",
     "prisma": "^6.9.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"

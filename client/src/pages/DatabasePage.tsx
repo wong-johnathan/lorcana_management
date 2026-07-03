@@ -31,6 +31,8 @@ export default function DatabasePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [pricesSyncing, setPricesSyncing] = useState(false);
+  const [pricesSyncMessage, setPricesSyncMessage] = useState("");
   const [batchStatus, setBatchStatus] = useState<{
     status: string; total: number; completed: number; failed: number; currentCard: string | null;
   } | null>(null);
@@ -136,6 +138,24 @@ export default function DatabasePage() {
       console.error("Sync error:", err);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleSyncPrices = async () => {
+    setPricesSyncing(true);
+    setPricesSyncMessage("");
+    try {
+      const res = await syncApi.prices();
+      setPricesSyncMessage(res.message);
+      setTimeout(() => setPricesSyncMessage(""), 5000);
+      setPage(1);
+      loadCards(1, false);
+    } catch (err) {
+      setPricesSyncMessage("Price sync failed. Please try again.");
+      setTimeout(() => setPricesSyncMessage(""), 5000);
+      console.error("Price sync error:", err);
+    } finally {
+      setPricesSyncing(false);
     }
   };
 
@@ -265,12 +285,37 @@ export default function DatabasePage() {
                 </svg>
                 {syncing ? "Syncing..." : "Sync Cards"}
               </button>
+              <button
+                onClick={handleSyncPrices}
+                disabled={pricesSyncing}
+                className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-sm px-3 py-1.5 rounded-md transition-colors"
+              >
+                <svg
+                  className={`w-4 h-4 ${pricesSyncing ? "animate-spin" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                {pricesSyncing ? "Syncing..." : "Sync Prices"}
+              </button>
             </div>
           )}
         </div>
         {syncMessage && (
           <div className="mb-2 text-sm text-green-400 bg-green-400/10 px-3 py-1.5 rounded">
             {syncMessage}
+          </div>
+        )}
+        {pricesSyncMessage && (
+          <div className="mb-2 text-sm text-green-400 bg-green-400/10 px-3 py-1.5 rounded">
+            {pricesSyncMessage}
           </div>
         )}
         {batchStatus && batchStatus.status !== "idle" && user?.username === "jw1005" && (
