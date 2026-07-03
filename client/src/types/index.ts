@@ -11,6 +11,8 @@ export interface Card {
   id: string;
   externalId: number;
   tcgPlayerId: number | null;
+  cardTraderUrl: string | null;
+  cardmarketUrl: string | null;
   name: string;
   subtitle: string;
   character: string | null;
