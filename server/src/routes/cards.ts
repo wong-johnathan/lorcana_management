@@ -56,6 +56,7 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       cardType,
       ownership,
       analyzed,
+      sort,
       page = "1",
       limit = "40",
     } = req.query;
@@ -107,12 +108,20 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 40));
     const skip = (pageNum - 1) * limitNum;
 
+    const defaultOrderBy = [{ setCode: "asc" as const }, { name: "asc" as const }];
+    const sortOrderBy =
+      sort === "price_asc"
+        ? [{ displayPrice: { sort: "asc" as const, nulls: "last" as const } }, ...defaultOrderBy]
+        : sort === "price_desc"
+        ? [{ displayPrice: { sort: "desc" as const, nulls: "last" as const } }, ...defaultOrderBy]
+        : defaultOrderBy;
+
     const [cards, total] = await Promise.all([
       prisma.card.findMany({
         where,
         skip,
         take: limitNum,
-        orderBy: [{ setCode: "asc" }, { name: "asc" }],
+        orderBy: sortOrderBy,
         include: { prices: true },
       }),
       prisma.card.count({ where }),
