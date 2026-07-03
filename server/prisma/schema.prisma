@@ -13,6 +13,7 @@ model Card {
   tcgPlayerId   Int?
   cardTraderUrl String?
   cardmarketUrl String?
+  displayPrice  Float?
   name          String
   subtitle      String   @default("")
   character     String?
@@ -39,6 +40,7 @@ model Card {
   @@index([setName])
   @@index([rarity])
   @@index([tcgPlayerId])
+  @@index([displayPrice])
 }
 
 model User {
