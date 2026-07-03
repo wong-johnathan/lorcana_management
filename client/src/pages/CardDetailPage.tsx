@@ -4,6 +4,8 @@ import type { Card, CardAnalysis } from "../types";
 import { cards as cardsApi, analysis as analysisApi } from "../services/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import CardPriceTable from "../components/CardPriceTable";
+import { formatTimeAgo } from "../utils/format";
 
 export default function CardDetailPage() {
   const { cardId } = useParams<{ cardId: string }>();
@@ -51,18 +53,6 @@ export default function CardDetailPage() {
     } finally {
       setAnalysisLoading(false);
     }
-  };
-
-  const formatTimeAgo = (dateStr: string) => {
-    if (!dateStr) return "";
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
   };
 
   if (loading) {
@@ -179,16 +169,7 @@ export default function CardDetailPage() {
           {card.prices.length > 0 && (
             <div>
               <span className="text-gray-500 text-xs block mb-1">TCGPlayer Market Price</span>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 bg-gray-800/30 rounded-lg p-3">
-                {card.prices.map((p) => (
-                  <span key={p.variant} className="text-sm">
-                    <span className="text-gray-400">{p.variant}: </span>
-                    <span className="font-medium text-emerald-400">
-                      {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
-                    </span>
-                  </span>
-                ))}
-              </div>
+              <CardPriceTable prices={card.prices} />
             </div>
           )}
 
@@ -210,7 +191,11 @@ export default function CardDetailPage() {
               className="text-xs bg-amber-700/30 hover:bg-amber-700/50 text-amber-400 border border-amber-700/50 rounded-md px-3 py-1.5 transition-colors"
             >eBay Auction</a>
             <a
-              href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`}
+              href={
+                card.tcgPlayerId != null
+                  ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}`
+                  : `https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`
+              }
               target="_blank" rel="noopener noreferrer"
               className="text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border border-purple-700/50 rounded-md px-3 py-1.5 transition-colors"
             >TCGPlayer</a>

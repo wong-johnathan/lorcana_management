@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Card } from "../types";
+import CardPriceTable from "./CardPriceTable";
 
 interface CardDetailProps {
   card: Card;
@@ -70,18 +71,7 @@ export default function CardDetail({
           </div>
 
           <div className="md:w-1/2 space-y-3">
-            {card.prices.length > 0 && (
-              <div className="bg-gray-800 rounded-md p-2 text-sm flex flex-wrap gap-x-4 gap-y-1">
-                {card.prices.map((p) => (
-                  <span key={p.variant}>
-                    <span className="text-gray-400">{p.variant}: </span>
-                    <span className="font-medium text-emerald-400">
-                      {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            )}
+            {card.prices.length > 0 && <CardPriceTable prices={card.prices} compact />}
 
             {/* Market links */}
             <div className="space-y-1.5">
@@ -112,7 +102,11 @@ export default function CardDetail({
                 </a>
               </div>
               <a
-                href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`}
+                href={
+                  card.tcgPlayerId != null
+                    ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}`
+                    : `https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-center text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border border-purple-700/50 rounded-md px-3 py-1.5 transition-colors"

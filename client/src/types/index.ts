@@ -10,6 +10,7 @@ export interface CardPrice {
 export interface Card {
   id: string;
   externalId: number;
+  tcgPlayerId: number | null;
   name: string;
   subtitle: string;
   character: string | null;
