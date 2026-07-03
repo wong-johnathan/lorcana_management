@@ -94,12 +94,12 @@ export default function CardDetail({
                   🛒 Active
                 </a>
                 <a
-                  href={`https://www.ebay.com.sg/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}&_sacat=0&_from=R40&rt=nc&LH_Auction=1`}
+                  href={`https://www.ebay.com.sg/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}&_sacat=0&_from=R40&rt=nc&LH_Auction=1&_sop=1`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 text-center text-xs bg-amber-700/30 hover:bg-amber-700/50 text-amber-400 border border-amber-700/50 rounded-md px-2 py-1.5 transition-colors"
                 >
-                  🔨 Auction
+                  🔨 Ending
                 </a>
               </div>
               <MarketplaceLink

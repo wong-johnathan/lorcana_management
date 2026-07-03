@@ -187,10 +187,10 @@ export default function CardDetailPage() {
               className="text-xs bg-blue-700/30 hover:bg-blue-700/50 text-blue-400 border border-blue-700/50 rounded-md px-3 py-1.5 transition-colors"
             >eBay Active</a>
             <a
-              href={`https://www.ebay.com.sg/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}&_sacat=0&_from=R40&rt=nc&LH_Auction=1`}
+              href={`https://www.ebay.com.sg/sch/i.html?_nkw=${encodeURIComponent(`${card.name} - ${card.subtitle} - ${shortNumber}`)}&_sacat=0&_from=R40&rt=nc&LH_Auction=1&_sop=1`}
               target="_blank" rel="noopener noreferrer"
               className="text-xs bg-amber-700/30 hover:bg-amber-700/50 text-amber-400 border border-amber-700/50 rounded-md px-3 py-1.5 transition-colors"
-            >eBay Auction</a>
+            >eBay Auction ⏳</a>
             <MarketplaceLink
               href={card.tcgPlayerId != null ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}` : null}
               label="TCGPlayer"
