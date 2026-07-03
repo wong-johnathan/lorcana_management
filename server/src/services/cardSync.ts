@@ -35,84 +35,110 @@ interface LorcanaSet {
   name?: string;
 }
 
-interface LorcanaData {
+export interface LorcanaData {
   cards: LorcanaCard[];
   sets: Record<string, LorcanaSet>;
 }
+
+export interface UpsertResult {
+  seeded: number;
+  failed: number;
+}
+
+export type UpsertProgressCallback = (
+  card: LorcanaCard,
+  index: number,
+  total: number
+) => void;
 
 function parseData(raw: string): LorcanaData {
   return JSON.parse(raw);
 }
 
-async function upsertCards(data: LorcanaData): Promise<number> {
+export async function upsertCards(
+  data: LorcanaData,
+  onProgress?: UpsertProgressCallback
+): Promise<UpsertResult> {
   const { cards, sets: setMap } = data;
   let seeded = 0;
+  let failed = 0;
 
-  for (const card of cards) {
-    if (!card.id) continue;
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    if (!card.id) {
+      onProgress?.(card, i, cards.length);
+      continue;
+    }
 
-    const setCode = card.setCode || "";
-    const setName = setMap[setCode]?.name || `Set ${setCode}`;
-    const abilitiesText =
-      card.fullText ||
-      card.abilities?.map((a) => a.fullText).join("\n") ||
-      "";
+    try {
+      const setCode = card.setCode || "";
+      const setName = setMap[setCode]?.name || `Set ${setCode}`;
+      const abilitiesText =
+        card.fullText ||
+        card.abilities?.map((a) => a.fullText).join("\n") ||
+        "";
 
-    await prisma.card.upsert({
-      where: { externalId: card.id },
-      create: {
-        externalId: card.id,
-        tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
-        name: card.name || "",
-        subtitle: card.version || "",
-        character: card.name || null,
-        types: card.subtypes || [],
-        cardType: card.type || "",
-        color: card.color || "",
-        setCode,
-        setName,
-        rarity: card.rarity || "",
-        inkCost: card.cost || 0,
-        strength: card.strength || 0,
-        willpower: card.willpower || 0,
-        lore: card.lore || 0,
-        abilities: abilitiesText,
-        cardNumber: card.fullIdentifier || String(card.number || ""),
-        imageUrl: card.images?.full || "",
-      },
-      update: {
-        tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
-        name: card.name || "",
-        subtitle: card.version || "",
-        character: card.name || null,
-        types: card.subtypes || [],
-        cardType: card.type || "",
-        color: card.color || "",
-        setCode,
-        setName,
-        rarity: card.rarity || "",
-        inkCost: card.cost || 0,
-        strength: card.strength || 0,
-        willpower: card.willpower || 0,
-        lore: card.lore || 0,
-        abilities: abilitiesText,
-        cardNumber: card.fullIdentifier || String(card.number || ""),
-        imageUrl: card.images?.full || "",
-      },
-    });
-    seeded++;
+      await prisma.card.upsert({
+        where: { externalId: card.id },
+        create: {
+          externalId: card.id,
+          tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
+          name: card.name || "",
+          subtitle: card.version || "",
+          character: card.name || null,
+          types: card.subtypes || [],
+          cardType: card.type || "",
+          color: card.color || "",
+          setCode,
+          setName,
+          rarity: card.rarity || "",
+          inkCost: card.cost || 0,
+          strength: card.strength || 0,
+          willpower: card.willpower || 0,
+          lore: card.lore || 0,
+          abilities: abilitiesText,
+          cardNumber: card.fullIdentifier || String(card.number || ""),
+          imageUrl: card.images?.full || "",
+        },
+        update: {
+          tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
+          name: card.name || "",
+          subtitle: card.version || "",
+          character: card.name || null,
+          types: card.subtypes || [],
+          cardType: card.type || "",
+          color: card.color || "",
+          setCode,
+          setName,
+          rarity: card.rarity || "",
+          inkCost: card.cost || 0,
+          strength: card.strength || 0,
+          willpower: card.willpower || 0,
+          lore: card.lore || 0,
+          abilities: abilitiesText,
+          cardNumber: card.fullIdentifier || String(card.number || ""),
+          imageUrl: card.images?.full || "",
+        },
+      });
+      seeded++;
+    } catch (err) {
+      failed++;
+      console.error("Card upsert failed for externalId", card.id, err);
+    }
+
+    onProgress?.(card, i, cards.length);
   }
 
-  return seeded;
+  return { seeded, failed };
 }
 
-export async function seedFromLocal(): Promise<number> {
+export async function seedFromLocal(): Promise<UpsertResult> {
   const raw = readFileSync(DATA_PATH, "utf-8");
   const data = parseData(raw);
   return upsertCards(data);
 }
 
-export async function syncFromRemote(): Promise<number> {
+export async function fetchAndSaveRemote(): Promise<LorcanaData> {
   const response = await fetch(
     "https://lorcanajson.org/files/current/en/allCards.json"
   );
@@ -123,6 +149,5 @@ export async function syncFromRemote(): Promise<number> {
   const raw = await response.text();
   writeFileSync(DATA_PATH, raw, "utf-8");
 
-  const data = parseData(raw);
-  return upsertCards(data);
+  return parseData(raw);
 }
