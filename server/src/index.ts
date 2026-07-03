@@ -4,10 +4,9 @@ import cron from "node-cron";
 import { authRouter } from "./routes/auth.js";
 import { cardsRouter } from "./routes/cards.js";
 import { inventoryRouter } from "./routes/inventory.js";
-import { syncRouter } from "./routes/sync.js";
+import { syncRouter, runPriceSync } from "./routes/sync.js";
 import { settingsRouter } from "./routes/settings.js";
 import { publicRouter } from "./routes/public.js";
-import { syncLorcanaPrices } from "./services/priceSync.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,7 +31,5 @@ app.listen(PORT, () => {
 
 // Refresh Lorcana card prices daily at 21:00 UTC, after tcgcsv.com's own ~20:00 UTC refresh.
 cron.schedule("0 21 * * *", () => {
-  syncLorcanaPrices()
-    .then((result) => console.log("Scheduled price sync complete:", result))
-    .catch((err) => console.error("Scheduled price sync failed:", err));
+  runPriceSync().catch((err) => console.error("Scheduled price sync failed", err));
 });
