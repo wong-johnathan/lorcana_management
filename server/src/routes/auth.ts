@@ -6,8 +6,21 @@ import { signToken } from "../middleware/auth.js";
 const prisma = new PrismaClient();
 export const authRouter = Router();
 
+function isRegistrationEnabled(): boolean {
+  return process.env.REGISTER !== "false";
+}
+
+authRouter.get("/config", (_req: Request, res: Response) => {
+  res.json({ registrationEnabled: isRegistrationEnabled() });
+});
+
 authRouter.post("/register", async (req: Request, res: Response) => {
   try {
+    if (!isRegistrationEnabled()) {
+      res.status(403).json({ error: "Registration is disabled" });
+      return;
+    }
+
     const { username, password } = req.body;
 
     if (!username || !password) {
