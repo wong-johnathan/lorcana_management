@@ -5,6 +5,7 @@ import { cards as cardsApi, analysis as analysisApi } from "../services/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CardPriceTable from "../components/CardPriceTable";
+import MarketplaceLink from "../components/MarketplaceLink";
 import { formatTimeAgo } from "../utils/format";
 
 export default function CardDetailPage() {
@@ -190,15 +191,21 @@ export default function CardDetailPage() {
               target="_blank" rel="noopener noreferrer"
               className="text-xs bg-amber-700/30 hover:bg-amber-700/50 text-amber-400 border border-amber-700/50 rounded-md px-3 py-1.5 transition-colors"
             >eBay Auction</a>
-            <a
-              href={
-                card.tcgPlayerId != null
-                  ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}`
-                  : `https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(`${card.name} - ${card.subtitle}`)}&view=grid`
-              }
-              target="_blank" rel="noopener noreferrer"
-              className="text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border border-purple-700/50 rounded-md px-3 py-1.5 transition-colors"
-            >TCGPlayer</a>
+            <MarketplaceLink
+              href={card.tcgPlayerId != null ? `https://www.tcgplayer.com/product/${card.tcgPlayerId}` : null}
+              label="TCGPlayer"
+              colorClass="bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 border-purple-700/50"
+            />
+            <MarketplaceLink
+              href={card.cardTraderUrl}
+              label="CardTrader"
+              colorClass="bg-teal-700/30 hover:bg-teal-700/50 text-teal-300 border-teal-700/50"
+            />
+            <MarketplaceLink
+              href={card.cardmarketUrl}
+              label="CardMarket"
+              colorClass="bg-orange-700/30 hover:bg-orange-700/50 text-orange-300 border-orange-700/50"
+            />
           </div>
         </div>
       </div>
