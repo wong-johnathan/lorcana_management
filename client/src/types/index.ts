@@ -1,3 +1,12 @@
+export interface CardPrice {
+  variant: string;
+  lowPrice: number | null;
+  midPrice: number | null;
+  highPrice: number | null;
+  marketPrice: number | null;
+  updatedAt: string;
+}
+
 export interface Card {
   id: string;
   externalId: number;
@@ -17,6 +26,7 @@ export interface Card {
   abilities: string;
   cardNumber: string;
   imageUrl: string;
+  prices: CardPrice[];
 }
 
 export interface InventoryEntry {

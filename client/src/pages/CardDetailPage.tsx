@@ -176,6 +176,22 @@ export default function CardDetailPage() {
             </div>
           )}
 
+          {card.prices.length > 0 && (
+            <div>
+              <span className="text-gray-500 text-xs block mb-1">TCGPlayer Market Price</span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 bg-gray-800/30 rounded-lg p-3">
+                {card.prices.map((p) => (
+                  <span key={p.variant} className="text-sm">
+                    <span className="text-gray-400">{p.variant}: </span>
+                    <span className="font-medium text-emerald-400">
+                      {p.marketPrice != null ? `$${p.marketPrice.toFixed(2)}` : "—"}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Market links */}
           <div className="flex flex-wrap gap-2">
             <a

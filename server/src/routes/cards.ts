@@ -113,6 +113,7 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
         skip,
         take: limitNum,
         orderBy: [{ setCode: "asc" }, { name: "asc" }],
+        include: { prices: true },
       }),
       prisma.card.count({ where }),
     ]);
@@ -366,7 +367,10 @@ cardsRouter.post("/:id/analyze", async (req: Request, res: Response) => {
 cardsRouter.get("/:id", async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const card = await prisma.card.findUnique({ where: { id } });
+    const card = await prisma.card.findUnique({
+      where: { id },
+      include: { prices: true },
+    });
     if (!card) {
       res.status(404).json({ error: "Card not found" });
       return;
