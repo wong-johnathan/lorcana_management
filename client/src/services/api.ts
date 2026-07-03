@@ -11,6 +11,7 @@ import type {
   UserSettings,
   PublicCollection,
   CardAnalysis,
+  SyncStatus,
 } from "../types";
 
 const API_BASE = "/api";
@@ -96,14 +97,15 @@ export const inventory = {
 
 export const sync = {
   refresh: () =>
-    request<{ message: string; count: number }>("/sync/refresh", {
+    request<{ status: string; message: string; total: number }>("/sync/refresh", {
       method: "POST",
     }),
+  refreshStatus: () => request<SyncStatus>("/sync/refresh/status"),
   prices: () =>
-    request<{ message: string; groups: number; matched: number; unmatched: number }>(
-      "/sync/prices",
-      { method: "POST" }
-    ),
+    request<{ status: string; message: string; total: number }>("/sync/prices", {
+      method: "POST",
+    }),
+  pricesStatus: () => request<SyncStatus>("/sync/prices/status"),
 };
 
 export const settings = {

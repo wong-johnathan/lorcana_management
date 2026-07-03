@@ -140,3 +140,12 @@ export interface CardAnalysis {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface SyncStatus {
+  status: "idle" | "running" | "completed" | "error";
+  total: number;
+  completed: number;
+  failed: number;
+  currentItem: string | null;
+  startedAt: string | null;
+}
