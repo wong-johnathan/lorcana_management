@@ -87,6 +87,8 @@ export const inventory = {
     }),
   remove: (id: string) =>
     request<void>(`/inventory/${id}`, { method: "DELETE" }),
+  wipe: () =>
+    request<{ deleted: number }>("/inventory", { method: "DELETE" }),
   stats: () => request<InventoryStats>("/inventory/stats"),
   batchAdd: (items: BatchItem[]) =>
     request<BatchResult>("/inventory/batch", {

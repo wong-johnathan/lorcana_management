@@ -13,6 +13,7 @@ export default function InventoryPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wipeConfirmOpen, setWipeConfirmOpen] = useState(false);
 
   const cardId = searchParams.get("card");
 
@@ -87,6 +88,16 @@ export default function InventoryPage() {
       .catch((err) => console.error("Export failed:", err));
   };
 
+  const handleWipe = async () => {
+    try {
+      const result = await inventoryApi.wipe();
+      setWipeConfirmOpen(false);
+      await load();
+    } catch (err) {
+      console.error("Failed to wipe inventory:", err);
+    }
+  };
+
   const handleSelectCard = (card: Card) => {
     const params = new URLSearchParams(searchParams);
     params.set("card", card.id);
@@ -148,6 +159,15 @@ export default function InventoryPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Deck List
+            </button>
+            <button
+              onClick={() => setWipeConfirmOpen(true)}
+              className="flex items-center gap-1.5 bg-red-900/30 hover:bg-red-900/50 text-sm px-3 py-1.5 rounded-md transition-colors text-red-400 border border-red-800"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Wipe
             </button>
           </div>
         </div>
@@ -330,6 +350,31 @@ export default function InventoryPage() {
           onClose={handleCloseDetail}
           currentQuantity={entryByCardId.get(detailCard.id)}
         />
+      )}
+
+      {wipeConfirmOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold text-red-400 mb-2">Wipe entire collection?</h3>
+            <p className="text-gray-400 text-sm mb-6">
+              This will permanently delete all {entries.length} cards from your inventory. This cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setWipeConfirmOpen(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-md text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleWipe}
+                className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded-md text-sm font-medium transition-colors"
+              >
+                Wipe everything
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

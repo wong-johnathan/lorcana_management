@@ -86,6 +86,17 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
   }
 });
 
+inventoryRouter.delete("/", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const result = await prisma.inventoryEntry.deleteMany({ where: { userId } });
+    res.json({ deleted: result.count });
+  } catch (error) {
+    console.error("Inventory wipe error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 inventoryRouter.get("/export/csv", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
