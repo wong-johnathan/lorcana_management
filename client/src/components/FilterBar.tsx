@@ -118,6 +118,10 @@ export default function FilterBar({
 
   if (!options) return null;
 
+  const activeFilterCount = Object.keys(filters).filter(
+    (k) => filters[k] && filters[k] !== ""
+  ).length;
+
   return (
     <div className="flex flex-wrap gap-2 p-3 bg-gray-900 rounded-lg">
       <input
@@ -316,6 +320,16 @@ export default function FilterBar({
           <option value="owned">Owned</option>
           <option value="not_owned">Not Owned</option>
         </select>
+      )}
+
+      {activeFilterCount > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange({})}
+          className="bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 hover:border-gray-500 focus:outline-none focus:border-amber-500 transition-colors whitespace-nowrap"
+        >
+          ✕ Clear all{activeFilterCount > 1 ? ` (${activeFilterCount})` : ""}
+        </button>
       )}
     </div>
   );
