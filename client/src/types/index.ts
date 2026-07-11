@@ -150,4 +150,5 @@ export interface SyncStatus {
   failed: number;
   currentItem: string | null;
   startedAt: string | null;
+  completedAt: string | null;
 }

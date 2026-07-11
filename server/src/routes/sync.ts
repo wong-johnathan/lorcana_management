@@ -23,6 +23,7 @@ export interface SyncStatus {
   failed: number;
   currentItem: string | null;
   startedAt: string | null;
+  completedAt: string | null;
 }
 
 function idleStatus(): SyncStatus {
@@ -33,6 +34,7 @@ function idleStatus(): SyncStatus {
     failed: 0,
     currentItem: null,
     startedAt: null,
+    completedAt: null,
   };
 }
 
@@ -47,6 +49,7 @@ async function runCardUpsert(data: LorcanaData): Promise<void> {
     failed: 0,
     currentItem: null,
     startedAt: new Date().toISOString(),
+    completedAt: null,
   };
 
   try {
@@ -61,6 +64,7 @@ async function runCardUpsert(data: LorcanaData): Promise<void> {
     cardSyncStatus.status =
       result.seeded === 0 && result.failed > 0 ? "error" : "completed";
     cardSyncStatus.currentItem = null;
+    cardSyncStatus.completedAt = new Date().toISOString();
     console.log("Card sync complete", result.seeded, "seeded,", result.failed, "failed");
   } catch (err) {
     cardSyncStatus.status = "error";
@@ -77,6 +81,7 @@ async function runPriceGroupSync(groups: TcgcsvGroup[]): Promise<void> {
     failed: 0,
     currentItem: null,
     startedAt: new Date().toISOString(),
+    completedAt: null,
   };
 
   try {
@@ -87,6 +92,7 @@ async function runPriceGroupSync(groups: TcgcsvGroup[]): Promise<void> {
     });
     priceSyncStatus.status = "completed";
     priceSyncStatus.currentItem = null;
+    priceSyncStatus.completedAt = new Date().toISOString();
     console.log(
       "Price sync complete",
       result.matched,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi, sync as syncApi, analysis as analysisApi } from "../services/api";
+import { formatTimeAgo } from "../utils/format";
 import { useAuth } from "../context/AuthContext";
 import type { Card, InventoryEntry, SyncStatus } from "../types";
 import FilterBar from "../components/FilterBar";
@@ -191,6 +192,7 @@ export default function DatabasePage() {
         failed: 0,
         currentItem: null,
         startedAt: new Date().toISOString(),
+        completedAt: null,
       });
       pollCardSync();
     } catch (err) {
@@ -208,6 +210,7 @@ export default function DatabasePage() {
         failed: 0,
         currentItem: null,
         startedAt: new Date().toISOString(),
+        completedAt: null,
       });
       pollPriceSync();
     } catch (err) {
@@ -364,49 +367,22 @@ export default function DatabasePage() {
             </div>
           )}
         </div>
-        {cardSyncStatus && cardSyncStatus.status !== "idle" && (
-          <div className="mb-2 text-sm bg-gray-800/40 border border-gray-700/30 px-3 py-2 rounded">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 font-medium">
-                {cardSyncStatus.status === "running" ? "Card Sync Running" : cardSyncStatus.status === "completed" ? "Card Sync Complete" : "Card Sync Error"}
-              </span>
-              <span className="text-gray-400">{cardSyncStatus.completed}/{cardSyncStatus.total}</span>
-            </div>
-            {cardSyncStatus.total > 0 && (
-              <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
-                <div
-                  className={`h-2 rounded-full transition-all ${cardSyncStatus.status === "completed" ? "bg-green-500" : cardSyncStatus.status === "error" ? "bg-red-500" : "bg-gray-400"}`}
-                  style={{ width: `${(cardSyncStatus.completed / cardSyncStatus.total) * 100}%` }}
-                />
-              </div>
-            )}
-            {cardSyncStatus.currentItem && (
-              <div className="text-xs text-gray-400 truncate">Syncing: {cardSyncStatus.currentItem}</div>
-            )}
-            {cardSyncStatus.failed > 0 && (
-              <div className="text-xs text-red-400">{cardSyncStatus.failed} failed</div>
-            )}
+        {cardSyncStatus?.status === "running" && (
+          <div className="mb-1 text-xs text-gray-500 flex items-center gap-1.5">
+            <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Cards syncing
+            {cardSyncStatus.completedAt && <span>· last synced {formatTimeAgo(cardSyncStatus.completedAt)}</span>}
           </div>
         )}
-        {priceSyncStatus && priceSyncStatus.status !== "idle" && (
-          <div className="mb-2 text-sm bg-gray-800/40 border border-gray-700/30 px-3 py-2 rounded">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 font-medium">
-                {priceSyncStatus.status === "running" ? "Price Sync Running" : priceSyncStatus.status === "completed" ? "Price Sync Complete" : "Price Sync Error"}
-              </span>
-              <span className="text-gray-400">{priceSyncStatus.completed}/{priceSyncStatus.total}</span>
-            </div>
-            {priceSyncStatus.total > 0 && (
-              <div className="w-full bg-gray-700 rounded-full h-2 mb-1">
-                <div
-                  className={`h-2 rounded-full transition-all ${priceSyncStatus.status === "completed" ? "bg-green-500" : priceSyncStatus.status === "error" ? "bg-red-500" : "bg-gray-400"}`}
-                  style={{ width: `${(priceSyncStatus.completed / priceSyncStatus.total) * 100}%` }}
-                />
-              </div>
-            )}
-            {priceSyncStatus.currentItem && (
-              <div className="text-xs text-gray-400 truncate">Syncing: {priceSyncStatus.currentItem}</div>
-            )}
+        {priceSyncStatus?.status === "running" && (
+          <div className="mb-1 text-xs text-gray-500 flex items-center gap-1.5">
+            <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Prices syncing
+            {priceSyncStatus.completedAt && <span>· last synced {formatTimeAgo(priceSyncStatus.completedAt)}</span>}
           </div>
         )}
         {batchStatus && batchStatus.status !== "idle" && user?.username === "jw1005" && (
