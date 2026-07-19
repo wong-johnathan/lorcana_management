@@ -32,6 +32,7 @@ export default function DatabasePage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [cardSyncStatus, setCardSyncStatus] = useState<SyncStatus | null>(null);
   const [priceSyncStatus, setPriceSyncStatus] = useState<SyncStatus | null>(null);
+  const [priceSyncError, setPriceSyncError] = useState<string | null>(null);
   const cardSyncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const priceSyncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [batchStatus, setBatchStatus] = useState<{
@@ -201,6 +202,7 @@ export default function DatabasePage() {
   };
 
   const handleSyncPrices = async () => {
+    setPriceSyncError(null);
     try {
       const res = await syncApi.prices();
       setPriceSyncStatus({
@@ -214,6 +216,8 @@ export default function DatabasePage() {
       });
       pollPriceSync();
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Price sync failed";
+      setPriceSyncError(message);
       console.error("Price sync error:", err);
     }
   };
@@ -311,6 +315,7 @@ export default function DatabasePage() {
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold">Card Database</h2>
           {user && (
+            <>
             <div className="flex items-center gap-2">
               {user.username === "jw1005" && (
                 <button
@@ -365,6 +370,12 @@ export default function DatabasePage() {
                 {priceSyncStatus?.status === "running" ? "Syncing..." : "Sync Prices"}
               </button>
             </div>
+            {priceSyncError && (
+              <div className="mt-1 text-xs text-red-400 bg-red-900/20 border border-red-700/30 px-2 py-1 rounded">
+                {priceSyncError}
+              </div>
+            )}
+            </>
           )}
         </div>
         {cardSyncStatus?.status === "running" && (

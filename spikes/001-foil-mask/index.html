@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spike 001: Foil Mask CSS Effect</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 40px;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px;
+    font-family: system-ui, sans-serif;
+    min-height: 100vh;
+  }
+
+  .card-demo {
+    text-align: center;
+  }
+  .card-demo h3 {
+    color: #ccc;
+    margin-bottom: 12px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* === APPROACH 1: CSS mask-image (WebKit/Chromium only) === */
+  .card-wrapper {
+    position: relative;
+    width: 366px; /* typical Lorcana image width */
+    display: inline-block;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+
+  .card-wrapper img.base {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .foil-overlay {
+    position: absolute;
+    inset: 0;
+    /* The key: mask-image uses the foilMask to define where foil appears */
+    -webkit-mask-image: url(https://api.lorcana.ravensburger.com/images/en/set1/1_f311aade3a7573cc24b23993f3820df8e8933dce.jpg);
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-mode: luminance; /* white = show foil, black = hide */
+    mask-image: url(https://api.lorcana.ravensburger.com/images/en/set1/1_f311aade3a7573cc24b23993f3820df8e8933dce.jpg);
+    mask-size: 100% 100%;
+    mask-mode: luminance;
+  }
+
+  .foil-shimmer {
+    width: 100%;
+    height: 100%;
+    /* Diagonal holographic gradient */
+    background: linear-gradient(
+      135deg,
+      #ff6b6b 0%,
+      #ffd93d 12%,
+      #6bcb77 25%,
+      #4d96ff 37%,
+      #9b59b6 50%,
+      #ff6b6b 62%,
+      #ffd93d 75%,
+      #6bcb77 87%,
+      #4d96ff 100%
+    );
+    background-size: 300% 300%;
+    mix-blend-mode: overlay;
+    opacity: 0.6;
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  /* === APPROACH 2: Canvas-based (works everywhere) === */
+  .canvas-wrapper {
+    position: relative;
+    width: 366px;
+    display: inline-block;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .canvas-wrapper canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* === APPROACH 3: SVG filter with displacement (pure CSS, no mask-image needed) === */
+  .svg-foil-wrapper {
+    position: relative;
+    width: 366px;
+    display: inline-block;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .svg-foil-wrapper img.base {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .svg-foil-overlay {
+    position: absolute;
+    inset: 0;
+    -webkit-mask-image: url(https://api.lorcana.ravensburger.com/images/en/set1/1_f311aade3a7573cc24b23993f3820df8e8933dce.jpg);
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-mode: luminance;
+    mask-image: url(https://api.lorcana.ravensburger.com/images/en/set1/1_f311aade3a7573cc24b23993f3820df8e8933dce.jpg);
+    mask-size: 100% 100%;
+    mask-mode: luminance;
+  }
+  .svg-foil-shimmer {
+    width: 100%;
+    height: 100%;
+    mix-blend-mode: overlay;
+    opacity: 0.7;
+    animation: svgHue 4s linear infinite;
+  }
+  @keyframes svgHue {
+    0%   { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+  }
+
+  /* Comparison section */
+  .verdict {
+    width: 100%;
+    max-width: 900px;
+    background: #16213e;
+    border-radius: 12px;
+    padding: 24px;
+    color: #eee;
+    margin-top: 20px;
+  }
+  .verdict h2 { margin-bottom: 16px; color: #ffd93d; }
+  .verdict table { width: 100%; border-collapse: collapse; }
+  .verdict th, .verdict td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    font-size: 13px;
+  }
+  .verdict th { color: #888; font-weight: 600; text-transform: uppercase; font-size: 11px; }
+  .verdict .check { color: #6bcb77; }
+  .verdict .warn { color: #ffd93d; }
+  .verdict .cross { color: #ff6b6b; }
+</style>
+</head>
+<body>
+
+<!-- Approach 1: CSS mask-image with gradient animation -->
+<div class="card-demo">
+  <h3>Approach 1: CSS mask-image + gradient shimmer</h3>
+  <div class="card-wrapper">
+    <img class="base"
+         src="https://api.lorcana.ravensburger.com/images/en/set1/1_ea50bda8825b4ccdf7e71c7052ee9688f92e75ab.jpg"
+         alt="Ariel"
+         crossorigin="anonymous">
+    <div class="foil-overlay">
+      <div class="foil-shimmer"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Approach 2: Canvas-based -->
+<div class="card-demo">
+  <h3>Approach 2: Canvas (browser-agnostic)</h3>
+  <div class="canvas-wrapper">
+    <canvas id="foilCanvas" width="366" height="512"></canvas>
+  </div>
+</div>
+
+<!-- Approach 3: mask-image + hue-rotate -->
+<div class="card-demo">
+  <h3>Approach 3: mask-image + hue-rotate</h3>
+  <div class="svg-foil-wrapper">
+    <img class="base"
+         src="https://api.lorcana.ravensburger.com/images/en/set1/1_ea50bda8825b4ccdf7e71c7052ee9688f92e75ab.jpg"
+         alt="Ariel"
+         crossorigin="anonymous">
+    <div class="svg-foil-overlay">
+      <div class="svg-foil-shimmer" style="background: linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #9b59b6, #ff6b6b, #ffd93d, #6bcb77, #4d96ff); background-size: 200% 200%;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="verdict">
+  <h2>Verdict</h2>
+  <table>
+    <tr>
+      <th>Approach</th>
+      <th>Browser support</th>
+      <th>Performance</th>
+      <th>Visual quality</th>
+      <th>Implementation</th>
+    </tr>
+    <tr>
+      <td><strong>1. mask-image + gradient</strong></td>
+      <td class="warn">Chromium + Safari (no Firefox)</td>
+      <td class="check">GPU-accelerated</td>
+      <td class="check">Smooth, configurable</td>
+      <td class="check">~15 lines CSS</td>
+    </tr>
+    <tr>
+      <td><strong>2. Canvas 2D</strong></td>
+      <td class="check">All browsers</td>
+      <td class="warn">Software compositing, ~3-5ms/frame</td>
+      <td class="check">Full control</td>
+      <td class="warn">~40 lines JS + rAF loop</td>
+    </tr>
+    <tr>
+      <td><strong>3. mask-image + hue-rotate</strong></td>
+      <td class="warn">Same as #1</td>
+      <td class="check">GPU-accelerated</td>
+      <td class="warn">Color cycling feels more "holo"</td>
+      <td class="check">~12 lines CSS</td>
+    </tr>
+  </table>
+</div>
+
+<script>
+// === Approach 2: Canvas-based foil rendering ===
+(async function() {
+  const canvas = document.getElementById('foilCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const FULL = 'https://api.lorcana.ravensburger.com/images/en/set1/1_ea50bda8825b4ccdf7e71c7052ee9688f92e75ab.jpg';
+  const MASK = 'https://api.lorcana.ravensburger.com/images/en/set1/1_f311aade3a7573cc24b23993f3820df8e8933dce.jpg';
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  try {
+    const [baseImg, maskImg] = await Promise.all([loadImage(FULL), loadImage(MASK)]);
+
+    // Resize canvas to match
+    canvas.width = baseImg.naturalWidth;
+    canvas.height = baseImg.naturalHeight;
+    canvas.style.aspectRatio = `${baseImg.naturalWidth} / ${baseImg.naturalHeight}`;
+
+    // Extract mask alpha
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = maskImg.naturalWidth;
+    maskCanvas.height = maskImg.naturalHeight;
+    const maskCtx = maskCanvas.getContext('2d');
+    maskCtx.drawImage(maskImg, 0, 0, maskCanvas.width, maskCanvas.height);
+    const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+
+    let t = 0;
+
+    function render() {
+      t += 0.008;
+
+      // Draw base image
+      ctx.drawImage(baseImg, 0, 0, canvas.width, canvas.height);
+
+      // Draw foil overlay masked by luminance
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const idx = (y * canvas.width + x) * 4;
+          // Get mask luminance (average of RGB for grayscale mask)
+          const maskIdx = (Math.floor(y * maskCanvas.height / canvas.height) * maskCanvas.width + Math.floor(x * maskCanvas.width / canvas.width)) * 4;
+          const maskLum = (maskData.data[maskIdx] + maskData.data[maskIdx + 1] + maskData.data[maskIdx + 2]) / 3 / 255;
+
+          if (maskLum > 0.05) {
+            // Generate holographic color based on position + time
+            const hue = ((x / canvas.width * 360 + y / canvas.height * 180 + t * 120) % 360);
+            const foilRGB = hslToRgb(hue / 360, 0.8, 0.5);
+
+            // Overlay blend
+            const alpha = maskLum * 0.45;
+            pixels[idx]     = pixels[idx]     * (1 - alpha) + foilRGB[0] * 255 * alpha;
+            pixels[idx + 1] = pixels[idx + 1] * (1 - alpha) + foilRGB[1] * 255 * alpha;
+            pixels[idx + 2] = pixels[idx + 2] * (1 - alpha) + foilRGB[2] * 255 * alpha;
+          }
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      requestAnimationFrame(render);
+    }
+
+    render();
+  } catch (e) {
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ff6b6b';
+    ctx.font = '14px system-ui';
+    ctx.fillText('CORS blocked — run locally or see console', 10, 30);
+    console.error('Canvas foil error:', e);
+  }
+
+  function hslToRgb(h, s, l) {
+    let r, g, b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return [r, g, b];
+  }
+})();
+</script>
+
+</body>
+</html>
