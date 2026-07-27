@@ -35,6 +35,9 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 401 && body.error === "Invalid or expired token") {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+    }
     throw new Error(body.error || `Request failed: ${res.status}`);
   }
 
