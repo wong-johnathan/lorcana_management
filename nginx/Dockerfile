@@ -4,6 +4,9 @@ WORKDIR /app
 COPY client/package.json client/package-lock.json* ./
 RUN npm install
 COPY client/ .
+# Script resolves ../../server/data/allCards.json → /server/data/allCards.json
+COPY server/data/allCards.json /server/data/allCards.json
+RUN npm run generate-ocr-index
 RUN npm run build
 
 FROM nginx:alpine

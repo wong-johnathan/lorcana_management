@@ -133,6 +133,10 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: Generate OCR index
+        working-directory: client
+        run: npm run generate-ocr-index
+
       - name: Build client
         working-directory: client
         run: npm run build
