@@ -25,18 +25,18 @@ export default function App() {
 
   return (
     <Routes>
+      <Route
+        path="/beta/ocr"
+        element={
+          <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-gray-950 text-gray-400">Loading OCR Scanner...</div>}>
+            <OCRPage />
+          </Suspense>
+        }
+      />
       <Route element={<Layout />}>
         <Route path="/database" element={<DatabasePage />} />
         <Route path="/database/:cardId" element={<CardDetailPage />} />
         <Route path="/collection/:userId" element={<PublicCollectionPage />} />
-        <Route
-          path="/beta/ocr"
-          element={
-            <Suspense fallback={<div className="flex items-center justify-center min-h-screen text-gray-400">Loading OCR Scanner...</div>}>
-              <OCRPage />
-            </Suspense>
-          }
-        />
         {user ? (
           <>
             <Route path="/scan" element={<ScanPage />} />
