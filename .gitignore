@@ -4,3 +4,5 @@ dist
 *.log
 *.tsbuildinfo
 .playwright-mcp/
+# Generated OCR index (run: npm run generate-ocr-index)
+client/src/modules/beta/ocr/data/ocr-index.json
