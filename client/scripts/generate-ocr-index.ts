@@ -1,5 +1,5 @@
 // client/scripts/generate-ocr-index.ts
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -90,6 +90,7 @@ for (const card of cards) {
   }
 }
 
+mkdirSync(dirname(OUTPUT), { recursive: true });
 writeFileSync(OUTPUT, JSON.stringify(slim));
 console.log(`Generated ocr-index.json with ${Object.keys(slim).length} entries`);
 console.log(`Output: ${OUTPUT}`);
