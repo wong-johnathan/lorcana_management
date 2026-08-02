@@ -9,10 +9,10 @@ interface FrameAnalysisResult {
   variance: number;
 }
 
-const EDGE_THRESHOLD = 0.03;
-const VARIANCE_THRESHOLD = 120;
-const STABILITY_THRESHOLD = 0.05;
-const EDGE_GRAY_DIFF = 20;
+const EDGE_THRESHOLD = 0.02;
+const VARIANCE_THRESHOLD = 40;
+const STABILITY_THRESHOLD = 0.15;
+const EDGE_GRAY_DIFF = 18;
 
 export function useFrameAnalysis() {
   const lastFrameRef = useRef<ImageData | null>(null);

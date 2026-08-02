@@ -10,7 +10,7 @@ import ScanOverlay from "./ScanOverlay";
 
 const GUIDE_ASPECT = 2 / 3;
 const GUIDE_WIDTH_RATIO = 0.78;
-const SCAN_INTERVAL_MS = 600;
+const SCAN_INTERVAL_MS = 1000;
 const COOLDOWN_AFTER_NO_MATCH_MS = 1500;
 
 interface CameraViewProps {

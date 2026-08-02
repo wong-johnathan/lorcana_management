@@ -21,7 +21,7 @@ export function useCamera(): UseCameraReturn {
     setError("");
     setReady(false);
     try {
-      // Try with continuous autofocus first
+      // Try with single-shot autofocus (lock after initial focus, no hunting)
       let ms: MediaStream;
       try {
         ms = await navigator.mediaDevices.getUserMedia({
@@ -29,7 +29,7 @@ export function useCamera(): UseCameraReturn {
             facingMode: "environment",
             width: { ideal: 1920 },
             height: { ideal: 1080 },
-            focusMode: "continuous",
+            focusMode: "single-shot",
           } as MediaTrackConstraints,
         });
       } catch {
