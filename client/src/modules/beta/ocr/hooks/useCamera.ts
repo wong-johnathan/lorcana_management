@@ -8,6 +8,7 @@ interface UseCameraReturn {
   error: string;
   start: () => Promise<void>;
   stop: () => void;
+  refocus: () => Promise<void>;
 }
 
 export function useCamera(): UseCameraReturn {
@@ -21,27 +22,13 @@ export function useCamera(): UseCameraReturn {
     setError("");
     setReady(false);
     try {
-      // Try with single-shot autofocus (lock after initial focus, no hunting)
-      let ms: MediaStream;
-      try {
-        ms = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            focusMode: "single-shot",
-          } as MediaTrackConstraints,
-        });
-      } catch {
-        // Fallback: some browsers reject unknown constraints
-        ms = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        });
-      }
+      const ms = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
       streamRef.current = ms;
       setStream(ms);
     } catch {
@@ -54,6 +41,22 @@ export function useCamera(): UseCameraReturn {
     streamRef.current = null;
     setStream(null);
     setReady(false);
+  }, []);
+
+  const refocus = useCallback(async () => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      // Pulse auto-focus then lock to prevent hunting
+      await track.applyConstraints({ advanced: [{ focusMode: "auto" }] as any });
+      // After 1.5s, switch to manual to lock
+      setTimeout(() => {
+        track.applyConstraints({ advanced: [{ focusMode: "manual" }] as any })
+          .catch(() => {}); // manual not supported everywhere — ignore
+      }, 1500);
+    } catch {
+      // focusMode not supported — browser default is fine
+    }
   }, []);
 
   useEffect(() => {
@@ -69,5 +72,5 @@ export function useCamera(): UseCameraReturn {
     };
   }, []);
 
-  return { videoRef, stream, ready, error, start, stop };
+  return { videoRef, stream, ready, error, start, stop, refocus };
 }

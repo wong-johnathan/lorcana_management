@@ -32,13 +32,20 @@ export default function CameraView({
   onStatusChange,
   paused,
 }: CameraViewProps) {
-  const { videoRef, stream, error: camError, start } = useCamera();
+  const { videoRef, stream, error: camError, start, refocus } = useCamera();
   const { analyze, reset: resetAnalysis } = useFrameAnalysis();
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cooldownRef = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recognizingRef = useRef(false);
   const [metrics, setMetrics] = useState<{ edgeDensity: number; diffFromLast: number; variance: number } | null>(null);
+  const [focusing, setFocusing] = useState(false);
+
+  const handleTapFocus = useCallback(async () => {
+    setFocusing(true);
+    await refocus();
+    setTimeout(() => setFocusing(false), 1800);
+  }, [refocus]);
 
   // Store status in ref so the interval callback always reads latest
   const statusRef = useRef(status);
@@ -214,16 +221,17 @@ export default function CameraView({
         className="absolute inset-0 w-full h-full object-cover"
       />
 
-      {/* Guide box overlay */}
+      {/* Guide box overlay — tap to focus */}
       {stream && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 flex items-center justify-center">
           <div
-            className={`border-2 rounded-lg transition-all duration-300 ${borderForPhase(status.phase)}`}
+            className={`border-2 rounded-lg transition-all duration-300 cursor-pointer ${borderForPhase(status.phase)} ${focusing ? "border-amber-400 animate-pulse" : ""}`}
             style={{
               width: `${GUIDE_WIDTH_RATIO * 100}%`,
               aspectRatio: String(GUIDE_ASPECT),
               boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
             }}
+            onClick={handleTapFocus}
           />
         </div>
       )}
