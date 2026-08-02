@@ -124,3 +124,25 @@ export function lookupCard(result: RecognizeResult, _setCode: string): SlimCard 
 export function preloadIndex(): void {
   loadIndex().catch(console.error);
 }
+
+/** Extract unique set names from the loaded index, newest-first by setCode */
+export async function getAvailableSets(): Promise<{ code: string; name: string }[]> {
+  const idx = await loadIndex();
+  const setMap = new Map<string, string>();
+  for (const card of Object.values(idx)) {
+    if (card.setCode && card.setName && !setMap.has(card.setCode)) {
+      setMap.set(card.setCode, card.setName);
+    }
+  }
+  // Sort by setCode descending (newest first), numeric sets before quest sets
+  return Array.from(setMap.entries())
+    .sort(([a], [b]) => {
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) return numB - numA;
+      if (!isNaN(numA)) return -1;
+      if (!isNaN(numB)) return 1;
+      return b.localeCompare(a);
+    })
+    .map(([code, name]) => ({ code, name }));
+}

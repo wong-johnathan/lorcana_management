@@ -5,18 +5,7 @@ import CameraView from "./components/CameraView";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DuplicateDialog from "./components/DuplicateDialog";
 import { useScanSession } from "./hooks/useScanSession";
-import { preloadIndex } from "./services/cardIndex";
-
-const SET_NAMES = [
-  "Archazia's Island",
-  "Azurite Sea",
-  "Into the Inklands",
-  "Rise of the Floodborn",
-  "The First Chapter",
-  "Ursula's Return",
-  "Shimmering Skies",
-  "Attack of the Vine",
-];
+import { preloadIndex, getAvailableSets } from "./services/cardIndex";
 
 export default function OCRPage() {
   const {
@@ -35,18 +24,20 @@ export default function OCRPage() {
   } = useScanSession();
 
   const [started, setStarted] = useState(false);
+  const [availableSets, setAvailableSets] = useState<{ code: string; name: string }[]>([]);
 
-  // Preload card index when page mounts
+  // Preload card index and extract available sets
   useEffect(() => {
     preloadIndex();
+    getAvailableSets().then(setAvailableSets).catch(console.error);
   }, []);
 
   if (!started || !session) {
     return (
       <StartScreen
-        setNames={SET_NAMES}
-        onStart={(setName, lang, finish) => {
-          startSession(setName, setName, lang, finish);
+        sets={availableSets}
+        onStart={(setCode, setName, lang, finish) => {
+          startSession(setCode, setName, lang, finish);
           setStarted(true);
         }}
       />
