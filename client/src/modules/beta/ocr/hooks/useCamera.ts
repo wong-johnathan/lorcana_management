@@ -21,13 +21,27 @@ export function useCamera(): UseCameraReturn {
     setError("");
     setReady(false);
     try {
-      const ms = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-      });
+      // Try with continuous autofocus first
+      let ms: MediaStream;
+      try {
+        ms = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            focusMode: "continuous",
+          } as MediaTrackConstraints,
+        });
+      } catch {
+        // Fallback: some browsers reject unknown constraints
+        ms = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        });
+      }
       streamRef.current = ms;
       setStream(ms);
     } catch {
