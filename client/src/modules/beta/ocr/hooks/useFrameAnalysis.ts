@@ -8,8 +8,9 @@ interface FrameAnalysisResult {
   diffFromLast: number;
 }
 
-const EDGE_THRESHOLD = 0.08;
-const STABILITY_THRESHOLD = 0.03;
+const EDGE_THRESHOLD = 0.05;
+const STABILITY_THRESHOLD = 0.05;
+const EDGE_GRAY_DIFF = 25;
 
 export function useFrameAnalysis() {
   const lastFrameRef = useRef<ImageData | null>(null);
@@ -26,7 +27,7 @@ export function useFrameAnalysis() {
         const nextIdx = (y * width + x + 1) * 4;
         const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
         const nextGray = (data[nextIdx] + data[nextIdx + 1] + data[nextIdx + 2]) / 3;
-        if (Math.abs(gray - nextGray) > 30) edgeCount++;
+        if (Math.abs(gray - nextGray) > EDGE_GRAY_DIFF) edgeCount++;
       }
     }
     const edgeDensity = edgeCount / totalPixels;
@@ -41,7 +42,7 @@ export function useFrameAnalysis() {
           Math.abs(data[i] - last[i]) +
           Math.abs(data[i + 1] - last[i + 1]) +
           Math.abs(data[i + 2] - last[i + 2]);
-        if (diff > 30) diffCount++;
+        if (diff > EDGE_GRAY_DIFF) diffCount++;
       }
       diffFromLast = diffCount / (totalPixels / 4);
     }

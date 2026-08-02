@@ -1,5 +1,5 @@
 // components/CameraView.tsx
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import { useCamera } from "../hooks/useCamera";
 import { useFrameAnalysis } from "../hooks/useFrameAnalysis";
 import { getRecognizer } from "../services/recognizer";
@@ -38,6 +38,7 @@ export default function CameraView({
   const cooldownRef = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recognizingRef = useRef(false);
+  const [metrics, setMetrics] = useState<{ edgeDensity: number; diffFromLast: number } | null>(null);
 
   // Store status in ref so the interval callback always reads latest
   const statusRef = useRef(status);
@@ -99,6 +100,7 @@ export default function CameraView({
 
       const frameData = ctx.getImageData(0, 0, guideW, guideH);
       const analysis = analyze(frameData);
+      setMetrics({ edgeDensity: analysis.edgeDensity, diffFromLast: analysis.diffFromLast });
 
       const currentStatus = statusRef.current;
 
@@ -227,7 +229,7 @@ export default function CameraView({
       )}
 
       {/* Status bar */}
-      <ScanOverlay status={status} />
+      <ScanOverlay status={status} metrics={metrics} />
     </div>
   );
 }

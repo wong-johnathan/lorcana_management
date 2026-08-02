@@ -3,9 +3,10 @@ import type { ScanStatus } from "../services/types";
 
 interface Props {
   status: ScanStatus;
+  metrics?: { edgeDensity: number; diffFromLast: number } | null;
 }
 
-export default function ScanOverlay({ status }: Props) {
+export default function ScanOverlay({ status, metrics }: Props) {
   return (
     <div className="absolute bottom-0 left-0 right-0 pointer-events-none">
       <div className="bg-gradient-to-t from-black/80 to-transparent pt-8 pb-3 px-3">
@@ -18,6 +19,11 @@ export default function ScanOverlay({ status }: Props) {
           )}
           <span>{labelForPhase(status)}</span>
         </div>
+        {metrics && (status.phase === "waiting" || status.phase === "stabilizing") && (
+          <div className="mt-1 text-xs text-gray-500">
+            edges: {(metrics.edgeDensity * 100).toFixed(1)}% · diff: {(metrics.diffFromLast * 100).toFixed(1)}%
+          </div>
+        )}
       </div>
     </div>
   );
