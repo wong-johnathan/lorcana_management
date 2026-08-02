@@ -6,11 +6,13 @@ interface FrameAnalysisResult {
   isStable: boolean;
   edgeDensity: number;
   diffFromLast: number;
+  variance: number;
 }
 
-const EDGE_THRESHOLD = 0.05;
+const EDGE_THRESHOLD = 0.03;
+const VARIANCE_THRESHOLD = 120;
 const STABILITY_THRESHOLD = 0.05;
-const EDGE_GRAY_DIFF = 25;
+const EDGE_GRAY_DIFF = 20;
 
 export function useFrameAnalysis() {
   const lastFrameRef = useRef<ImageData | null>(null);
@@ -21,16 +23,27 @@ export function useFrameAnalysis() {
 
     // Edge density: count pixels where horizontal neighbor differs significantly
     let edgeCount = 0;
+    let sum = 0;
     for (let y = 0; y < height - 1; y++) {
       for (let x = 0; x < width - 1; x++) {
         const idx = (y * width + x) * 4;
         const nextIdx = (y * width + x + 1) * 4;
         const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
         const nextGray = (data[nextIdx] + data[nextIdx + 1] + data[nextIdx + 2]) / 3;
+        sum += gray;
         if (Math.abs(gray - nextGray) > EDGE_GRAY_DIFF) edgeCount++;
       }
     }
     const edgeDensity = edgeCount / totalPixels;
+
+    // Variance: high variance = there's texture (even if blurry)
+    const mean = sum / (totalPixels || 1);
+    let varSum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      varSum += (gray - mean) ** 2;
+    }
+    const variance = Math.sqrt(varSum / (totalPixels || 1));
 
     // Stability: compare with last frame (sample every 4th pixel)
     let diffFromLast = 1;
@@ -55,10 +68,11 @@ export function useFrameAnalysis() {
     );
 
     return {
-      hasContent: edgeDensity > EDGE_THRESHOLD,
+      hasContent: edgeDensity > EDGE_THRESHOLD || variance > VARIANCE_THRESHOLD,
       isStable: diffFromLast < STABILITY_THRESHOLD,
       edgeDensity,
       diffFromLast,
+      variance,
     };
   }, []);
 

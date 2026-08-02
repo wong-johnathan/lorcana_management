@@ -3,7 +3,7 @@ import type { ScanStatus } from "../services/types";
 
 interface Props {
   status: ScanStatus;
-  metrics?: { edgeDensity: number; diffFromLast: number } | null;
+  metrics?: { edgeDensity: number; diffFromLast: number; variance: number } | null;
 }
 
 export default function ScanOverlay({ status, metrics }: Props) {
@@ -21,7 +21,7 @@ export default function ScanOverlay({ status, metrics }: Props) {
         </div>
         {metrics && (status.phase === "waiting" || status.phase === "stabilizing") && (
           <div className="mt-1 text-xs text-gray-500">
-            edges: {(metrics.edgeDensity * 100).toFixed(1)}% · diff: {(metrics.diffFromLast * 100).toFixed(1)}%
+            edges: {(metrics.edgeDensity * 100).toFixed(1)}% · diff: {(metrics.diffFromLast * 100).toFixed(1)}% · var: {metrics.variance.toFixed(0)}
           </div>
         )}
       </div>

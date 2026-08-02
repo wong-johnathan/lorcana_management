@@ -38,7 +38,7 @@ export default function CameraView({
   const cooldownRef = useRef(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recognizingRef = useRef(false);
-  const [metrics, setMetrics] = useState<{ edgeDensity: number; diffFromLast: number } | null>(null);
+  const [metrics, setMetrics] = useState<{ edgeDensity: number; diffFromLast: number; variance: number } | null>(null);
 
   // Store status in ref so the interval callback always reads latest
   const statusRef = useRef(status);
@@ -100,7 +100,7 @@ export default function CameraView({
 
       const frameData = ctx.getImageData(0, 0, guideW, guideH);
       const analysis = analyze(frameData);
-      setMetrics({ edgeDensity: analysis.edgeDensity, diffFromLast: analysis.diffFromLast });
+      setMetrics({ edgeDensity: analysis.edgeDensity, diffFromLast: analysis.diffFromLast, variance: analysis.variance });
 
       const currentStatus = statusRef.current;
 
