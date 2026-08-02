@@ -42,14 +42,11 @@ export default function App() {
             <Route path="/scan" element={<ScanPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/database" replace />} />
           </>
         ) : (
-          <>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="*" element={<Navigate to="/database" replace />} />
-          </>
+          <Route path="/login" element={<LoginPage />} />
         )}
+        <Route path="*" element={<Navigate to="/database" replace />} />
       </Route>
     </Routes>
   );
