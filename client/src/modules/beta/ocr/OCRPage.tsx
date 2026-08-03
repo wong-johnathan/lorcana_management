@@ -1,7 +1,7 @@
 // OCRPage.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import StartScreen from "./components/StartScreen";
-import CameraView from "./components/CameraView";
+import CameraView, { type CameraViewHandle } from "./components/CameraView";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DuplicateDialog from "./components/DuplicateDialog";
 import { useScanSession } from "./hooks/useScanSession";
@@ -25,6 +25,7 @@ export default function OCRPage() {
 
   const [started, setStarted] = useState(false);
   const [availableSets, setAvailableSets] = useState<{ code: string; name: string }[]>([]);
+  const cameraRef = useRef<CameraViewHandle>(null);
 
   // Preload card index and extract available sets
   useEffect(() => {
@@ -60,9 +61,10 @@ export default function OCRPage() {
       </div>
 
       {/* Camera */}
-      <div className="flex-1 flex items-center justify-center p-2">
+      <div className="flex-1 flex flex-col items-center justify-center p-2 gap-3">
         <div className="w-full max-w-lg">
           <CameraView
+            ref={cameraRef}
             setCode={session.setCode}
             onResult={handleResult}
             onNoMatch={() => {}}
@@ -72,6 +74,16 @@ export default function OCRPage() {
             paused={status.phase === "result" || status.phase === "duplicate" || status.phase === "recognizing"}
           />
         </div>
+
+        {/* Manual scan button */}
+        <button
+          type="button"
+          onClick={() => cameraRef.current?.captureNow()}
+          disabled={status.phase === "recognizing" || status.phase === "result" || status.phase === "duplicate"}
+          className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-700 disabled:text-gray-500 text-black font-semibold rounded-lg transition-colors text-sm"
+        >
+          📷 Scan Card
+        </button>
       </div>
 
       {/* Session footer */}

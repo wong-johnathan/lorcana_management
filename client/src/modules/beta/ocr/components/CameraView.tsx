@@ -1,5 +1,5 @@
 // components/CameraView.tsx
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from "react";
 import { useCamera } from "../hooks/useCamera";
 import { useFrameAnalysis } from "../hooks/useFrameAnalysis";
 import { getRecognizer } from "../services/recognizer";
@@ -13,6 +13,10 @@ const GUIDE_WIDTH_RATIO = 0.78;
 const SCAN_INTERVAL_MS = 1000;
 const COOLDOWN_AFTER_NO_MATCH_MS = 1500;
 
+export interface CameraViewHandle {
+  captureNow: () => void;
+}
+
 interface CameraViewProps {
   setCode: string;
   onResult: (entry: ScanEntry) => void;
@@ -23,7 +27,7 @@ interface CameraViewProps {
   paused: boolean;
 }
 
-export default function CameraView({
+const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(function CameraView({
   setCode,
   onResult,
   onNoMatch,
@@ -31,7 +35,7 @@ export default function CameraView({
   status,
   onStatusChange,
   paused,
-}: CameraViewProps) {
+}: CameraViewProps, ref) {
   const { videoRef, stream, error: camError, start, refocus } = useCamera();
   const { analyze, reset: resetAnalysis } = useFrameAnalysis();
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -195,6 +199,54 @@ export default function CameraView({
     [setCode, onResult, onNoMatch, onError, onStatusChange]
   );
 
+  // Capture the current video frame cropped to the guide box.
+  // Returns null if video/canvas aren't ready.
+  const captureGuideFrame = useCallback((): ImageData | null => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return null;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (vw === 0 || vh === 0) return null;
+
+    const previewAspect = video.clientWidth / video.clientHeight;
+    const videoAspect = vw / vh;
+    let visibleW = vw;
+    let visibleH = vh;
+    let offsetX = 0;
+    let offsetY = 0;
+    if (videoAspect > previewAspect) {
+      visibleW = vh * previewAspect;
+      offsetX = (vw - visibleW) / 2;
+    } else {
+      visibleH = vw / previewAspect;
+      offsetY = (vh - visibleH) / 2;
+    }
+
+    const guideW = visibleW * GUIDE_WIDTH_RATIO;
+    const guideH = guideW / GUIDE_ASPECT;
+    const sx = offsetX + (visibleW - guideW) / 2;
+    const sy = offsetY + (visibleH - guideH) / 2;
+
+    canvas.width = guideW;
+    canvas.height = guideH;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(video, sx, sy, guideW, guideH, 0, 0, guideW, guideH);
+    return ctx.getImageData(0, 0, guideW, guideH);
+  }, []);
+
+  // Expose manual capture to parent
+  useImperativeHandle(ref, () => ({
+    captureNow: () => {
+      if (recognizingRef.current || cooldownRef.current) return;
+      const frameData = captureGuideFrame();
+      if (!frameData) return;
+      recognizingRef.current = true;
+      onStatusChange({ phase: "recognizing" });
+      doRecognize(frameData);
+    },
+  }), [captureGuideFrame, doRecognize, onStatusChange]);
+
   if (camError) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-900 rounded-lg text-gray-400 text-sm p-4 text-center">
@@ -240,7 +292,7 @@ export default function CameraView({
       <ScanOverlay status={status} metrics={metrics} />
     </div>
   );
-}
+});
 
 function borderForPhase(phase: string): string {
   switch (phase) {
@@ -254,3 +306,5 @@ function borderForPhase(phase: string): string {
     default: return "border-gray-500/50";
   }
 }
+
+export default CameraView;
