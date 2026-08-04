@@ -115,10 +115,11 @@ const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(function Camera
 
       const currentStatus = statusRef.current;
 
-      // Only trigger on waiting or no_match phases
+      // Only trigger on waiting, no_match, or stabilizing phases
       if (
         currentStatus.phase !== "waiting" &&
-        currentStatus.phase !== "no_match"
+        currentStatus.phase !== "no_match" &&
+        currentStatus.phase !== "stabilizing"
       ) {
         return;
       }
@@ -132,6 +133,10 @@ const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(function Camera
         } else {
           onStatusChange({ phase: "stabilizing" });
         }
+      } else if (currentStatus.phase === "stabilizing") {
+        // Card removed while stabilizing — revert to waiting
+        onStatusChange({ phase: "waiting" });
+        resetAnalysis();
       }
     }, SCAN_INTERVAL_MS);
 
