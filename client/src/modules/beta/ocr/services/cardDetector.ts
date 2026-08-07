@@ -91,6 +91,16 @@ function guideEdgeDensity(edges: { data: Uint8Array }, imageWidth: number, image
   return edgePixels / Math.max(totalPixels, 1);
 }
 
+export function hasGuideCaptureSignal({
+  edgeDensity,
+  sharpness,
+}: {
+  edgeDensity: number;
+  sharpness: number;
+}): boolean {
+  return edgeDensity >= 0.006 && sharpness >= 0.02;
+}
+
 export async function detectCard(image: ImageData): Promise<CardDetection> {
   const cv = await getCv();
   const quality = calculateFrameQuality(image);
@@ -112,6 +122,17 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
     cv.Canny(blurred, edges, 55, 160);
     cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     contourCount = contours.size();
+
+    const guideCorners = guideCornersForImage(image.width, image.height);
+    const guideCoverage =
+      (guideCorners[1].x - guideCorners[0].x) *
+      (guideCorners[3].y - guideCorners[0].y);
+    fallbackEdgeDensity = guideEdgeDensity(edges, image.width, image.height);
+    if (hasGuideCaptureSignal({ edgeDensity: fallbackEdgeDensity, sharpness: quality.sharpness })) {
+      bestCorners = guideCorners;
+      bestCoverage = guideCoverage;
+      detectionSource = "guide";
+    }
 
     const frameArea = image.width * image.height;
     for (let index = 0; index < contours.size(); index += 1) {
@@ -147,19 +168,6 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
       } finally {
         approximation.delete();
         contour.delete();
-      }
-    }
-
-    if (bestCorners.length !== 4) {
-      const fallbackCorners = guideCornersForImage(image.width, image.height);
-      const fallbackCoverage =
-        (fallbackCorners[1].x - fallbackCorners[0].x) *
-        (fallbackCorners[3].y - fallbackCorners[0].y);
-      fallbackEdgeDensity = guideEdgeDensity(edges, image.width, image.height);
-      if (fallbackEdgeDensity >= 0.01 && quality.sharpness >= 0.01) {
-        bestCorners = fallbackCorners;
-        bestCoverage = fallbackCoverage;
-        detectionSource = "guide";
       }
     }
   } finally {
