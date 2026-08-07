@@ -7,6 +7,7 @@ import { inventoryRouter } from "./routes/inventory.js";
 import { syncRouter, runPriceSync } from "./routes/sync.js";
 import { settingsRouter } from "./routes/settings.js";
 import { publicRouter } from "./routes/public.js";
+import { ocrRouter } from "./routes/ocr.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,6 +21,7 @@ app.use("/api/inventory", inventoryRouter);
 app.use("/api/sync", syncRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/public", publicRouter);
+app.use("/api/ocr", ocrRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });

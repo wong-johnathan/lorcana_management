@@ -31,9 +31,11 @@ model Card {
   cardNumber    String   @default("")
   imageUrl      String   @default("")
 
-  inventoryEntries InventoryEntry[]
-  analysis         CardAnalysis?
-  prices           CardPrice[]
+  inventoryEntries    InventoryEntry[]
+  analysis            CardAnalysis?
+  prices              CardPrice[]
+  predictedScanEvents CardScanEvent[]  @relation("PredictedCard")
+  selectedScanEvents  CardScanEvent[]  @relation("SelectedCard")
 
   @@index([name])
   @@index([color])
@@ -51,6 +53,29 @@ model User {
   createdAt     DateTime @default(now())
 
   inventoryEntries InventoryEntry[]
+  cardScanEvents   CardScanEvent[]
+}
+
+model CardScanEvent {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  engine          String
+  decision        String
+  confidence      Float
+  recognizedJson  Json
+  candidateJson   Json
+  predictedCardId String?
+  predictedCard   Card?    @relation("PredictedCard", fields: [predictedCardId], references: [id], onDelete: SetNull)
+  selectedCardId  String?
+  selectedCard    Card?    @relation("SelectedCard", fields: [selectedCardId], references: [id], onDelete: SetNull)
+  outcome         String?
+  processingMs    Int
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([predictedCardId])
+  @@index([selectedCardId])
 }
 
 model InventoryEntry {
