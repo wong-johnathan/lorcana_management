@@ -102,12 +102,16 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
   const hierarchy = new cv.Mat();
   let bestCorners: NormalizedPoint[] = [];
   let bestCoverage = 0;
+  let detectionSource: CardDetection["source"] = "none";
+  let fallbackEdgeDensity = 0;
+  let contourCount = 0;
 
   try {
     cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
     cv.Canny(blurred, edges, 55, 160);
     cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    contourCount = contours.size();
 
     const frameArea = image.width * image.height;
     for (let index = 0; index < contours.size(); index += 1) {
@@ -139,6 +143,7 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
 
         bestCoverage = coverage;
         bestCorners = ordered;
+        detectionSource = "contour";
       } finally {
         approximation.delete();
         contour.delete();
@@ -150,10 +155,11 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
       const fallbackCoverage =
         (fallbackCorners[1].x - fallbackCorners[0].x) *
         (fallbackCorners[3].y - fallbackCorners[0].y);
-      const edgeDensity = guideEdgeDensity(edges, image.width, image.height);
-      if (edgeDensity >= 0.01 && quality.sharpness >= 0.01) {
+      fallbackEdgeDensity = guideEdgeDensity(edges, image.width, image.height);
+      if (fallbackEdgeDensity >= 0.01 && quality.sharpness >= 0.01) {
         bestCorners = fallbackCorners;
         bestCoverage = fallbackCoverage;
+        detectionSource = "guide";
       }
     }
   } finally {
@@ -169,6 +175,9 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
     found: bestCorners.length === 4,
     corners: bestCorners,
     coverage: bestCoverage,
+    source: detectionSource,
+    contourCount,
+    edgeDensity: fallbackEdgeDensity,
     ...quality,
   };
 }
