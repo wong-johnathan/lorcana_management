@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateCardAspect, guideCornersForImage } from "../cardDetector";
+import { calculateCardAspect, guideCornersForImage, hasGuideCaptureSignal } from "../cardDetector";
 
 const portraitCardInPortraitFrame = [
   { x: 80 / 480, y: 80 / 640 },
@@ -32,5 +32,16 @@ describe("guideCornersForImage", () => {
     expect(calculateCardAspect(corners, 480, 640)).toBeCloseTo(2 / 3, 2);
     expect(corners[0].y).toBeCloseTo(0.09);
     expect(corners[2].y).toBeCloseTo(0.91);
+  });
+});
+
+describe("hasGuideCaptureSignal", () => {
+  it("accepts rounded-edge cards from guide-region detail without a quadrilateral", () => {
+    expect(hasGuideCaptureSignal({ edgeDensity: 0.008, sharpness: 0.03 })).toBe(true);
+  });
+
+  it("rejects empty or very blurry guide regions", () => {
+    expect(hasGuideCaptureSignal({ edgeDensity: 0.003, sharpness: 0.03 })).toBe(false);
+    expect(hasGuideCaptureSignal({ edgeDensity: 0.008, sharpness: 0.01 })).toBe(false);
   });
 });

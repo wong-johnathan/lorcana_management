@@ -24,7 +24,11 @@ export interface CaptureGateResult extends CaptureGateState {
   instruction: string;
 }
 
-const MAX_CORNER_MOVEMENT = 0.025;
+const MAX_CONTOUR_CORNER_MOVEMENT = 0.04;
+const CONTOUR_REQUIRED_STABLE_FRAMES = 3;
+const GUIDE_REQUIRED_STABLE_FRAMES = 2;
+const CONTOUR_MIN_SHARPNESS = 0.08;
+const GUIDE_MIN_SHARPNESS = 0.02;
 
 function cornerMovement(
   previous: NormalizedPoint[] | null,
@@ -56,15 +60,21 @@ export function evaluateCaptureGate(
   if (detection.coverage < 0.2) return reset("Move closer");
   if (detection.coverage > 0.9) return reset("Move farther away");
   if (detection.glare > 0.15) return reset("Tilt card to reduce glare");
-  if (detection.sharpness < 0.08) return reset("Hold steady");
 
-  const stable = cornerMovement(state.previousCorners, detection.corners) <= MAX_CORNER_MOVEMENT;
+  const isGuideCapture = detection.source === "guide";
+  const minSharpness = isGuideCapture ? GUIDE_MIN_SHARPNESS : CONTOUR_MIN_SHARPNESS;
+  if (detection.sharpness < minSharpness) return reset("Hold steady");
+
+  const stable = isGuideCapture
+    ? true
+    : cornerMovement(state.previousCorners, detection.corners) <= MAX_CONTOUR_CORNER_MOVEMENT;
   const stableFrames = stable ? state.stableFrames + 1 : 1;
-  const ready = stableFrames >= 3;
+  const requiredFrames = isGuideCapture ? GUIDE_REQUIRED_STABLE_FRAMES : CONTOUR_REQUIRED_STABLE_FRAMES;
+  const ready = stableFrames >= requiredFrames;
   return {
     stableFrames,
     previousCorners: detection.corners,
     ready,
-    instruction: ready ? "Reading card…" : "Hold steady",
+    instruction: ready ? "Reading card…" : `Hold steady (${stableFrames}/${requiredFrames})`,
   };
 }

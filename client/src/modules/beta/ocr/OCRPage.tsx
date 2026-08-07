@@ -289,7 +289,7 @@ export default function OCRPage() {
       } finally {
         analyzingRef.current = false;
       }
-    }, 450);
+    }, 250);
 
     return () => window.clearInterval(interval);
   }, [capture, emitDebug, transition]);

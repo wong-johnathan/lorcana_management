@@ -34,13 +34,14 @@ describe("evaluateCaptureGate", () => {
     expect(result.stableFrames).toBe(0);
   });
 
-  it("becomes ready only after three stable readable frames", () => {
+  it("becomes ready only after three stable readable contour frames", () => {
     const detection = {
       found: true,
       corners,
       coverage: 0.6,
       sharpness: 0.8,
       glare: 0.02,
+      source: "contour" as const,
     };
     const first = evaluateCaptureGate(initial, detection);
     const second = evaluateCaptureGate(first, detection);
@@ -52,7 +53,26 @@ describe("evaluateCaptureGate", () => {
     expect(third.instruction).toBe("Reading card…");
   });
 
-  it("resets stability when corners move", () => {
+  it("allows rounded-edge guide captures after two stable lower-sharpness frames", () => {
+    const detection = {
+      found: true,
+      corners,
+      coverage: 0.56,
+      sharpness: 0.035,
+      glare: 0.02,
+      source: "guide" as const,
+      edgeDensity: 0.02,
+    };
+    const first = evaluateCaptureGate(initial, detection);
+    const second = evaluateCaptureGate(first, detection);
+
+    expect(first.instruction).toBe("Hold steady (1/2)");
+    expect(first.ready).toBe(false);
+    expect(second.ready).toBe(true);
+    expect(second.instruction).toBe("Reading card…");
+  });
+
+  it("resets stability when contour corners move", () => {
     const prior: CaptureGateState = { stableFrames: 2, previousCorners: corners };
     const shifted = corners.map((corner) => ({ x: corner.x + 0.1, y: corner.y }));
     const result = evaluateCaptureGate(prior, {
@@ -61,6 +81,7 @@ describe("evaluateCaptureGate", () => {
       coverage: 0.6,
       sharpness: 0.8,
       glare: 0.02,
+      source: "contour",
     });
     expect(result.stableFrames).toBe(1);
     expect(result.ready).toBe(false);
