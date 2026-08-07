@@ -9,6 +9,9 @@ export interface CardDetection {
   coverage: number;
   sharpness: number;
   glare: number;
+  source?: "contour" | "guide" | "none";
+  contourCount?: number;
+  edgeDensity?: number;
 }
 
 export interface CaptureGateState {

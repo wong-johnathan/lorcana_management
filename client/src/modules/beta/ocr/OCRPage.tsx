@@ -4,6 +4,8 @@ import type { Card, OcrRecognitionResponse } from "../../../types";
 import { detectCard, rectifyCard } from "./services/cardDetector";
 import {
   evaluateCaptureGate,
+  type CardDetection,
+  type CaptureGateResult,
   type CaptureGateState,
   type NormalizedPoint,
 } from "./utils/captureGate";
@@ -18,6 +20,29 @@ type ScannerPhase =
   | "error";
 
 type Finish = "normal" | "foil";
+
+type DebugSnapshot = {
+  updatedAt: string;
+  phase: ScannerPhase;
+  instruction: string;
+  videoReadyState: number | null;
+  videoSize: string;
+  videoClientSize: string;
+  analysisCanvasSize: string;
+  found: boolean | null;
+  source: string | null;
+  contourCount: number | null;
+  edgeDensity: number | null;
+  coverage: number | null;
+  sharpness: number | null;
+  glare: number | null;
+  stableFrames: number;
+  ready: boolean | null;
+  corners: number;
+  removalFrames: number;
+  captureLocked: boolean;
+  lastEvent: string;
+};
 
 const INITIAL_GATE: CaptureGateState = {
   stableFrames: 0,
@@ -34,6 +59,15 @@ function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
+function roundMetric(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  return Math.round(value * 1000) / 1000;
+}
+
+function sizeLabel(width: number | undefined, height: number | undefined): string {
+  return width && height ? `${Math.round(width)}×${Math.round(height)}` : "n/a";
+}
+
 export default function OCRPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,9 +79,11 @@ export default function OCRPage() {
   const analyzingRef = useRef(false);
   const captureLockRef = useRef(false);
   const removalFramesRef = useRef(0);
+  const lastDebugLogAtRef = useRef(0);
 
   const [phase, setPhase] = useState<ScannerPhase>("loading");
   const [instruction, setInstruction] = useState("Starting camera…");
+  const instructionRef = useRef("Starting camera…");
   const [result, setResult] = useState<OcrRecognitionResponse | null>(null);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null);
@@ -55,11 +91,53 @@ export default function OCRPage() {
   const [quantity, setQuantity] = useState(1);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [debugSnapshot, setDebugSnapshot] = useState<DebugSnapshot | null>(null);
 
   const transition = useCallback((next: ScannerPhase) => {
     phaseRef.current = next;
     setPhase(next);
   }, []);
+
+  useEffect(() => {
+    instructionRef.current = instruction;
+  }, [instruction]);
+
+  const emitDebug = useCallback(
+    (lastEvent: string, detection?: CardDetection, gate?: CaptureGateResult) => {
+      const video = videoRef.current;
+      const canvas = analysisCanvasRef.current;
+      const snapshot: DebugSnapshot = {
+        updatedAt: new Date().toLocaleTimeString(),
+        phase: phaseRef.current,
+        instruction: gate?.instruction ?? instructionRef.current,
+        videoReadyState: video?.readyState ?? null,
+        videoSize: sizeLabel(video?.videoWidth, video?.videoHeight),
+        videoClientSize: sizeLabel(video?.clientWidth, video?.clientHeight),
+        analysisCanvasSize: sizeLabel(canvas?.width, canvas?.height),
+        found: detection?.found ?? null,
+        source: detection?.source ?? null,
+        contourCount: detection?.contourCount ?? null,
+        edgeDensity: roundMetric(detection?.edgeDensity),
+        coverage: roundMetric(detection?.coverage),
+        sharpness: roundMetric(detection?.sharpness),
+        glare: roundMetric(detection?.glare),
+        stableFrames: gate?.stableFrames ?? gateRef.current.stableFrames,
+        ready: gate?.ready ?? null,
+        corners: detection?.corners.length ?? 0,
+        removalFrames: removalFramesRef.current,
+        captureLocked: captureLockRef.current,
+        lastEvent,
+      };
+      setDebugSnapshot(snapshot);
+
+      const now = Date.now();
+      if (now - lastDebugLogAtRef.current > 1000 || gate?.ready || lastEvent.includes("error")) {
+        lastDebugLogAtRef.current = now;
+        console.debug("[beta-ocr] scanner", snapshot);
+      }
+    },
+    []
+  );
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -84,11 +162,21 @@ export default function OCRPage() {
       }
       setInstruction("Fit the whole card in the frame");
       transition("scanning");
-    } catch {
+      console.info("[beta-ocr] camera started", {
+        videoWidth: videoRef.current?.videoWidth,
+        videoHeight: videoRef.current?.videoHeight,
+        clientWidth: videoRef.current?.clientWidth,
+        clientHeight: videoRef.current?.clientHeight,
+        readyState: videoRef.current?.readyState,
+      });
+      emitDebug("camera-started");
+    } catch (error) {
+      console.error("[beta-ocr] camera failed", error);
       setInstruction("Camera permission is required for automatic scanning");
       transition("error");
+      emitDebug("camera-error");
     }
-  }, [transition]);
+  }, [emitDebug, transition]);
 
   useEffect(() => {
     startCamera();
@@ -106,6 +194,8 @@ export default function OCRPage() {
       captureLockRef.current = true;
       transition("processing");
       setInstruction("Reading card…");
+      console.info("[beta-ocr] capture started", { corners });
+      emitDebug("capture-started");
 
       try {
         const video = videoRef.current;
@@ -118,6 +208,12 @@ export default function OCRPage() {
         setCapturedUrl(URL.createObjectURL(blob));
 
         const recognition = await ocrApi.recognize(blob);
+        console.info("[beta-ocr] OCR response", {
+          decision: recognition.decision,
+          candidates: recognition.candidates.length,
+          recognized: recognition.recognized,
+          processingMs: recognition.processingMs,
+        });
         setResult(recognition);
         setSelectedCard(
           recognition.decision === "exact" || recognition.decision === "high"
@@ -140,7 +236,7 @@ export default function OCRPage() {
         captureLockRef.current = false;
       }
     },
-    [capturedUrl, transition]
+    [capturedUrl, emitDebug, transition]
   );
 
   useEffect(() => {
@@ -164,6 +260,7 @@ export default function OCRPage() {
         const detection = await detectCard(context.getImageData(0, 0, canvas.width, canvas.height));
 
         if (currentPhase === "waiting-removal") {
+          emitDebug("waiting-removal", detection);
           if (detection.found) {
             removalFramesRef.current = 0;
             setInstruction("Remove card to scan the next one");
@@ -182,9 +279,11 @@ export default function OCRPage() {
         const gate = evaluateCaptureGate(gateRef.current, detection);
         gateRef.current = gate;
         setInstruction(gate.instruction);
+        emitDebug(gate.ready ? "capture-ready" : "gate-check", detection, gate);
         if (gate.ready) await capture(detection.corners);
       } catch (error) {
         console.error("Card detection failed", error);
+        emitDebug("detection-error");
         setInstruction("Card detection could not start on this browser");
         transition("error");
       } finally {
@@ -193,7 +292,7 @@ export default function OCRPage() {
     }, 450);
 
     return () => window.clearInterval(interval);
-  }, [capture, transition]);
+  }, [capture, emitDebug, transition]);
 
   const resetForRemoval = useCallback(() => {
     if (capturedUrl) URL.revokeObjectURL(capturedUrl);
@@ -296,6 +395,36 @@ export default function OCRPage() {
       >
         {instruction}
       </div>
+
+      <details className="rounded-xl border border-sky-500/30 bg-sky-950/20 p-3 text-xs text-sky-100" open>
+        <summary className="cursor-pointer select-none font-semibold text-sky-300">
+          Scanner debug logs
+        </summary>
+        <p className="mt-2 text-sky-200/80">
+          Also emitted to browser console as <code>[beta-ocr] scanner</code>.
+        </p>
+        {debugSnapshot ? (
+          <>
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 font-mono">
+              {Object.entries(debugSnapshot).map(([key, value]) => (
+                <div key={key} className="contents">
+                  <dt className="text-sky-400">{key}</dt>
+                  <dd className="break-all text-right text-sky-100">{String(value)}</dd>
+                </div>
+              ))}
+            </dl>
+            <button
+              type="button"
+              onClick={() => navigator.clipboard?.writeText(JSON.stringify(debugSnapshot, null, 2))}
+              className="mt-3 rounded-md bg-sky-500/20 px-3 py-2 font-medium text-sky-100 hover:bg-sky-500/30"
+            >
+              Copy debug JSON
+            </button>
+          </>
+        ) : (
+          <p className="mt-3 text-sky-200/80">Waiting for first detection frame…</p>
+        )}
+      </details>
 
       {phase === "error" && (
         <button
