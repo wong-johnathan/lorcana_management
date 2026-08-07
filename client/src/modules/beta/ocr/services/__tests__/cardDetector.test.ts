@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateCardAspect } from "../cardDetector";
+import { calculateCardAspect, guideCornersForImage } from "../cardDetector";
 
 const portraitCardInPortraitFrame = [
   { x: 80 / 480, y: 80 / 640 },
@@ -22,5 +22,15 @@ describe("calculateCardAspect", () => {
 
   it("keeps sideways location cards in the landscape card range", () => {
     expect(calculateCardAspect(landscapeCardInPortraitFrame, 480, 640)).toBeCloseTo(1.5, 1);
+  });
+});
+
+describe("guideCornersForImage", () => {
+  it("matches the scanner guide aspect ratio in a portrait frame", () => {
+    const corners = guideCornersForImage(480, 640);
+
+    expect(calculateCardAspect(corners, 480, 640)).toBeCloseTo(2 / 3, 2);
+    expect(corners[0].y).toBeCloseTo(0.09);
+    expect(corners[2].y).toBeCloseTo(0.91);
   });
 });

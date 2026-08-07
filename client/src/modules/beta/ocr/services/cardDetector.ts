@@ -55,6 +55,42 @@ export function calculateCardAspect(
   return topWidth / Math.max(sideHeight, 0.001);
 }
 
+export function guideCornersForImage(imageWidth: number, imageHeight: number): NormalizedPoint[] {
+  const frameAspect = imageWidth / Math.max(imageHeight, 1);
+  const guideHeight = 0.82;
+  const guideWidth = Math.min(0.82, (guideHeight * (2 / 3)) / Math.max(frameAspect, 0.001));
+  const left = (1 - guideWidth) / 2;
+  const top = (1 - guideHeight) / 2;
+  const right = left + guideWidth;
+  const bottom = top + guideHeight;
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
+}
+
+function guideEdgeDensity(edges: { data: Uint8Array }, imageWidth: number, imageHeight: number): number {
+  const corners = guideCornersForImage(imageWidth, imageHeight);
+  const left = Math.max(0, Math.floor(corners[0].x * imageWidth));
+  const top = Math.max(0, Math.floor(corners[0].y * imageHeight));
+  const right = Math.min(imageWidth, Math.ceil(corners[2].x * imageWidth));
+  const bottom = Math.min(imageHeight, Math.ceil(corners[2].y * imageHeight));
+  let edgePixels = 0;
+  let totalPixels = 0;
+
+  for (let y = top; y < bottom; y += 1) {
+    const rowOffset = y * imageWidth;
+    for (let x = left; x < right; x += 1) {
+      if (edges.data[rowOffset + x] > 0) edgePixels += 1;
+      totalPixels += 1;
+    }
+  }
+
+  return edgePixels / Math.max(totalPixels, 1);
+}
+
 export async function detectCard(image: ImageData): Promise<CardDetection> {
   const cv = await getCv();
   const quality = calculateFrameQuality(image);
@@ -106,6 +142,18 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
       } finally {
         approximation.delete();
         contour.delete();
+      }
+    }
+
+    if (bestCorners.length !== 4) {
+      const fallbackCorners = guideCornersForImage(image.width, image.height);
+      const fallbackCoverage =
+        (fallbackCorners[1].x - fallbackCorners[0].x) *
+        (fallbackCorners[3].y - fallbackCorners[0].y);
+      const edgeDensity = guideEdgeDensity(edges, image.width, image.height);
+      if (edgeDensity >= 0.01 && quality.sharpness >= 0.01) {
+        bestCorners = fallbackCorners;
+        bestCoverage = fallbackCoverage;
       }
     }
   } finally {

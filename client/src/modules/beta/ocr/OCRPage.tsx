@@ -7,6 +7,7 @@ import {
   type CaptureGateState,
   type NormalizedPoint,
 } from "./utils/captureGate";
+import { drawVisibleVideoFrame } from "./utils/videoFrame";
 
 type ScannerPhase =
   | "loading"
@@ -110,9 +111,7 @@ export default function OCRPage() {
         const video = videoRef.current;
         const source = sourceCanvasRef.current!;
         const corrected = correctedCanvasRef.current!;
-        source.width = video.videoWidth;
-        source.height = video.videoHeight;
-        source.getContext("2d", { willReadFrequently: true })!.drawImage(video, 0, 0);
+        drawVisibleVideoFrame(video, source, 900);
         await rectifyCard(source, corners, corrected);
         const blob = await canvasBlob(corrected);
         if (capturedUrl) URL.revokeObjectURL(capturedUrl);
@@ -160,13 +159,9 @@ export default function OCRPage() {
 
       analyzingRef.current = true;
       try {
-        const width = 480;
-        const height = Math.max(270, Math.round((width * video.videoHeight) / video.videoWidth));
-        canvas.width = width;
-        canvas.height = height;
+        drawVisibleVideoFrame(video, canvas, 480);
         const context = canvas.getContext("2d", { willReadFrequently: true })!;
-        context.drawImage(video, 0, 0, width, height);
-        const detection = await detectCard(context.getImageData(0, 0, width, height));
+        const detection = await detectCard(context.getImageData(0, 0, canvas.width, canvas.height));
 
         if (currentPhase === "waiting-removal") {
           if (detection.found) {
