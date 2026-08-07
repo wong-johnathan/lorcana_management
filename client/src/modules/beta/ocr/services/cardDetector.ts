@@ -36,6 +36,25 @@ function orderCorners(points: NormalizedPoint[]): NormalizedPoint[] {
   return [topLeft, topRight, bottomRight, bottomLeft];
 }
 
+function pixelDistance(
+  a: NormalizedPoint,
+  b: NormalizedPoint,
+  imageWidth: number,
+  imageHeight: number
+): number {
+  return Math.hypot((b.x - a.x) * imageWidth, (b.y - a.y) * imageHeight);
+}
+
+export function calculateCardAspect(
+  orderedCorners: NormalizedPoint[],
+  imageWidth: number,
+  imageHeight: number
+): number {
+  const topWidth = pixelDistance(orderedCorners[0], orderedCorners[1], imageWidth, imageHeight);
+  const sideHeight = pixelDistance(orderedCorners[0], orderedCorners[3], imageWidth, imageHeight);
+  return topWidth / Math.max(sideHeight, 0.001);
+}
+
 export async function detectCard(image: ImageData): Promise<CardDetection> {
   const cv = await getCv();
   const quality = calculateFrameQuality(image);
@@ -76,15 +95,7 @@ export async function detectCard(image: ImageData): Promise<CardDetection> {
           });
         }
         const ordered = orderCorners(points);
-        const topWidth = Math.hypot(
-          ordered[1].x - ordered[0].x,
-          ordered[1].y - ordered[0].y
-        );
-        const sideHeight = Math.hypot(
-          ordered[3].x - ordered[0].x,
-          ordered[3].y - ordered[0].y
-        );
-        const aspect = topWidth / Math.max(sideHeight, 0.001);
+        const aspect = calculateCardAspect(ordered, image.width, image.height);
         const cardLike =
           (aspect >= 0.52 && aspect <= 0.82) ||
           (aspect >= 1.22 && aspect <= 1.92);
