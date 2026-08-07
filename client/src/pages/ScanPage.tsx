@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi } from "../services/api";
 import type { Card, RecognizedCard, BatchItem, BatchResultItem } from "../types";
 import CardDetail from "../components/CardDetail";
@@ -415,9 +416,16 @@ export default function ScanPage() {
 
   return (
     <div className="p-3 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Scan Card</h2>
-        <button
+        <div className="flex items-center gap-2">
+          <Link
+            to="/beta/ocr"
+            className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-300 hover:bg-amber-500/20"
+          >
+            Beta OCR
+          </Link>
+          <button
           onClick={() => {
             setBatchMode(!batchMode);
             resetScan();
@@ -431,7 +439,8 @@ export default function ScanPage() {
           }`}
         >
           {batchMode ? "Batch Mode" : "Single Mode"}
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* === SINGLE MODE === */}

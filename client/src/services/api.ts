@@ -12,6 +12,7 @@ import type {
   PublicCollection,
   CardAnalysis,
   SyncStatus,
+  OcrRecognitionResponse,
 } from "../types";
 
 const API_BASE = "/api";
@@ -25,8 +26,9 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const token = getToken();
+  const isMultipart = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isMultipart ? {} : { "Content-Type": "application/json" }),
     ...((options.headers as Record<string, string>) || {}),
   };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -70,6 +72,27 @@ export const cards = {
     request<RecognizeResult>("/cards/recognize", {
       method: "POST",
       body: JSON.stringify({ image }),
+    }),
+};
+
+export const ocr = {
+  recognize: (image: Blob, setCode?: string) => {
+    const form = new FormData();
+    form.append("image", image, "lorcana-card.jpg");
+    if (setCode) form.append("setCode", setCode);
+    return request<OcrRecognitionResponse>("/ocr/recognize", {
+      method: "POST",
+      body: form,
+    });
+  },
+  feedback: (
+    scanId: string,
+    outcome: "confirmed" | "corrected" | "rejected",
+    selectedCardId: string | null
+  ) =>
+    request(`/ocr/scans/${scanId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ outcome, selectedCardId }),
     }),
 };
 
