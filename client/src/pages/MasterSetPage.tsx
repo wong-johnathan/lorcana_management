@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { cards as cardsApi } from "../services/api";
-import type { FilterOptions, MasterSetEstimate, MasterSetPriceField } from "../types";
+import type { Card, FilterOptions, MasterSetEstimate, MasterSetPriceField } from "../types";
+import CardDetail from "../components/CardDetail";
+import CardGrid from "../components/CardGrid";
 
 const VARIANTS = ["Normal", "Foil"];
 const PRICE_FIELDS: { value: MasterSetPriceField; label: string }[] = [
@@ -35,18 +36,46 @@ function reasonLabel(reason: string): string {
   return reason;
 }
 
-function databasePath(params: Record<string, string | undefined>): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value);
-  }
-  return `/database?${search.toString()}`;
+interface DrilldownModalState {
+  title: string;
+  cards: Card[];
+  total: number;
+  loading: boolean;
+  error: string | null;
+  priceContext?: {
+    variant: string;
+    priceField: MasterSetPriceField;
+    status?: string;
+  };
 }
 
-function linkButtonClass(tone: "default" | "danger" = "default"): string {
+function compactParams(params: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(params).filter((entry): entry is [string, string] => Boolean(entry[1]))
+  );
+}
+
+function actionButtonClass(tone: "default" | "danger" = "default"): string {
   return tone === "danger"
     ? "inline-flex items-center justify-center rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-500/20"
     : "inline-flex items-center justify-center rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-200 hover:bg-sky-500/20";
+}
+
+async function fetchAllCards(params: Record<string, string>): Promise<{ cards: Card[]; total: number }> {
+  const cards: Card[] = [];
+  let page = 1;
+  let totalPages = 1;
+  let total = 0;
+
+  do {
+    const response = await cardsApi.list({ ...params, page: String(page), limit: "100" });
+    cards.push(...response.cards);
+    total = response.pagination.total;
+    totalPages = response.pagination.totalPages;
+    page += 1;
+  } while (page <= totalPages);
+
+  return { cards, total };
 }
 
 export default function MasterSetPage() {
@@ -56,6 +85,8 @@ export default function MasterSetPage() {
   const [selectedVariants, setSelectedVariants] = useState<string[]>(["Normal", "Foil"]);
   const [priceField, setPriceField] = useState<MasterSetPriceField>("marketPrice");
   const [estimate, setEstimate] = useState<MasterSetEstimate | null>(null);
+  const [drilldown, setDrilldown] = useState<DrilldownModalState | null>(null);
+  const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,22 +155,56 @@ export default function MasterSetPage() {
     }
   };
 
-  const allSelectedCardsPath = estimate
-    ? databasePath({
-        set: estimate.setName,
-        rarity: estimate.selectedRarities.join(","),
-      })
-    : "#";
-
-  const databaseDrilldownPath = (
+  const buildDrilldownParams = (
     extra: Record<string, string | undefined>,
     includeAllRarities = true
-  ) => databasePath({
+  ) => compactParams({
     set: estimate?.setName ?? setName,
     rarity: includeAllRarities ? estimate?.selectedRarities.join(",") : undefined,
     priceField,
     ...extra,
   });
+
+  const openDrilldown = async (
+    title: string,
+    extra: Record<string, string | undefined>,
+    includeAllRarities = true
+  ) => {
+    const params = buildDrilldownParams(extra, includeAllRarities);
+    const priceContext = params.priceVariant
+      ? {
+          variant: params.priceVariant,
+          priceField: (params.priceField || "marketPrice") as MasterSetPriceField,
+          status: params.priceStatus,
+        }
+      : undefined;
+
+    setDrilldown({ title, cards: [], total: 0, loading: true, error: null, priceContext });
+    try {
+      const result = await fetchAllCards(params);
+      setDrilldown((current) =>
+        current ? { ...current, cards: result.cards, total: result.total, loading: false } : current
+      );
+    } catch (err) {
+      setDrilldown((current) =>
+        current
+          ? {
+              ...current,
+              loading: false,
+              error: err instanceof Error ? err.message : "Failed to load cards",
+            }
+          : current
+      );
+    }
+  };
+
+  const openCardDetail = async (cardId: string) => {
+    try {
+      setDetailCard(await cardsApi.get(cardId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load card detail");
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
@@ -276,17 +341,22 @@ export default function MasterSetPage() {
 
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3">
             <span className="text-sm text-sky-100">Inspect the cards behind this estimate:</span>
-            <Link to={allSelectedCardsPath} className={linkButtonClass()}>
+            <button
+              type="button"
+              onClick={() => openDrilldown("Selected master-set cards", {})}
+              className={actionButtonClass()}
+            >
               View selected cards
-            </Link>
+            </button>
             {estimate.breakdownByVariant.filter((row) => row.missingCount > 0).map((row) => (
-              <Link
+              <button
                 key={`missing-${row.variant}`}
-                to={databaseDrilldownPath({ priceVariant: row.variant, priceStatus: "missing" })}
-                className={linkButtonClass("danger")}
+                type="button"
+                onClick={() => openDrilldown(`Missing ${row.variant} prices`, { priceVariant: row.variant, priceStatus: "missing" })}
+                className={actionButtonClass("danger")}
               >
                 Missing {row.variant} prices
-              </Link>
+              </button>
             ))}
           </div>
 
@@ -311,12 +381,13 @@ export default function MasterSetPage() {
                       <td className="px-4 py-2 text-right text-gray-400">{row.missingVariantCount}</td>
                       <td className="px-4 py-2 text-right font-semibold text-emerald-300">{currency(row.total)}</td>
                       <td className="px-4 py-2 text-right">
-                        <Link
-                          to={databaseDrilldownPath({ rarity: row.rarity }, false)}
-                          className={linkButtonClass()}
+                        <button
+                          type="button"
+                          onClick={() => openDrilldown(`${row.rarity} cards`, { rarity: row.rarity }, false)}
+                          className={actionButtonClass()}
                         >
                           View
-                        </Link>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -346,20 +417,22 @@ export default function MasterSetPage() {
                       <td className="px-4 py-2 text-right">
                         <div className="flex justify-end gap-1">
                           {row.pricedCount > 0 && (
-                            <Link
-                              to={databaseDrilldownPath({ priceVariant: row.variant, priceStatus: "priced" })}
-                              className={linkButtonClass()}
+                            <button
+                              type="button"
+                              onClick={() => openDrilldown(`Priced ${row.variant} cards`, { priceVariant: row.variant, priceStatus: "priced" })}
+                              className={actionButtonClass()}
                             >
                               Priced
-                            </Link>
+                            </button>
                           )}
                           {row.missingCount > 0 && (
-                            <Link
-                              to={databaseDrilldownPath({ priceVariant: row.variant, priceStatus: "missing" })}
-                              className={linkButtonClass("danger")}
+                            <button
+                              type="button"
+                              onClick={() => openDrilldown(`Missing ${row.variant} prices`, { priceVariant: row.variant, priceStatus: "missing" })}
+                              className={actionButtonClass("danger")}
                             >
                               Missing
-                            </Link>
+                            </button>
                           )}
                         </div>
                       </td>
@@ -399,17 +472,13 @@ export default function MasterSetPage() {
                         <td className="px-4 py-2 text-gray-400">{item.variant}</td>
                         <td className="px-4 py-2 text-gray-400">{reasonLabel(item.reason)}</td>
                         <td className="px-4 py-2 text-right">
-                          <Link
-                            to={databaseDrilldownPath({
-                              rarity: item.rarity,
-                              priceVariant: item.variant,
-                              priceStatus: "missing",
-                              card: item.cardId,
-                            }, false)}
-                            className={linkButtonClass("danger")}
+                          <button
+                            type="button"
+                            onClick={() => openCardDetail(item.cardId)}
+                            className={actionButtonClass("danger")}
                           >
                             Open
-                          </Link>
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -419,6 +488,57 @@ export default function MasterSetPage() {
             </details>
           )}
         </section>
+      )}
+      {drilldown && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-3"
+          onClick={() => setDrilldown(null)}
+        >
+          <div
+            className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-950 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-4 py-3">
+              <div>
+                <h2 className="text-lg font-semibold text-amber-300">{drilldown.title}</h2>
+                <p className="text-xs text-gray-400">
+                  {drilldown.loading
+                    ? "Loading cards…"
+                    : `${drilldown.cards.length}${drilldown.total !== drilldown.cards.length ? ` of ${drilldown.total}` : ""} cards`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDrilldown(null)}
+                className="text-2xl leading-none text-gray-400 hover:text-white"
+                aria-label="Close card list"
+              >
+                &times;
+              </button>
+            </div>
+
+            {drilldown.error ? (
+              <div className="p-6 text-sm text-red-300">{drilldown.error}</div>
+            ) : drilldown.loading ? (
+              <div className="p-10 text-center text-gray-400">Loading cards…</div>
+            ) : (
+              <div className="overflow-y-auto">
+                <CardGrid
+                  cards={drilldown.cards}
+                  onSelect={setDetailCard}
+                  priceContext={drilldown.priceContext}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {detailCard && (
+        <CardDetail
+          card={detailCard}
+          onClose={() => setDetailCard(null)}
+        />
       )}
     </div>
   );
