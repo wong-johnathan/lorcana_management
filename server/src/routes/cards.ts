@@ -33,12 +33,23 @@ const VARIANT_ALIASES: Record<string, string[]> = {
   Foil: ["Foil", "Cold Foil", "Holofoil"],
 };
 
+function variantsFor(requestedVariant: string): string[] {
+  return VARIANT_ALIASES[requestedVariant] ?? [requestedVariant];
+}
+
+function pricePresenceCondition(requestedVariant: string, priceField: PriceField) {
+  return {
+    variant: { in: variantsFor(requestedVariant) },
+    [priceField]: { not: null },
+  };
+}
+
 export function priceForVariant(
   prices: { variant: string; lowPrice: number | null; midPrice: number | null; highPrice: number | null; marketPrice: number | null }[],
   requestedVariant: string,
   priceField: PriceField
 ): { value: number | null; matchedVariant?: string; reason?: "no_price_for_variant" | "null_price" } {
-  const acceptableVariants = VARIANT_ALIASES[requestedVariant] ?? [requestedVariant];
+  const acceptableVariants = variantsFor(requestedVariant);
   const price = acceptableVariants
     .map((variant) => prices.find((p) => p.variant.toLowerCase() === variant.toLowerCase()))
     .find((p): p is NonNullable<typeof p> => Boolean(p));
@@ -93,11 +104,14 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       ownership,
       analyzed,
       sort,
+      priceVariant,
+      priceStatus,
       page = "1",
       limit = "40",
     } = req.query;
 
     const where: any = {};
+    const andFilters: any[] = [];
 
     if (search && typeof search === "string") {
       where.OR = [
@@ -122,6 +136,22 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
       }
     }
 
+    const selectedPriceField = toPriceField(req.query.priceField);
+    if (
+      priceVariant &&
+      typeof priceVariant === "string" &&
+      priceStatus &&
+      typeof priceStatus === "string" &&
+      ["priced", "missing"].includes(priceStatus)
+    ) {
+      const condition = pricePresenceCondition(priceVariant, selectedPriceField);
+      andFilters.push(
+        priceStatus === "priced"
+          ? { prices: { some: condition } }
+          : { NOT: { prices: { some: condition } } }
+      );
+    }
+
     if (ownership && typeof ownership === "string") {
       const userId = getUserIdFromRequest(req);
       if (userId) {
@@ -139,6 +169,8 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
         }
       }
     }
+
+    if (andFilters.length > 0) where.AND = andFilters;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 40));

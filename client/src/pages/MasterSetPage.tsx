@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { cards as cardsApi } from "../services/api";
 import type { FilterOptions, MasterSetEstimate, MasterSetPriceField } from "../types";
 
@@ -32,6 +33,20 @@ function reasonLabel(reason: string): string {
   if (reason === "no_price_for_variant") return "No price for variant";
   if (reason === "null_price") return "Missing selected price";
   return reason;
+}
+
+function databasePath(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value);
+  }
+  return `/database?${search.toString()}`;
+}
+
+function linkButtonClass(tone: "default" | "danger" = "default"): string {
+  return tone === "danger"
+    ? "inline-flex items-center justify-center rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-500/20"
+    : "inline-flex items-center justify-center rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-1 text-xs font-medium text-sky-200 hover:bg-sky-500/20";
 }
 
 export default function MasterSetPage() {
@@ -108,6 +123,23 @@ export default function MasterSetPage() {
       setLoading(false);
     }
   };
+
+  const allSelectedCardsPath = estimate
+    ? databasePath({
+        set: estimate.setName,
+        rarity: estimate.selectedRarities.join(","),
+      })
+    : "#";
+
+  const databaseDrilldownPath = (
+    extra: Record<string, string | undefined>,
+    includeAllRarities = true
+  ) => databasePath({
+    set: estimate?.setName ?? setName,
+    rarity: includeAllRarities ? estimate?.selectedRarities.join(",") : undefined,
+    priceField,
+    ...extra,
+  });
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
@@ -242,6 +274,22 @@ export default function MasterSetPage() {
             </div>
           )}
 
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-3">
+            <span className="text-sm text-sky-100">Inspect the cards behind this estimate:</span>
+            <Link to={allSelectedCardsPath} className={linkButtonClass()}>
+              View selected cards
+            </Link>
+            {estimate.breakdownByVariant.filter((row) => row.missingCount > 0).map((row) => (
+              <Link
+                key={`missing-${row.variant}`}
+                to={databaseDrilldownPath({ priceVariant: row.variant, priceStatus: "missing" })}
+                className={linkButtonClass("danger")}
+              >
+                Missing {row.variant} prices
+              </Link>
+            ))}
+          </div>
+
           <div className="grid lg:grid-cols-2 gap-4">
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-800 font-semibold">Breakdown by rarity</div>
@@ -252,6 +300,7 @@ export default function MasterSetPage() {
                     <th className="text-right px-4 py-2">Cards</th>
                     <th className="text-right px-4 py-2">Missing</th>
                     <th className="text-right px-4 py-2">Total</th>
+                    <th className="text-right px-4 py-2">View</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -261,6 +310,14 @@ export default function MasterSetPage() {
                       <td className="px-4 py-2 text-right text-gray-400">{row.cardCount}</td>
                       <td className="px-4 py-2 text-right text-gray-400">{row.missingVariantCount}</td>
                       <td className="px-4 py-2 text-right font-semibold text-emerald-300">{currency(row.total)}</td>
+                      <td className="px-4 py-2 text-right">
+                        <Link
+                          to={databaseDrilldownPath({ rarity: row.rarity }, false)}
+                          className={linkButtonClass()}
+                        >
+                          View
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -276,6 +333,7 @@ export default function MasterSetPage() {
                     <th className="text-right px-4 py-2">Priced</th>
                     <th className="text-right px-4 py-2">Missing</th>
                     <th className="text-right px-4 py-2">Total</th>
+                    <th className="text-right px-4 py-2">View</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -285,6 +343,26 @@ export default function MasterSetPage() {
                       <td className="px-4 py-2 text-right text-gray-400">{row.pricedCount}</td>
                       <td className="px-4 py-2 text-right text-gray-400">{row.missingCount}</td>
                       <td className="px-4 py-2 text-right font-semibold text-emerald-300">{currency(row.total)}</td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex justify-end gap-1">
+                          {row.pricedCount > 0 && (
+                            <Link
+                              to={databaseDrilldownPath({ priceVariant: row.variant, priceStatus: "priced" })}
+                              className={linkButtonClass()}
+                            >
+                              Priced
+                            </Link>
+                          )}
+                          {row.missingCount > 0 && (
+                            <Link
+                              to={databaseDrilldownPath({ priceVariant: row.variant, priceStatus: "missing" })}
+                              className={linkButtonClass("danger")}
+                            >
+                              Missing
+                            </Link>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -305,6 +383,7 @@ export default function MasterSetPage() {
                       <th className="text-left px-4 py-2">Rarity</th>
                       <th className="text-left px-4 py-2">Printing</th>
                       <th className="text-left px-4 py-2">Reason</th>
+                      <th className="text-right px-4 py-2">View</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -319,6 +398,19 @@ export default function MasterSetPage() {
                         <td className="px-4 py-2 text-gray-400">{item.rarity}</td>
                         <td className="px-4 py-2 text-gray-400">{item.variant}</td>
                         <td className="px-4 py-2 text-gray-400">{reasonLabel(item.reason)}</td>
+                        <td className="px-4 py-2 text-right">
+                          <Link
+                            to={databaseDrilldownPath({
+                              rarity: item.rarity,
+                              priceVariant: item.variant,
+                              priceStatus: "missing",
+                              card: item.cardId,
+                            }, false)}
+                            className={linkButtonClass("danger")}
+                          >
+                            Open
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

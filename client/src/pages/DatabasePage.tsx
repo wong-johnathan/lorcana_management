@@ -3,18 +3,44 @@ import { useSearchParams } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi, sync as syncApi, analysis as analysisApi } from "../services/api";
 import { formatTimeAgo } from "../utils/format";
 import { useAuth } from "../context/AuthContext";
-import type { Card, InventoryEntry, SyncStatus } from "../types";
+import type { Card, InventoryEntry, MasterSetPriceField, SyncStatus } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
 
 function filtersFromParams(params: URLSearchParams): Record<string, string> {
   const filters: Record<string, string> = {};
-  for (const key of ["search", "color", "set", "rarity", "type", "cardType", "ownership", "analyzed", "sort"]) {
+  for (const key of [
+    "search",
+    "color",
+    "set",
+    "rarity",
+    "type",
+    "cardType",
+    "ownership",
+    "analyzed",
+    "sort",
+    "priceVariant",
+    "priceStatus",
+    "priceField",
+  ]) {
     const val = params.get(key);
     if (val) filters[key] = val;
   }
   return filters;
+}
+
+function priceFieldLabel(field: string | undefined): string {
+  if (field === "lowPrice") return "Low";
+  if (field === "midPrice") return "Mid";
+  if (field === "highPrice") return "High";
+  return "Market";
+}
+
+function priceStatusLabel(status: string | undefined): string {
+  if (status === "missing") return "Missing";
+  if (status === "priced") return "Priced";
+  return "Any";
 }
 
 export default function DatabasePage() {
@@ -308,6 +334,14 @@ export default function DatabasePage() {
       { quantity: data.quantity, foilQuantity: data.foilQuantity },
     ])
   );
+  const priceContext = filters.priceVariant
+    ? {
+        variant: filters.priceVariant,
+        priceField: (filters.priceField || "marketPrice") as MasterSetPriceField,
+        status: filters.priceStatus,
+      }
+    : undefined;
+  const isMasterSetDrilldown = Boolean(filters.set || filters.priceVariant || filters.priceStatus);
 
   return (
     <div>
@@ -427,6 +461,20 @@ export default function DatabasePage() {
           onChange={handleFilterChange}
           showOwnership={!!user}
         />
+        {isMasterSetDrilldown && (
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold">Master set view</span>
+              {filters.set && <span className="text-amber-200">Set: {filters.set}</span>}
+              {filters.rarity && <span className="text-amber-200">Rarity: {filters.rarity}</span>}
+              {filters.priceVariant && (
+                <span className="text-amber-200">
+                  {priceStatusLabel(filters.priceStatus)} {filters.priceVariant} · {priceFieldLabel(filters.priceField)} price
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -438,6 +486,7 @@ export default function DatabasePage() {
             onSelect={handleSelectCard}
             ownedCardIds={user ? ownedCardIds : undefined}
             ownedQuantities={user ? ownedQuantities : undefined}
+            priceContext={priceContext}
           />
 
           <div ref={sentinelRef} className="h-1" />

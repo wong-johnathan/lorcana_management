@@ -1,10 +1,17 @@
-import type { Card } from "../types";
+import type { Card, MasterSetPriceField } from "../types";
+
+interface CardGridPriceContext {
+  variant: string;
+  priceField: MasterSetPriceField;
+  status?: string;
+}
 
 interface CardGridProps {
   cards: Card[];
   onSelect: (card: Card) => void;
   ownedCardIds?: Set<string>;
   ownedQuantities?: Map<string, { quantity: number; foilQuantity: number }>;
+  priceContext?: CardGridPriceContext;
 }
 
 const COLOR_CLASSES: Record<string, string> = {
@@ -16,11 +23,36 @@ const COLOR_CLASSES: Record<string, string> = {
   Steel: "border-lorcana-steel",
 };
 
+const VARIANT_ALIASES: Record<string, string[]> = {
+  Foil: ["Foil", "Cold Foil", "Holofoil"],
+};
+
+function priceForContext(card: Card, context?: CardGridPriceContext): number | null {
+  if (!context) {
+    return card.prices?.find((p) => p.variant === "Normal")?.marketPrice
+      ?? card.prices?.[0]?.marketPrice
+      ?? null;
+  }
+
+  const variants = VARIANT_ALIASES[context.variant] ?? [context.variant];
+  const price = variants
+    .map((variant) => card.prices?.find((p) => p.variant.toLowerCase() === variant.toLowerCase()))
+    .find((p): p is NonNullable<typeof p> => Boolean(p));
+  return price?.[context.priceField] ?? null;
+}
+
+function priceContextLabel(context: CardGridPriceContext): string {
+  const variant = context.variant;
+  const status = context.status === "missing" ? "Missing" : context.status === "priced" ? "Priced" : "Price";
+  return `${status} ${variant}`;
+}
+
 export default function CardGrid({
   cards,
   onSelect,
   ownedCardIds,
   ownedQuantities,
+  priceContext,
 }: CardGridProps) {
   if (cards.length === 0) {
     return (
@@ -34,8 +66,7 @@ export default function CardGrid({
         const borderClass = COLOR_CLASSES[card.color] || "border-gray-700";
         const isOwned = ownedCardIds?.has(card.id);
         const qty = ownedQuantities?.get(card.id);
-        const marketPrice = card.prices?.find((p) => p.variant === "Normal")?.marketPrice
-          ?? card.prices?.[0]?.marketPrice;
+        const marketPrice = priceForContext(card, priceContext);
 
         return (
           <button
@@ -67,6 +98,18 @@ export default function CardGrid({
             {marketPrice != null && (
               <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
                 ${marketPrice.toFixed(2)}
+              </div>
+            )}
+
+            {priceContext && marketPrice == null && (
+              <div className="absolute bottom-1 right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded max-w-[90%] truncate">
+                {priceContextLabel(priceContext)}
+              </div>
+            )}
+
+            {priceContext && marketPrice != null && (
+              <div className="absolute bottom-7 right-1 bg-sky-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                {priceContext.variant}
               </div>
             )}
 
