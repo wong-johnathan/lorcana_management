@@ -11,6 +11,7 @@ import type {
   UserSettings,
   PublicCollection,
   CardAnalysis,
+  MasterSetEstimate,
   SyncStatus,
 } from "../types";
 
@@ -66,6 +67,8 @@ export const cards = {
   },
   get: (id: string) => request<Card>(`/cards/${id}`),
   filters: () => request<FilterOptions>("/cards/filters"),
+  masterSetEstimate: (params: Record<string, string>) =>
+    request<MasterSetEstimate>(`/cards/master-set/estimate?${new URLSearchParams(params).toString()}`),
   recognize: (image: string) =>
     request<RecognizeResult>("/cards/recognize", {
       method: "POST",

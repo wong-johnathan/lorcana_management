@@ -152,3 +152,46 @@ export interface SyncStatus {
   startedAt: string | null;
   completedAt: string | null;
 }
+
+
+export type MasterSetPriceField = "lowPrice" | "midPrice" | "highPrice" | "marketPrice";
+
+export interface MasterSetBreakdownByRarity {
+  rarity: string;
+  cardCount: number;
+  pricedVariantCount: number;
+  missingVariantCount: number;
+  total: number;
+}
+
+export interface MasterSetBreakdownByVariant {
+  variant: string;
+  pricedCount: number;
+  missingCount: number;
+  total: number;
+}
+
+export interface MasterSetMissingPrice {
+  cardId: string;
+  name: string;
+  subtitle: string;
+  rarity: string;
+  cardNumber: string;
+  variant: string;
+  reason: "no_tcgplayer_id" | "no_price_for_variant" | "null_price";
+}
+
+export interface MasterSetEstimate {
+  setName: string;
+  setCode: string;
+  selectedRarities: string[];
+  selectedVariants: string[];
+  priceField: MasterSetPriceField;
+  cardCount: number;
+  pricedVariantCount: number;
+  missingVariantCount: number;
+  total: number;
+  breakdownByRarity: MasterSetBreakdownByRarity[];
+  breakdownByVariant: MasterSetBreakdownByVariant[];
+  missing: MasterSetMissingPrice[];
+}
