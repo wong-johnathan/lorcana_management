@@ -13,6 +13,9 @@ const PRICE_FIELDS: { value: MasterSetPriceField; label: string }[] = [
 ];
 
 const RARITY_ORDER = ["Common", "Uncommon", "Rare", "Super Rare", "Legendary", "Enchanted", "Special", "Iconic"];
+const VARIANT_ALIASES: Record<string, string[]> = {
+  Foil: ["Foil", "Cold Foil", "Holofoil"],
+};
 
 function currency(value: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -78,6 +81,96 @@ async function fetchAllCards(params: Record<string, string>): Promise<{ cards: C
   return { cards, total };
 }
 
+function csvCell(value: string | number | null | undefined): string {
+  if (value == null) return "";
+  const raw = String(value);
+  return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+}
+
+function safeFilename(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "master-set";
+}
+
+function priceForVariant(card: Card, variant: string, field: MasterSetPriceField): { matchedVariant: string; value: number | null } {
+  const variants = VARIANT_ALIASES[variant] ?? [variant];
+  for (const candidate of variants) {
+    const price = card.prices.find((item) => item.variant.toLowerCase() === candidate.toLowerCase());
+    if (price) return { matchedVariant: price.variant, value: price[field] };
+  }
+  return { matchedVariant: "", value: null };
+}
+
+function downloadCsv(filename: string, rows: Array<Array<string | number | null | undefined>>) {
+  const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+interface CsvExportOptions {
+  title: string;
+  cards: Card[];
+  variants: string[];
+  priceField: MasterSetPriceField;
+  priceContext?: DrilldownModalState["priceContext"];
+}
+
+function exportCardsCsv({ title, cards, variants, priceField, priceContext }: CsvExportOptions) {
+  const exportVariants = priceContext ? [priceContext.variant] : variants;
+  const rows: Array<Array<string | number | null | undefined>> = [
+    [
+      "Set Name",
+      "Set Code",
+      "Card Number",
+      "Name",
+      "Subtitle",
+      "Rarity",
+      "Color",
+      "Card Type",
+      "Ink Cost",
+      "Variant",
+      "Matched Price Variant",
+      "Price Field",
+      "Price",
+      "Price Status",
+      "TCGPlayer ID",
+      "Image URL",
+    ],
+  ];
+
+  for (const card of cards) {
+    for (const variant of exportVariants) {
+      const price = priceForVariant(card, variant, priceField);
+      rows.push([
+        card.setName,
+        card.setCode,
+        card.cardNumber,
+        card.name,
+        card.subtitle,
+        card.rarity,
+        card.color,
+        card.cardType,
+        card.inkCost,
+        variant,
+        price.matchedVariant,
+        priceField,
+        price.value,
+        price.value == null ? "Missing" : "Priced",
+        card.tcgPlayerId,
+        card.imageUrl,
+      ]);
+    }
+  }
+
+  downloadCsv(`${safeFilename(title)}.csv`, rows);
+}
+
 export default function MasterSetPage() {
   const [filters, setFilters] = useState<FilterOptions | null>(null);
   const [setName, setSetName] = useState("");
@@ -88,6 +181,7 @@ export default function MasterSetPage() {
   const [drilldown, setDrilldown] = useState<DrilldownModalState | null>(null);
   const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [loading, setLoading] = useState(false);
+  const [csvLoading, setCsvLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const rarities = useMemo(() => sortRarities(filters?.rarities ?? []), [filters]);
@@ -204,6 +298,36 @@ export default function MasterSetPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load card detail");
     }
+  };
+
+  const exportEstimateCsv = async () => {
+    if (!estimate) return;
+    setCsvLoading(true);
+    setError(null);
+    try {
+      const result = await fetchAllCards(buildDrilldownParams({}));
+      exportCardsCsv({
+        title: `${estimate.setName} master set`,
+        cards: result.cards,
+        variants: estimate.selectedVariants,
+        priceField: estimate.priceField,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export CSV");
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
+  const exportDrilldownCsv = () => {
+    if (!drilldown || drilldown.loading || drilldown.error) return;
+    exportCardsCsv({
+      title: drilldown.title,
+      cards: drilldown.cards,
+      variants: estimate?.selectedVariants ?? selectedVariants,
+      priceField: drilldown.priceContext?.priceField ?? estimate?.priceField ?? priceField,
+      priceContext: drilldown.priceContext,
+    });
   };
 
   return (
@@ -347,6 +471,14 @@ export default function MasterSetPage() {
               className={actionButtonClass()}
             >
               View selected cards
+            </button>
+            <button
+              type="button"
+              onClick={exportEstimateCsv}
+              disabled={csvLoading}
+              className="inline-flex items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+            >
+              {csvLoading ? "Exporting…" : "Export CSV"}
             </button>
             {estimate.breakdownByVariant.filter((row) => row.missingCount > 0).map((row) => (
               <button
@@ -507,14 +639,25 @@ export default function MasterSetPage() {
                     : `${drilldown.cards.length}${drilldown.total !== drilldown.cards.length ? ` of ${drilldown.total}` : ""} cards`}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setDrilldown(null)}
-                className="text-2xl leading-none text-gray-400 hover:text-white"
-                aria-label="Close card list"
-              >
-                &times;
-              </button>
+              <div className="flex items-center gap-2">
+                {!drilldown.loading && !drilldown.error && drilldown.cards.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={exportDrilldownCsv}
+                    className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20"
+                  >
+                    Export CSV
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDrilldown(null)}
+                  className="text-2xl leading-none text-gray-400 hover:text-white"
+                  aria-label="Close card list"
+                >
+                  &times;
+                </button>
+              </div>
             </div>
 
             {drilldown.error ? (
