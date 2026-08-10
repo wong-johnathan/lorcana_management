@@ -29,16 +29,23 @@ function toPriceField(value: unknown): PriceField {
     : "marketPrice";
 }
 
-function priceForVariant(
+const VARIANT_ALIASES: Record<string, string[]> = {
+  Foil: ["Foil", "Cold Foil", "Holofoil"],
+};
+
+export function priceForVariant(
   prices: { variant: string; lowPrice: number | null; midPrice: number | null; highPrice: number | null; marketPrice: number | null }[],
   requestedVariant: string,
   priceField: PriceField
-): { value: number | null; reason?: "no_price_for_variant" | "null_price" } {
-  const price = prices.find((p) => p.variant.toLowerCase() === requestedVariant.toLowerCase());
+): { value: number | null; matchedVariant?: string; reason?: "no_price_for_variant" | "null_price" } {
+  const acceptableVariants = VARIANT_ALIASES[requestedVariant] ?? [requestedVariant];
+  const price = acceptableVariants
+    .map((variant) => prices.find((p) => p.variant.toLowerCase() === variant.toLowerCase()))
+    .find((p): p is NonNullable<typeof p> => Boolean(p));
   if (!price) return { value: null, reason: "no_price_for_variant" };
   const value = price[priceField];
-  if (value == null) return { value: null, reason: "null_price" };
-  return { value };
+  if (value == null) return { value: null, matchedVariant: price.variant, reason: "null_price" };
+  return { value, matchedVariant: price.variant };
 }
 
 let batchStatus: {
