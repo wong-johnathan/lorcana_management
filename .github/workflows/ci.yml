@@ -8,7 +8,6 @@ on:
 
 env:
   NODE_VERSION: "22"
-  PYTHON_VERSION: "3.12"
   POSTGRES_USER: lorcana
   POSTGRES_PASSWORD: lorcana
   POSTGRES_DB: lorcana_inventory
@@ -106,19 +105,6 @@ jobs:
             echo "No test script configured — skipping"
           fi
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        run: python -m pip install uv==0.11.6
-
-      - name: Run OCR service tests
-        working-directory: ocr-service
-        run: |
-          uv sync --frozen --group dev
-          uv run pytest -q
-
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -151,13 +137,10 @@ jobs:
         working-directory: client
         run: npm run build
 
-      - name: Build OCR service image
-        run: docker build -t lorcana-ocr:test ./ocr-service
-
   docker-publish:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
@@ -192,16 +175,5 @@ jobs:
           tags: |
             wongjohnathanwh741/lorcana-nginx:latest
             wongjohnathanwh741/lorcana-nginx:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push OCR image
-        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
-        with:
-          context: ./ocr-service
-          push: true
-          tags: |
-            wongjohnathanwh741/lorcana-ocr:latest
-            wongjohnathanwh741/lorcana-ocr:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

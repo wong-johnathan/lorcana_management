@@ -152,35 +152,3 @@ export interface SyncStatus {
   startedAt: string | null;
   completedAt: string | null;
 }
-
-export type OcrDecision = "exact" | "high" | "ambiguous" | "none";
-
-export interface OcrRecognitionCandidate {
-  card: Card;
-  score: number;
-  confidence: number;
-  reasons: string[];
-}
-
-export interface OcrRecognitionResponse {
-  scanId: string;
-  decision: OcrDecision;
-  quality: {
-    sharpness: number;
-    glare: number;
-    cardCoverage: number;
-    rotation: number;
-  };
-  recognized: {
-    collectorIdentifier: string | null;
-    name: string | null;
-    subtitle: string | null;
-    inkCost: number | null;
-    cardType: string | null;
-    rawText: string;
-  };
-  candidates: OcrRecognitionCandidate[];
-  engine: string;
-  confidence: number;
-  processingMs: number;
-}

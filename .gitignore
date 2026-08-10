@@ -3,10 +3,6 @@ dist
 .env
 *.log
 *.tsbuildinfo
-.venv/
-.pytest_cache/
-__pycache__/
-*.pyc
 .playwright-mcp/
 # Generated OCR index (run: npm run generate-ocr-index)
 client/src/modules/beta/ocr/data/ocr-index.json
