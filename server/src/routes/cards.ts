@@ -304,6 +304,15 @@ cardsRouter.get("/master-set/estimate", async (req: Request, res: Response) => {
         const byVariant = breakdownByVariant.get(variant)!;
         const result = priceForVariant(card.prices, variant, priceField);
 
+        if (
+          variant.toLowerCase() === "normal" &&
+          variants.some((v) => v.toLowerCase() === "foil") &&
+          result.value == null &&
+          priceForVariant(card.prices, "Foil", priceField).value != null
+        ) {
+          continue;
+        }
+
         if (result.value != null) {
           total += result.value;
           pricedVariantCount++;
