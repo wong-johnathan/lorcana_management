@@ -138,7 +138,11 @@ function formatCardLine(match: NoLlmCardMatch): string {
   return `${card.name}${subtitle}`;
 }
 
-function rotateCanvas(sourceCanvas: HTMLCanvasElement, degrees: 0 | 90 | 180 | 270): HTMLCanvasElement {
+function transformCanvas(
+  sourceCanvas: HTMLCanvasElement,
+  degrees: 0 | 90 | 180 | 270,
+  flipX: boolean
+): HTMLCanvasElement {
   const output = document.createElement("canvas");
   const sideways = degrees === 90 || degrees === 270;
   output.width = sideways ? sourceCanvas.height : sourceCanvas.width;
@@ -149,6 +153,7 @@ function rotateCanvas(sourceCanvas: HTMLCanvasElement, degrees: 0 | 90 | 180 | 2
 
   ctx.translate(output.width / 2, output.height / 2);
   ctx.rotate((degrees * Math.PI) / 180);
+  ctx.scale(flipX ? -1 : 1, 1);
   ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
   return output;
 }
@@ -550,31 +555,41 @@ export default function NoLlmScanPage() {
 
     try {
       const worker = await getOcrWorker();
-      const degrees: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
-      const rotatedCanvases = degrees.map((degree) => ({ degree, canvas: rotateCanvas(canvas, degree) }));
+      const rotations: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
+      const transforms = rotations.flatMap((degree) => [
+        { degree, flipX: false },
+        { degree, flipX: true },
+      ]);
+      const transformedCanvases = transforms.map((transform) => ({
+        ...transform,
+        canvas: transformCanvas(canvas, transform.degree, transform.flipX),
+      }));
       const orientationCandidates: OrientationCandidate[] = [];
 
       setOcrState((current) => ({ ...current, status: "orienting", message: "Finding upright card orientation..." }));
-      for (const candidate of rotatedCanvases) {
+      for (const candidate of transformedCanvases) {
         const identifier = await recognizeZone(worker, candidate.canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
-        orientationCandidates.push({ degrees: candidate.degree, identifier });
+        orientationCandidates.push({ degrees: candidate.degree, flipX: candidate.flipX, identifier });
         setOcrState((current) => ({
           ...current,
-          rawText: { ...current.rawText, [`identifier_${candidate.degree}`]: identifier },
+          rawText: { ...current.rawText, [`identifier_${candidate.degree}${candidate.flipX ? "_flip" : ""}`]: identifier },
         }));
       }
 
       const bestOrientation = chooseBestOrientation(orientationCandidates);
-      const orientedCanvas = rotatedCanvases.find((candidate) => candidate.degree === bestOrientation.degrees)?.canvas ?? canvas;
+      const orientedCanvas =
+        transformedCanvases.find(
+          (candidate) => candidate.degree === bestOrientation.degrees && candidate.flipX === bestOrientation.flipX
+        )?.canvas ?? canvas;
       copyCanvas(orientedCanvas, canvas);
 
       setOcrState((current) => ({
         ...current,
         status: "reading",
-        message: `Reading upright card zones (${bestOrientation.degrees}° rotation, identifier score ${bestOrientation.score})...`,
+        message: `Reading upright card zones (${bestOrientation.degrees}°${bestOrientation.flipX ? ", flipped" : ""}, identifier score ${bestOrientation.score})...`,
         rawText: {
           ...current.rawText,
-          orientation: `${bestOrientation.degrees}°`,
+          orientation: `${bestOrientation.degrees}°${bestOrientation.flipX ? " + flip" : ""}`,
           identifier: bestOrientation.identifier,
         },
       }));
@@ -588,7 +603,7 @@ export default function NoLlmScanPage() {
       }));
       const typeLine = await recognizeZone(worker, orientedCanvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
       const rawText = {
-        orientation: `${bestOrientation.degrees}°`,
+        orientation: `${bestOrientation.degrees}°${bestOrientation.flipX ? " + flip" : ""}`,
         orientationScore: String(bestOrientation.score),
         identifier: bestOrientation.identifier,
         title,

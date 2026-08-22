@@ -9,12 +9,26 @@ test("scoreIdentifierOcr rewards valid Lorcana collector identifiers", () => {
 
 test("chooseBestOrientation picks the rotation with readable identifier text", () => {
   const best = chooseBestOrientation([
-    { degrees: 0, identifier: "Te TT." },
-    { degrees: 90, identifier: "LALCY ASEmmsna" },
-    { degrees: 180, identifier: "204/204 EN 8" },
-    { degrees: 270, identifier: "RY ek kK" },
+    { degrees: 0, flipX: false, identifier: "Te TT." },
+    { degrees: 90, flipX: false, identifier: "LALCY ASEmmsna" },
+    { degrees: 180, flipX: false, identifier: "204/204 EN 8" },
+    { degrees: 270, flipX: false, identifier: "RY ek kK" },
   ]);
 
   assert.equal(best.degrees, 180);
+  assert.equal(best.flipX, false);
+  assert.ok(best.score >= 80);
+});
+
+test("chooseBestOrientation can select a flipped mobile camera correction", () => {
+  const best = chooseBestOrientation([
+    { degrees: 0, flipX: false, identifier: "Te TT." },
+    { degrees: 90, flipX: false, identifier: "ASEmmsna" },
+    { degrees: 90, flipX: true, identifier: "204/204 EN 8" },
+    { degrees: 180, flipX: false, identifier: "RY ek kK" },
+  ]);
+
+  assert.equal(best.degrees, 90);
+  assert.equal(best.flipX, true);
   assert.ok(best.score >= 80);
 });

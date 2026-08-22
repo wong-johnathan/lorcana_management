@@ -1,5 +1,6 @@
 export type OrientationCandidate = {
   degrees: 0 | 90 | 180 | 270;
+  flipX: boolean;
   identifier: string;
 };
 
