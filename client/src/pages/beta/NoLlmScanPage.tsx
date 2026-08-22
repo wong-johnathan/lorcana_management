@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
+import { chooseBestOrientation, type OrientationCandidate } from "./noLlmOrientation";
 
 type CvModule = any;
 
@@ -30,7 +31,7 @@ type Metrics = {
 };
 
 type OcrState = {
-  status: "idle" | "loading" | "reading" | "matching" | "matched" | "error";
+  status: "idle" | "loading" | "orienting" | "reading" | "matching" | "matched" | "no_match" | "error";
   message: string;
   rawText: Record<string, string>;
   matches: NoLlmCardMatch[];
@@ -135,6 +136,30 @@ function formatCardLine(match: NoLlmCardMatch): string {
   const card = match.card;
   const subtitle = card.subtitle ? ` — ${card.subtitle}` : "";
   return `${card.name}${subtitle}`;
+}
+
+function rotateCanvas(sourceCanvas: HTMLCanvasElement, degrees: 0 | 90 | 180 | 270): HTMLCanvasElement {
+  const output = document.createElement("canvas");
+  const sideways = degrees === 90 || degrees === 270;
+  output.width = sideways ? sourceCanvas.height : sourceCanvas.width;
+  output.height = sideways ? sourceCanvas.width : sourceCanvas.height;
+
+  const ctx = output.getContext("2d");
+  if (!ctx) return sourceCanvas;
+
+  ctx.translate(output.width / 2, output.height / 2);
+  ctx.rotate((degrees * Math.PI) / 180);
+  ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+  return output;
+}
+
+function copyCanvas(sourceCanvas: HTMLCanvasElement, destinationCanvas: HTMLCanvasElement) {
+  destinationCanvas.width = sourceCanvas.width;
+  destinationCanvas.height = sourceCanvas.height;
+  const ctx = destinationCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, destinationCanvas.width, destinationCanvas.height);
+  ctx.drawImage(sourceCanvas, 0, 0);
 }
 
 function distance(a: Point, b: Point): number {
@@ -525,38 +550,66 @@ export default function NoLlmScanPage() {
 
     try {
       const worker = await getOcrWorker();
-      setOcrState((current) => ({ ...current, status: "reading", message: "Reading card identifier..." }));
-      const identifier = await recognizeZone(worker, canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
+      const degrees: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
+      const rotatedCanvases = degrees.map((degree) => ({ degree, canvas: rotateCanvas(canvas, degree) }));
+      const orientationCandidates: OrientationCandidate[] = [];
+
+      setOcrState((current) => ({ ...current, status: "orienting", message: "Finding upright card orientation..." }));
+      for (const candidate of rotatedCanvases) {
+        const identifier = await recognizeZone(worker, candidate.canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
+        orientationCandidates.push({ degrees: candidate.degree, identifier });
+        setOcrState((current) => ({
+          ...current,
+          rawText: { ...current.rawText, [`identifier_${candidate.degree}`]: identifier },
+        }));
+      }
+
+      const bestOrientation = chooseBestOrientation(orientationCandidates);
+      const orientedCanvas = rotatedCanvases.find((candidate) => candidate.degree === bestOrientation.degrees)?.canvas ?? canvas;
+      copyCanvas(orientedCanvas, canvas);
 
       setOcrState((current) => ({
         ...current,
-        message: "Reading card name...",
-        rawText: { ...current.rawText, identifier },
+        status: "reading",
+        message: `Reading upright card zones (${bestOrientation.degrees}° rotation, identifier score ${bestOrientation.score})...`,
+        rawText: {
+          ...current.rawText,
+          orientation: `${bestOrientation.degrees}°`,
+          identifier: bestOrientation.identifier,
+        },
       }));
-      const title = await recognizeZone(worker, canvas, OCR_ZONES.title, TEXT_WHITELIST);
+
+      const title = await recognizeZone(worker, orientedCanvas, OCR_ZONES.title, TEXT_WHITELIST);
 
       setOcrState((current) => ({
         ...current,
         message: "Reading type line...",
-        rawText: { ...current.rawText, identifier, title },
+        rawText: { ...current.rawText, title },
       }));
-      const typeLine = await recognizeZone(worker, canvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
-      const rawText = { identifier, title, typeLine };
+      const typeLine = await recognizeZone(worker, orientedCanvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
+      const rawText = {
+        orientation: `${bestOrientation.degrees}°`,
+        orientationScore: String(bestOrientation.score),
+        identifier: bestOrientation.identifier,
+        title,
+        typeLine,
+      };
 
       setOcrState({ status: "matching", message: "Matching OCR text against card database...", rawText, matches: [], error: "" });
       const result = await cardsApi.matchNoLlm({
-        fullIdentifier: identifier,
+        fullIdentifier: bestOrientation.identifier,
         name: title,
         typeLine,
         rawText,
       });
 
+      const hasMatch = result.matches.length > 0;
       setOcrState({
-        status: "matched",
-        message: result.matches.length ? "Best database match found." : "No confident database match found.",
-        rawText: result.recognized.rawText,
+        status: hasMatch ? "matched" : "no_match",
+        message: hasMatch ? "Best database match found." : "No confident database match found.",
+        rawText: { ...rawText, ...result.recognized.rawText },
         matches: result.matches,
-        error: result.matches.length ? "" : "Try better lighting or tap Scan again.",
+        error: hasMatch ? "" : "Try better lighting or tap Scan again.",
       });
     } catch (err) {
       console.error("No-LLM OCR/match failed", err);
@@ -778,7 +831,7 @@ export default function NoLlmScanPage() {
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${
                     ocrState.status === "matched"
                       ? "bg-green-500/15 text-green-300 border border-green-500/30"
-                      : ocrState.status === "error"
+                      : ocrState.status === "error" || ocrState.status === "no_match"
                         ? "bg-red-500/15 text-red-300 border border-red-500/30"
                         : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
                   }`}
@@ -791,6 +844,13 @@ export default function NoLlmScanPage() {
                 <div className="text-gray-300">{ocrState.message}</div>
                 {ocrState.error && <div className="mt-2 text-red-300">{ocrState.error}</div>}
                 <dl className="mt-3 space-y-1 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="w-24 text-gray-500">Orientation</dt>
+                    <dd className="text-gray-200 break-all">
+                      {ocrState.rawText.orientation || "—"}
+                      {ocrState.rawText.orientationScore ? ` · score ${ocrState.rawText.orientationScore}` : ""}
+                    </dd>
+                  </div>
                   <div className="flex gap-2">
                     <dt className="w-24 text-gray-500">Identifier</dt>
                     <dd className="text-gray-200 break-all">{ocrState.rawText.identifier || "—"}</dd>
@@ -861,7 +921,7 @@ export default function NoLlmScanPage() {
                 </div>
               )}
 
-              {!bestMatch && ocrState.matches.length === 0 && ocrState.status === "matched" && (
+              {!bestMatch && ocrState.matches.length === 0 && ocrState.status === "no_match" && (
                 <button
                   type="button"
                   onClick={resetCapture}
