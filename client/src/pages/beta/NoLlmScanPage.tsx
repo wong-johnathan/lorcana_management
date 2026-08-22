@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createWorker, PSM } from "tesseract.js";
+import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
+import type { NoLlmCardMatch } from "../../types";
 
 type CvModule = any;
 
@@ -26,6 +29,14 @@ type Metrics = {
   status: string;
 };
 
+type OcrState = {
+  status: "idle" | "loading" | "reading" | "matching" | "matched" | "error";
+  message: string;
+  rawText: Record<string, string>;
+  matches: NoLlmCardMatch[];
+  error: string;
+};
+
 const TARGET_CARD_ASPECT = 1.4;
 const DETECTION_INTERVAL_MS = 260;
 const STABLE_FRAME_TARGET = 3;
@@ -33,6 +44,17 @@ const MIN_AREA_RATIO = 0.015;
 const MAX_AREA_RATIO = 0.92;
 
 let cvPromise: Promise<CvModule> | null = null;
+type OcrWorker = Awaited<ReturnType<typeof createWorker>>;
+let ocrWorkerPromise: Promise<OcrWorker> | null = null;
+
+const OCR_ZONES = {
+  identifier: { x: 0.015, y: 0.875, w: 0.68, h: 0.105 },
+  title: { x: 0.055, y: 0.025, w: 0.74, h: 0.085 },
+  typeLine: { x: 0.05, y: 0.535, w: 0.9, h: 0.075 },
+} as const;
+
+const IDENTIFIER_WHITELIST = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/•·.-|! ";
+const TEXT_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -'.,•:";
 
 function loadOpenCv(): Promise<CvModule> {
   if (!cvPromise) {
@@ -45,6 +67,74 @@ function loadOpenCv(): Promise<CvModule> {
     });
   }
   return cvPromise;
+}
+
+function getOcrWorker(): Promise<OcrWorker> {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = createWorker("eng");
+  }
+  return ocrWorkerPromise;
+}
+
+function cleanOcrText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function cropZoneToDataUrl(
+  sourceCanvas: HTMLCanvasElement,
+  zone: { x: number; y: number; w: number; h: number },
+  scale = 3
+): string {
+  const sx = Math.round(sourceCanvas.width * zone.x);
+  const sy = Math.round(sourceCanvas.height * zone.y);
+  const sw = Math.round(sourceCanvas.width * zone.w);
+  const sh = Math.round(sourceCanvas.height * zone.h);
+  const output = document.createElement("canvas");
+  output.width = Math.max(1, sw * scale);
+  output.height = Math.max(1, sh * scale);
+
+  const ctx = output.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return sourceCanvas.toDataURL("image/png");
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, output.width, output.height);
+
+  const imageData = ctx.getImageData(0, 0, output.width, output.height);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
+    data[i] = contrasted;
+    data[i + 1] = contrasted;
+    data[i + 2] = contrasted;
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  return output.toDataURL("image/png");
+}
+
+async function recognizeZone(
+  worker: OcrWorker,
+  sourceCanvas: HTMLCanvasElement,
+  zone: { x: number; y: number; w: number; h: number },
+  whitelist: string
+): Promise<string> {
+  await worker.setParameters({
+    tessedit_pageseg_mode: PSM.SINGLE_LINE,
+    tessedit_char_whitelist: whitelist,
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300",
+  });
+  const image = cropZoneToDataUrl(sourceCanvas, zone);
+  const result = await worker.recognize(image);
+  return cleanOcrText(result.data.text);
+}
+
+function formatCardLine(match: NoLlmCardMatch): string {
+  const card = match.card;
+  const subtitle = card.subtitle ? ` — ${card.subtitle}` : "";
+  return `${card.name}${subtitle}`;
 }
 
 function distance(a: Point, b: Point): number {
@@ -348,6 +438,14 @@ export default function NoLlmScanPage() {
     status: "Loading OpenCV...",
   });
   const [capturedAt, setCapturedAt] = useState<string | null>(null);
+  const [ocrState, setOcrState] = useState<OcrState>({
+    status: "idle",
+    message: "Capture a card to read OCR zones.",
+    rawText: {},
+    matches: [],
+    error: "",
+  });
+  const [inventoryMessage, setInventoryMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -421,12 +519,76 @@ export default function NoLlmScanPage() {
     };
   }, [error, loadingCv]);
 
+  const recognizeCapturedCard = useCallback(async (canvas: HTMLCanvasElement) => {
+    setInventoryMessage("");
+    setOcrState({ status: "loading", message: "Loading browser OCR worker...", rawText: {}, matches: [], error: "" });
+
+    try {
+      const worker = await getOcrWorker();
+      setOcrState((current) => ({ ...current, status: "reading", message: "Reading card identifier..." }));
+      const identifier = await recognizeZone(worker, canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
+
+      setOcrState((current) => ({
+        ...current,
+        message: "Reading card name...",
+        rawText: { ...current.rawText, identifier },
+      }));
+      const title = await recognizeZone(worker, canvas, OCR_ZONES.title, TEXT_WHITELIST);
+
+      setOcrState((current) => ({
+        ...current,
+        message: "Reading type line...",
+        rawText: { ...current.rawText, identifier, title },
+      }));
+      const typeLine = await recognizeZone(worker, canvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
+      const rawText = { identifier, title, typeLine };
+
+      setOcrState({ status: "matching", message: "Matching OCR text against card database...", rawText, matches: [], error: "" });
+      const result = await cardsApi.matchNoLlm({
+        fullIdentifier: identifier,
+        name: title,
+        typeLine,
+        rawText,
+      });
+
+      setOcrState({
+        status: "matched",
+        message: result.matches.length ? "Best database match found." : "No confident database match found.",
+        rawText: result.recognized.rawText,
+        matches: result.matches,
+        error: result.matches.length ? "" : "Try better lighting or tap Scan again.",
+      });
+    } catch (err) {
+      console.error("No-LLM OCR/match failed", err);
+      setOcrState({
+        status: "error",
+        message: "OCR or matching failed.",
+        rawText: {},
+        matches: [],
+        error: err instanceof Error ? err.message : "Unknown OCR error",
+      });
+    }
+  }, []);
+
+  const addMatchToInventory = useCallback(async (match: NoLlmCardMatch, normalDelta: number, foilDelta: number) => {
+    setInventoryMessage(`Adding ${formatCardLine(match)}...`);
+    try {
+      await inventoryApi.add(match.card.id, normalDelta, foilDelta);
+      setInventoryMessage(`Added ${normalDelta ? "+1 normal" : "+1 foil"}: ${formatCardLine(match)}`);
+    } catch (err) {
+      console.error("No-LLM inventory add failed", err);
+      setInventoryMessage(err instanceof Error ? err.message : "Failed to add card to inventory");
+    }
+  }, []);
+
   const resetCapture = useCallback(() => {
     capturedRef.current = false;
     stableFramesRef.current = 0;
     previousDetectionRef.current = null;
     setCapturedAt(null);
     setScannerActive(true);
+    setOcrState({ status: "idle", message: "Capture a card to read OCR zones.", rawText: {}, matches: [], error: "" });
+    setInventoryMessage("");
     const canvas = cropCanvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -493,14 +655,16 @@ export default function NoLlmScanPage() {
         warpCardToCanvas(cv, imageData, detection.points, cropCanvas);
         setCapturedAt(new Date().toLocaleTimeString());
         setScannerActive(false);
+        void recognizeCapturedCard(cropCanvas);
       }
     }, DETECTION_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
-  }, [cameraReady, error, scannerActive]);
+  }, [cameraReady, error, recognizeCapturedCard, scannerActive]);
 
   const formatPercent = (value: number | null) => (value == null ? "—" : `${(value * 100).toFixed(1)}%`);
   const formatNumber = (value: number | null) => (value == null ? "—" : value.toFixed(2));
+  const bestMatch = ocrState.matches[0];
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-6">
@@ -510,8 +674,9 @@ export default function NoLlmScanPage() {
             <p className="text-xs uppercase tracking-[0.25em] text-amber-400">Beta</p>
             <h1 className="text-3xl font-bold">No-LLM Scanner</h1>
             <p className="text-gray-400 max-w-2xl mt-2">
-              Browser-only OpenCV proof-of-concept. It detects Lorcana cards as rounded rectangles,
-              auto-captures after stable frames, and perspective-corrects the crop. No Gemini or LLM calls.
+              Browser OpenCV + OCR proof-of-concept. It detects Lorcana cards as rounded rectangles,
+              auto-captures after stable frames, reads identifying text zones, then matches against your card DB.
+              No Gemini or LLM calls.
             </p>
           </div>
           <button
@@ -599,8 +764,112 @@ export default function NoLlmScanPage() {
                 {!capturedAt && <p className="absolute text-sm text-gray-600">Hold a card in frame</p>}
               </div>
               <p className="text-xs text-gray-500 mt-3">
-                OCR and inventory matching are intentionally not wired yet; this beta first proves reliable card detection/cropping on real phones.
+                Crop is fed into browser OCR zones for identifier/name/type-line matching. All displayed card facts come from the database after match.
               </p>
+            </div>
+
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-4 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-semibold text-lg">OCR + DB match</h2>
+                  <p className="text-sm text-gray-400">Reads only lookup evidence; name/type/lore/set come from Prisma.</p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    ocrState.status === "matched"
+                      ? "bg-green-500/15 text-green-300 border border-green-500/30"
+                      : ocrState.status === "error"
+                        ? "bg-red-500/15 text-red-300 border border-red-500/30"
+                        : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                  }`}
+                >
+                  {ocrState.status}
+                </span>
+              </div>
+
+              <div className="rounded-xl bg-gray-950 border border-gray-800 p-3 text-sm">
+                <div className="text-gray-300">{ocrState.message}</div>
+                {ocrState.error && <div className="mt-2 text-red-300">{ocrState.error}</div>}
+                <dl className="mt-3 space-y-1 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="w-24 text-gray-500">Identifier</dt>
+                    <dd className="text-gray-200 break-all">{ocrState.rawText.identifier || "—"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 text-gray-500">Name zone</dt>
+                    <dd className="text-gray-200 break-all">{ocrState.rawText.title || "—"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 text-gray-500">Type zone</dt>
+                    <dd className="text-gray-200 break-all">{ocrState.rawText.typeLine || "—"}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              {bestMatch && (
+                <div className="rounded-xl border border-green-700/40 bg-green-950/20 p-3 space-y-3">
+                  <div className="flex gap-3">
+                    {bestMatch.card.imageUrl && (
+                      <img
+                        src={bestMatch.card.imageUrl}
+                        alt={formatCardLine(bestMatch)}
+                        className="h-32 w-24 rounded-lg object-cover border border-gray-700 bg-black"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-green-300 font-semibold">Best match · score {bestMatch.score}</div>
+                      <h3 className="font-semibold text-white leading-tight mt-1">{formatCardLine(bestMatch)}</h3>
+                      <p className="text-sm text-gray-300 mt-1">
+                        {bestMatch.card.cardType} · {bestMatch.card.types.join(" · ") || "No subtype"}
+                      </p>
+                      <p className="text-sm text-gray-400 mt-1">
+                        {bestMatch.card.setName} ({bestMatch.card.setCode}) · {bestMatch.card.rarity}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        Lore {bestMatch.card.lore} · Ink {bestMatch.card.inkCost} · #{bestMatch.card.cardNumber}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void addMatchToInventory(bestMatch, 1, 0)}
+                      className="rounded-lg bg-green-500 px-3 py-2 text-sm font-semibold text-gray-950 hover:bg-green-400"
+                    >
+                      +1 Normal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void addMatchToInventory(bestMatch, 0, 1)}
+                      className="rounded-lg bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400"
+                    >
+                      +1 Foil
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetCapture}
+                      className="rounded-lg border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800"
+                    >
+                      Wrong card / scan again
+                    </button>
+                  </div>
+                  {inventoryMessage && <div className="text-sm text-amber-200">{inventoryMessage}</div>}
+                  <div className="text-xs text-gray-500">
+                    Reasons: {bestMatch.reasons.join(", ") || "score-based fallback"}
+                  </div>
+                </div>
+              )}
+
+              {!bestMatch && ocrState.matches.length === 0 && ocrState.status === "matched" && (
+                <button
+                  type="button"
+                  onClick={resetCapture}
+                  className="w-full rounded-lg border border-gray-700 px-3 py-2 text-sm font-semibold text-gray-200 hover:bg-gray-800"
+                >
+                  Scan again
+                </button>
+              )}
             </div>
           </aside>
         </div>

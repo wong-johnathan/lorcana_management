@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { recognizeCard } from "../services/cardRecognition.js";
 import { analyzeCardMarket } from "../services/analysis.js";
+import { buildRecognizedOcr, rankNoLlmMatches } from "../services/noLlmMatcher.js";
 import type { AuthPayload } from "../middleware/auth.js";
 
 const prisma = new PrismaClient();
@@ -223,6 +224,44 @@ cardsRouter.post("/recognize", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Recognition error:", error);
     res.status(500).json({ error: "Recognition failed" });
+  }
+});
+
+cardsRouter.post("/match-no-llm", async (req: Request, res: Response) => {
+  try {
+    const recognized = buildRecognizedOcr(req.body?.ocr ?? {});
+    const identifierClauses: any[] = [];
+    const textClauses: any[] = [];
+
+    if (recognized.fullIdentifier) {
+      identifierClauses.push({ cardNumber: { equals: recognized.fullIdentifier } });
+    }
+    if (recognized.collectorNumber) {
+      identifierClauses.push({ cardNumber: { startsWith: recognized.collectorNumber } });
+    }
+    if (recognized.name.length >= 3) {
+      textClauses.push({ name: { contains: recognized.name, mode: "insensitive" } });
+    }
+    if (recognized.subtitle.length >= 3) {
+      textClauses.push({ subtitle: { contains: recognized.subtitle, mode: "insensitive" } });
+    }
+
+    if (!recognized.fullIdentifier && !recognized.collectorNumber && !recognized.name && !recognized.subtitle && !recognized.typeLine) {
+      res.status(400).json({ error: "OCR text did not include enough evidence to match a card", recognized, matches: [] });
+      return;
+    }
+
+    const candidates = await prisma.card.findMany({
+      where: identifierClauses.length ? { OR: [...identifierClauses, ...textClauses] } : {},
+      include: { prices: true },
+      take: identifierClauses.length ? 80 : 5000,
+    });
+
+    const matches = rankNoLlmMatches(candidates, recognized).slice(0, 5);
+    res.json({ recognized, matches });
+  } catch (error) {
+    console.error("No-LLM match error:", error);
+    res.status(500).json({ error: "No-LLM card match failed" });
   }
 });
 

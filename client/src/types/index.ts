@@ -85,6 +85,28 @@ export interface RecognizeResult {
   error?: string;
 }
 
+export interface NoLlmRecognizedCard {
+  fullIdentifier: string;
+  collectorNumber: string;
+  setCode: string;
+  name: string;
+  subtitle: string;
+  typeLine: string;
+  rawText: Record<string, string>;
+}
+
+export interface NoLlmCardMatch {
+  card: Card;
+  score: number;
+  reasons: string[];
+}
+
+export interface NoLlmMatchResult {
+  recognized: NoLlmRecognizedCard;
+  matches: NoLlmCardMatch[];
+  error?: string;
+}
+
 export interface BatchItem {
   image: string;
   quantity: number;

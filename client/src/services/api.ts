@@ -6,6 +6,7 @@ import type {
   FilterOptions,
   InventoryStats,
   RecognizeResult,
+  NoLlmMatchResult,
   BatchItem,
   BatchResult,
   UserSettings,
@@ -73,6 +74,11 @@ export const cards = {
     request<RecognizeResult>("/cards/recognize", {
       method: "POST",
       body: JSON.stringify({ image }),
+    }),
+  matchNoLlm: (ocr: Record<string, unknown>) =>
+    request<NoLlmMatchResult>("/cards/match-no-llm", {
+      method: "POST",
+      body: JSON.stringify({ ocr }),
     }),
 };
 
