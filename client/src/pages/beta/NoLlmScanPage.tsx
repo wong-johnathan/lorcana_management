@@ -589,7 +589,30 @@ export default function NoLlmScanPage() {
         }));
       }
 
-      const bestOrientation = chooseBestOrientation(orientationCandidates);
+      let bestOrientation = chooseBestOrientation(orientationCandidates);
+
+      if (bestOrientation.score < 70) {
+        setOcrState((current) => ({
+          ...current,
+          status: "orienting",
+          message: "Identifier is unclear; checking title text for mirror/flip correction...",
+        }));
+
+        for (const candidate of transformedCanvases) {
+          const title = await recognizeZone(worker, candidate.canvas, OCR_ZONES.title, TEXT_WHITELIST);
+          const orientationCandidate = orientationCandidates.find(
+            (item) => item.degrees === candidate.degree && item.flipX === candidate.flipX
+          );
+          if (orientationCandidate) orientationCandidate.title = title;
+          setOcrState((current) => ({
+            ...current,
+            rawText: { ...current.rawText, [`title_${candidate.degree}${candidate.flipX ? "_flip" : ""}`]: title },
+          }));
+        }
+
+        bestOrientation = chooseBestOrientation(orientationCandidates);
+      }
+
       const orientedCanvas =
         transformedCanvases.find(
           (candidate) => candidate.degree === bestOrientation.degrees && candidate.flipX === bestOrientation.flipX

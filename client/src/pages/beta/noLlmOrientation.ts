@@ -2,6 +2,8 @@ export type OrientationCandidate = {
   degrees: 0 | 90 | 180 | 270;
   flipX: boolean;
   identifier: string;
+  title?: string;
+  typeLine?: string;
 };
 
 export type ScoredOrientationCandidate = OrientationCandidate & {
@@ -33,12 +35,76 @@ export function scoreIdentifierOcr(value: string): number {
   return Math.max(0, Math.min(100, score - noisePenalty));
 }
 
+const COMMON_CARD_WORDS = new Set([
+  "A",
+  "AN",
+  "AND",
+  "ARE",
+  "BE",
+  "CARD",
+  "CHARACTER",
+  "DIDN",
+  "DIDNT",
+  "DREAMBORN",
+  "EXERT",
+  "HAVE",
+  "IF",
+  "I",
+  "INK",
+  "ITEM",
+  "LORE",
+  "OF",
+  "PLAY",
+  "PLAYER",
+  "QUEST",
+  "SONGBORN",
+  "SONG",
+  "THE",
+  "TO",
+  "YOU",
+  "YOUR",
+]);
+
+export function scoreReadableTextOcr(value: string): number {
+  const normalized = value
+    .toUpperCase()
+    .replace(/[^A-Z0-9' ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!/[A-Z]/.test(normalized)) return 0;
+
+  const compact = normalized.replace(/[^A-Z0-9]/g, "");
+  const tokens = normalized.split(" ").filter(Boolean);
+  const alphaCount = (compact.match(/[A-Z]/g) ?? []).length;
+  const commonHits = tokens.filter((token) => COMMON_CARD_WORDS.has(token.replace(/'/g, ""))).length;
+  const vowelPoorTokens = tokens.filter((token) => token.length >= 4 && !/[AEIOUY]/.test(token)).length;
+
+  let score = 0;
+  if (compact.length >= 4 && compact.length <= 60) score += 10;
+  if (alphaCount / Math.max(compact.length, 1) > 0.65) score += 10;
+  if (tokens.length >= 2) score += 15;
+  if (/[AEIOUY]/.test(normalized)) score += 10;
+  score += Math.min(50, commonHits * 15);
+  score -= Math.min(25, vowelPoorTokens * 8);
+
+  return Math.max(0, Math.min(100, score));
+}
+
+export function scoreOrientationCandidate(candidate: OrientationCandidate): number {
+  const identifierScore = scoreIdentifierOcr(candidate.identifier);
+  if (identifierScore >= 70) return identifierScore;
+
+  const titleScore = candidate.title ? scoreReadableTextOcr(candidate.title) : 0;
+  const typeScore = candidate.typeLine ? scoreReadableTextOcr(candidate.typeLine) : 0;
+  return Math.max(identifierScore, Math.min(100, titleScore + Math.min(20, typeScore * 0.35)));
+}
+
 export function chooseBestOrientation<T extends OrientationCandidate>(candidates: T[]): T & { score: number } {
   if (candidates.length === 0) {
     throw new Error("At least one orientation candidate is required");
   }
 
   return candidates
-    .map((candidate) => ({ ...candidate, score: scoreIdentifierOcr(candidate.identifier) }))
+    .map((candidate) => ({ ...candidate, score: scoreOrientationCandidate(candidate) }))
     .sort((a, b) => b.score - a.score)[0];
 }

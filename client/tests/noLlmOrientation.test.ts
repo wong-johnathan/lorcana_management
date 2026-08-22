@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chooseBestOrientation, scoreIdentifierOcr } from "../src/pages/beta/noLlmOrientation";
+import { chooseBestOrientation, scoreIdentifierOcr, scoreReadableTextOcr } from "../src/pages/beta/noLlmOrientation";
 
 test("scoreIdentifierOcr rewards valid Lorcana collector identifiers", () => {
   assert.ok(scoreIdentifierOcr("204/204 • EN • 8") > scoreIdentifierOcr("RY ek kK"));
@@ -31,4 +31,20 @@ test("chooseBestOrientation can select a flipped mobile camera correction", () =
   assert.equal(best.degrees, 90);
   assert.equal(best.flipX, true);
   assert.ok(best.score >= 80);
+});
+
+test("scoreReadableTextOcr rewards readable title-like OCR over mirrored garbage", () => {
+  assert.ok(scoreReadableTextOcr("IF I DIDN'T HAVE YOU") > scoreReadableTextOcr("UOY EVAH TNDID I FI"));
+  assert.ok(scoreReadableTextOcr("IF I DIDN'T HAVE YOU") > scoreReadableTextOcr("ASEmmsna"));
+});
+
+test("chooseBestOrientation uses title text to break low-identifier ties for mobile mirroring", () => {
+  const best = chooseBestOrientation([
+    { degrees: 0, flipX: false, identifier: "", title: "UOY EVAH TNDID I FI" },
+    { degrees: 0, flipX: true, identifier: "", title: "IF I DIDN'T HAVE YOU" },
+    { degrees: 180, flipX: false, identifier: "", title: "ASEmmsna" },
+  ]);
+
+  assert.equal(best.degrees, 0);
+  assert.equal(best.flipX, true);
 });
