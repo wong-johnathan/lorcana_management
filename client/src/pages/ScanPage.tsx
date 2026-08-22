@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { cards as cardsApi, inventory as inventoryApi } from "../services/api";
 import type { Card, RecognizedCard, BatchItem, BatchResultItem } from "../types";
 import CardDetail from "../components/CardDetail";
@@ -415,8 +416,13 @@ export default function ScanPage() {
 
   return (
     <div className="p-3 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Scan Card</h2>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Scan Card</h2>
+          <Link to="/beta/no-llm-scan" className="text-xs text-amber-400 hover:text-amber-300">
+            Try no-LLM OpenCV beta
+          </Link>
+        </div>
         <button
           onClick={() => {
             setBatchMode(!batchMode);

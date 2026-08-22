@@ -9,6 +9,7 @@ import SettingsPage from "./pages/SettingsPage";
 import PublicCollectionPage from "./pages/PublicCollectionPage";
 import CardDetailPage from "./pages/CardDetailPage";
 import MasterSetPage from "./pages/MasterSetPage";
+import NoLlmScanPage from "./pages/beta/NoLlmScanPage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -31,6 +32,7 @@ export default function App() {
         {user ? (
           <>
             <Route path="/scan" element={<ScanPage />} />
+            <Route path="/beta/no-llm-scan" element={<NoLlmScanPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </>
