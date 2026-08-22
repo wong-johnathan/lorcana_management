@@ -9,6 +9,11 @@ export type Rect = {
   height: number;
 };
 
+export type Point = {
+  x: number;
+  y: number;
+};
+
 export function getCoverSourceRect(
   sourceWidth: number,
   sourceHeight: number,
@@ -56,4 +61,27 @@ export function getTcgGuideRect(width: number, height: number, scale = 0.84): Re
     width: guideWidth,
     height: guideHeight,
   };
+}
+
+export function mapPointFromDetectionFrameToVideo(
+  point: Point,
+  detectionFrameWidth: number,
+  detectionFrameHeight: number,
+  videoSourceCrop: Rect
+): Point {
+  return {
+    x: videoSourceCrop.x + (point.x / detectionFrameWidth) * videoSourceCrop.width,
+    y: videoSourceCrop.y + (point.y / detectionFrameHeight) * videoSourceCrop.height,
+  };
+}
+
+export function mapPointsFromDetectionFrameToVideo(
+  points: Point[],
+  detectionFrameWidth: number,
+  detectionFrameHeight: number,
+  videoSourceCrop: Rect
+): Point[] {
+  return points.map((point) =>
+    mapPointFromDetectionFrameToVideo(point, detectionFrameWidth, detectionFrameHeight, videoSourceCrop)
+  );
 }

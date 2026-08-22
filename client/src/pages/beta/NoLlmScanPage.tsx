@@ -3,7 +3,14 @@ import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
 import { chooseBestOrientation, type OrientationCandidate } from "./noLlmOrientation";
-import { getCoverSourceRect, getTcgGuideRect, TCG_CARD_HEIGHT, TCG_CARD_RATIO, TCG_CARD_WIDTH } from "./noLlmViewport";
+import {
+  getCoverSourceRect,
+  getTcgGuideRect,
+  mapPointsFromDetectionFrameToVideo,
+  TCG_CARD_HEIGHT,
+  TCG_CARD_RATIO,
+  TCG_CARD_WIDTH,
+} from "./noLlmViewport";
 
 type CvModule = any;
 
@@ -46,6 +53,8 @@ const MIN_AREA_RATIO = 0.015;
 const MAX_AREA_RATIO = 0.92;
 const SCAN_FRAME_WIDTH = 672;
 const SCAN_FRAME_HEIGHT = Math.round(SCAN_FRAME_WIDTH / TCG_CARD_RATIO);
+const OCR_CROP_WIDTH = 1260;
+const OCR_CROP_HEIGHT = Math.round(OCR_CROP_WIDTH / TCG_CARD_RATIO);
 
 let cvPromise: Promise<CvModule> | null = null;
 type OcrWorker = Awaited<ReturnType<typeof createWorker>>;
@@ -407,8 +416,8 @@ function warpCardToCanvas(
   const sourceWidth = Math.max(topWidth, bottomWidth);
   const sourceHeight = Math.max(leftHeight, rightHeight);
   const portrait = sourceHeight >= sourceWidth;
-  const targetWidth = portrait ? 672 : 936;
-  const targetHeight = portrait ? 936 : 672;
+  const targetWidth = portrait ? OCR_CROP_WIDTH : OCR_CROP_HEIGHT;
+  const targetHeight = portrait ? OCR_CROP_HEIGHT : OCR_CROP_WIDTH;
 
   const src = cv.matFromImageData(imageData);
   const dst = new cv.Mat();
@@ -528,11 +537,24 @@ export default function NoLlmScanPage() {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
           },
           audio: false,
         });
+
+        const [videoTrack] = stream.getVideoTracks();
+        const capabilities = videoTrack?.getCapabilities?.() as
+          | (MediaTrackCapabilities & { focusMode?: string[]; exposureMode?: string[] })
+          | undefined;
+        const advanced: Array<Record<string, string>> = [];
+        if (capabilities?.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
+        if (capabilities?.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" });
+        if (advanced.length > 0) {
+          await videoTrack.applyConstraints({ advanced } as MediaTrackConstraints).catch((err) => {
+            console.warn("Could not apply continuous camera constraints", err);
+          });
+        }
 
         if (cancelled) {
           stream.getTracks().forEach((track) => track.stop());
@@ -772,7 +794,22 @@ export default function NoLlmScanPage() {
 
       if (ready && !capturedRef.current) {
         capturedRef.current = true;
-        warpCardToCanvas(cv, imageData, detection.points, cropCanvas);
+
+        const highResCanvas = document.createElement("canvas");
+        highResCanvas.width = video.videoWidth;
+        highResCanvas.height = video.videoHeight;
+        const highResCtx = highResCanvas.getContext("2d", { willReadFrequently: true });
+        if (!highResCtx) return;
+        highResCtx.drawImage(video, 0, 0, highResCanvas.width, highResCanvas.height);
+        const highResImageData = highResCtx.getImageData(0, 0, highResCanvas.width, highResCanvas.height);
+        const highResPoints = mapPointsFromDetectionFrameToVideo(
+          detection.points,
+          frameCanvas.width,
+          frameCanvas.height,
+          sourceCrop
+        );
+
+        warpCardToCanvas(cv, highResImageData, highResPoints, cropCanvas);
         setCapturedAt(new Date().toLocaleTimeString());
         setScannerActive(false);
         void recognizeCapturedCard(cropCanvas);
