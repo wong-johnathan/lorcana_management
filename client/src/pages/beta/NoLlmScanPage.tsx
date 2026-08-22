@@ -3,6 +3,7 @@ import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
 import { chooseBestOrientation, type OrientationCandidate } from "./noLlmOrientation";
+import { getCoverSourceRect, getTcgGuideRect, TCG_CARD_HEIGHT, TCG_CARD_RATIO, TCG_CARD_WIDTH } from "./noLlmViewport";
 
 type CvModule = any;
 
@@ -38,11 +39,13 @@ type OcrState = {
   error: string;
 };
 
-const TARGET_CARD_ASPECT = 1.4;
+const TARGET_CARD_ASPECT = TCG_CARD_HEIGHT / TCG_CARD_WIDTH;
 const DETECTION_INTERVAL_MS = 260;
 const STABLE_FRAME_TARGET = 3;
 const MIN_AREA_RATIO = 0.015;
 const MAX_AREA_RATIO = 0.92;
+const SCAN_FRAME_WIDTH = 672;
+const SCAN_FRAME_HEIGHT = Math.round(SCAN_FRAME_WIDTH / TCG_CARD_RATIO);
 
 let cvPromise: Promise<CvModule> | null = null;
 type OcrWorker = Awaited<ReturnType<typeof createWorker>>;
@@ -254,17 +257,24 @@ function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null
           try {
             const contourArea = cv.contourArea(contour);
             const rect = cv.minAreaRect(contour);
+            const orderedPoints = orderPoints(getRectPoints(cv, rect));
+            const topWidth = distance(orderedPoints[0], orderedPoints[1]);
+            const bottomWidth = distance(orderedPoints[3], orderedPoints[2]);
+            const leftHeight = distance(orderedPoints[0], orderedPoints[3]);
+            const rightHeight = distance(orderedPoints[1], orderedPoints[2]);
+            const visibleWidth = Math.max((topWidth + bottomWidth) / 2, 1);
+            const visibleHeight = Math.max((leftHeight + rightHeight) / 2, 1);
+            const aspectRatio = visibleHeight / visibleWidth;
             const rectWidth = Math.max(rect.size.width, 1);
             const rectHeight = Math.max(rect.size.height, 1);
-            const longSide = Math.max(rectWidth, rectHeight);
-            const shortSide = Math.min(rectWidth, rectHeight);
-            const aspectRatio = longSide / shortSide;
             const rectArea = rectWidth * rectHeight;
             const areaRatio = rectArea / frameArea;
             const fillRatio = contourArea / rectArea;
 
             if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) continue;
-            if (aspectRatio < 1.08 || aspectRatio > 1.9) continue;
+            // Force portrait TCG geometry. The old long-side/short-side check accepted landscape
+            // room rectangles because 16:9-ish background edges can still report ~1.4.
+            if (aspectRatio < 1.18 || aspectRatio > 1.72) continue;
             if (fillRatio < 0.18 || fillRatio > 1.15) continue;
 
             const centerDistance = Math.hypot(
@@ -284,7 +294,7 @@ function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null
 
             if (!best || score > best.score) {
               best = {
-                points: orderPoints(getRectPoints(cv, rect)),
+                points: orderedPoints,
                 aspectRatio,
                 fillRatio,
                 areaRatio,
@@ -341,9 +351,11 @@ function detectionsAreStable(a: Detection | null, b: Detection | null): boolean 
 function drawDetectionOverlay(
   canvas: HTMLCanvasElement,
   detection: Detection | null,
-  video: HTMLVideoElement
+  sourceWidth: number,
+  sourceHeight: number
 ) {
-  const rect = video.getBoundingClientRect();
+  const rect = canvas.parentElement?.getBoundingClientRect();
+  if (!rect) return;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(rect.width * dpr);
   canvas.height = Math.round(rect.height * dpr);
@@ -355,16 +367,17 @@ function drawDetectionOverlay(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, rect.width, rect.height);
 
-  ctx.strokeStyle = "rgba(251, 191, 36, 0.65)";
+  const guide = getTcgGuideRect(rect.width, rect.height, 0.84);
+  ctx.strokeStyle = "rgba(251, 191, 36, 0.75)";
   ctx.lineWidth = 2;
   ctx.setLineDash([10, 8]);
-  ctx.strokeRect(rect.width * 0.08, rect.height * 0.08, rect.width * 0.84, rect.height * 0.84);
+  ctx.strokeRect(guide.x, guide.y, guide.width, guide.height);
   ctx.setLineDash([]);
 
   if (!detection) return;
 
-  const scaleX = rect.width / video.videoWidth;
-  const scaleY = rect.height / video.videoHeight;
+  const scaleX = rect.width / sourceWidth;
+  const scaleY = rect.height / sourceHeight;
   ctx.strokeStyle = "#22c55e";
   ctx.fillStyle = "rgba(34, 197, 94, 0.14)";
   ctx.lineWidth = 4;
@@ -676,15 +689,31 @@ export default function NoLlmScanPage() {
       if (!cv || !video || !frameCanvas || !overlayCanvas || !cropCanvas) return;
       if (!video.videoWidth || !video.videoHeight) return;
 
-      frameCanvas.width = video.videoWidth;
-      frameCanvas.height = video.videoHeight;
+      frameCanvas.width = SCAN_FRAME_WIDTH;
+      frameCanvas.height = SCAN_FRAME_HEIGHT;
       const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
       if (!frameCtx) return;
 
-      frameCtx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+      const sourceCrop = getCoverSourceRect(
+        video.videoWidth,
+        video.videoHeight,
+        frameCanvas.width,
+        frameCanvas.height
+      );
+      frameCtx.drawImage(
+        video,
+        sourceCrop.x,
+        sourceCrop.y,
+        sourceCrop.width,
+        sourceCrop.height,
+        0,
+        0,
+        frameCanvas.width,
+        frameCanvas.height
+      );
       const imageData = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
       const detection = detectRoundedCard(cv, imageData);
-      drawDetectionOverlay(overlayCanvas, detection, video);
+      drawDetectionOverlay(overlayCanvas, detection, frameCanvas.width, frameCanvas.height);
 
       const wasStable = detectionsAreStable(previousDetectionRef.current, detection);
       stableFramesRef.current = detection ? (wasStable ? stableFramesRef.current + 1 : 1) : 0;
@@ -760,10 +789,13 @@ export default function NoLlmScanPage() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
           <section className="space-y-3">
-            <div className="relative overflow-hidden rounded-2xl border border-gray-800 bg-black shadow-2xl">
+            <div
+              className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-gray-800 bg-black shadow-2xl"
+              style={{ aspectRatio: `${TCG_CARD_WIDTH} / ${TCG_CARD_HEIGHT}` }}
+            >
               <video
                 ref={videoRef}
-                className="w-full bg-black"
+                className="absolute inset-0 h-full w-full bg-black object-cover"
                 playsInline
                 muted
                 autoPlay
