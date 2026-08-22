@@ -29,7 +29,7 @@ type Metrics = {
 const TARGET_CARD_ASPECT = 1.4;
 const DETECTION_INTERVAL_MS = 260;
 const STABLE_FRAME_TARGET = 3;
-const MIN_AREA_RATIO = 0.08;
+const MIN_AREA_RATIO = 0.015;
 const MAX_AREA_RATIO = 0.92;
 
 let cvPromise: Promise<CvModule> | null = null;
@@ -96,82 +96,110 @@ function similarityScore(value: number, target: number, tolerance: number): numb
 function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null {
   const src = cv.matFromImageData(imageData);
   const gray = new cv.Mat();
+  const equalized = new cv.Mat();
   const blur = new cv.Mat();
   const edges = new cv.Mat();
   const closed = new cv.Mat();
-  const contours = new cv.MatVector();
+  const darkMask = new cv.Mat();
+  const darkClosed = new cv.Mat();
   const hierarchy = new cv.Mat();
-  const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(7, 7));
+  const edgeKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9));
+  const darkKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(11, 11));
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-    cv.Canny(blur, edges, 40, 120);
-    cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, kernel);
-    cv.dilate(closed, closed, kernel);
-    cv.findContours(closed, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cv.equalizeHist(gray, equalized);
+    cv.GaussianBlur(equalized, blur, new cv.Size(5, 5), 0);
+    cv.Canny(blur, edges, 24, 88);
+    cv.morphologyEx(edges, closed, cv.MORPH_CLOSE, edgeKernel);
+    cv.dilate(closed, closed, edgeKernel);
+
+    // Fallback channel for real phone captures: Lorcana's black card frame is often more reliable
+    // than the weak outer edge against a gray/table background.
+    cv.threshold(gray, darkMask, 85, 255, cv.THRESH_BINARY_INV);
+    cv.morphologyEx(darkMask, darkClosed, cv.MORPH_CLOSE, darkKernel);
+    cv.dilate(darkClosed, darkClosed, darkKernel);
 
     const frameArea = imageData.width * imageData.height;
     const edgeDensity = cv.countNonZero(edges) / frameArea;
     let best: Detection | null = null;
 
-    for (let i = 0; i < contours.size(); i += 1) {
-      const contour = contours.get(i);
+    const evaluateMask = (mask: any, mode: number, sourceWeight: number) => {
+      const contours = new cv.MatVector();
       try {
-        const contourArea = cv.contourArea(contour);
-        const rect = cv.minAreaRect(contour);
-        const rectWidth = Math.max(rect.size.width, 1);
-        const rectHeight = Math.max(rect.size.height, 1);
-        const longSide = Math.max(rectWidth, rectHeight);
-        const shortSide = Math.min(rectWidth, rectHeight);
-        const aspectRatio = longSide / shortSide;
-        const rectArea = rectWidth * rectHeight;
-        const areaRatio = rectArea / frameArea;
-        const fillRatio = contourArea / rectArea;
+        cv.findContours(mask, contours, hierarchy, mode, cv.CHAIN_APPROX_SIMPLE);
 
-        if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) continue;
-        if (aspectRatio < 1.18 || aspectRatio > 1.78) continue;
-        if (fillRatio < 0.45 || fillRatio > 1.08) continue;
+        for (let i = 0; i < contours.size(); i += 1) {
+          const contour = contours.get(i);
+          try {
+            const contourArea = cv.contourArea(contour);
+            const rect = cv.minAreaRect(contour);
+            const rectWidth = Math.max(rect.size.width, 1);
+            const rectHeight = Math.max(rect.size.height, 1);
+            const longSide = Math.max(rectWidth, rectHeight);
+            const shortSide = Math.min(rectWidth, rectHeight);
+            const aspectRatio = longSide / shortSide;
+            const rectArea = rectWidth * rectHeight;
+            const areaRatio = rectArea / frameArea;
+            const fillRatio = contourArea / rectArea;
 
-        const centerDistance = Math.hypot(
-          rect.center.x - imageData.width / 2,
-          rect.center.y - imageData.height / 2
-        );
-        const maxCenterDistance = Math.hypot(imageData.width / 2, imageData.height / 2);
-        const centerOffset = centerDistance / maxCenterDistance;
+            if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) continue;
+            if (aspectRatio < 1.08 || aspectRatio > 1.9) continue;
+            if (fillRatio < 0.18 || fillRatio > 1.15) continue;
 
-        const aspectScore = similarityScore(aspectRatio, TARGET_CARD_ASPECT, 0.38);
-        const fillScore = similarityScore(fillRatio, 0.82, 0.36);
-        const areaScore = Math.min(1, areaRatio / 0.48);
-        const centerScore = Math.max(0, 1 - centerOffset);
-        const score = areaScore * 0.35 + aspectScore * 0.3 + fillScore * 0.22 + centerScore * 0.13;
+            const centerDistance = Math.hypot(
+              rect.center.x - imageData.width / 2,
+              rect.center.y - imageData.height / 2
+            );
+            const maxCenterDistance = Math.hypot(imageData.width / 2, imageData.height / 2);
+            const centerOffset = centerDistance / maxCenterDistance;
 
-        if (!best || score > best.score) {
-          best = {
-            points: orderPoints(getRectPoints(cv, rect)),
-            aspectRatio,
-            fillRatio,
-            areaRatio,
-            edgeDensity,
-            centerOffset,
-            score,
-          };
+            const aspectScore = similarityScore(aspectRatio, TARGET_CARD_ASPECT, 0.5);
+            const fillScore = similarityScore(fillRatio, 0.72, 0.55);
+            const areaScore = Math.min(1, areaRatio / 0.28);
+            const centerScore = Math.max(0, 1 - centerOffset);
+            const score =
+              (areaScore * 0.28 + aspectScore * 0.34 + fillScore * 0.16 + centerScore * 0.22) *
+              sourceWeight;
+
+            if (!best || score > best.score) {
+              best = {
+                points: orderPoints(getRectPoints(cv, rect)),
+                aspectRatio,
+                fillRatio,
+                areaRatio,
+                edgeDensity,
+                centerOffset,
+                score,
+              };
+            }
+          } finally {
+            contour.delete();
+          }
         }
       } finally {
-        contour.delete();
+        contours.delete();
       }
-    }
+    };
+
+    // RETR_LIST sees nested/internal card-frame contours. RETR_EXTERNAL alone missed real captures
+    // where the outer card edge blended into the background.
+    evaluateMask(closed, cv.RETR_LIST, 1);
+    evaluateMask(darkClosed, cv.RETR_EXTERNAL, 0.96);
 
     return best;
   } finally {
     src.delete();
     gray.delete();
+    equalized.delete();
     blur.delete();
     edges.delete();
     closed.delete();
-    contours.delete();
+    darkMask.delete();
+    darkClosed.delete();
     hierarchy.delete();
-    kernel.delete();
+    edgeKernel.delete();
+    darkKernel.delete();
   }
 }
 
