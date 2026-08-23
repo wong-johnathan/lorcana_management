@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
-import { getRectangleShapeAspect, isCardShapeAspect, scoreCardCandidate } from "./noLlmDetection";
+import { estimateImageSharpness, getRectangleShapeAspect, isCardShapeAspect, scoreCardCandidate } from "./noLlmDetection";
 import {
   chooseBestOrientation,
   formatManualOrientation,
@@ -57,6 +57,7 @@ type Metrics = {
   edgeDensity: number | null;
   centerOffset: number | null;
   score: number | null;
+  sharpness: number | null;
   status: string;
 };
 
@@ -77,7 +78,8 @@ type ZoneDragState = {
 };
 
 const DETECTION_INTERVAL_MS = 260;
-const STABLE_FRAME_TARGET = 3;
+const STABLE_FRAME_TARGET = 5;
+const MIN_CAPTURE_SHARPNESS = 120;
 const MIN_AREA_RATIO = 0.015;
 const MAX_AREA_RATIO = 0.92;
 const SCAN_FRAME_WIDTH = 672;
@@ -555,6 +557,7 @@ export default function NoLlmScanPage() {
     edgeDensity: null,
     centerOffset: null,
     score: null,
+    sharpness: null,
     status: "Loading OpenCV...",
   });
   const [capturedAt, setCapturedAt] = useState<string | null>(null);
@@ -622,17 +625,19 @@ export default function NoLlmScanPage() {
             facingMode: { ideal: "environment" },
             width: { ideal: 3840 },
             height: { ideal: 2160 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: false,
         });
 
         const [videoTrack] = stream.getVideoTracks();
         const capabilities = videoTrack?.getCapabilities?.() as
-          | (MediaTrackCapabilities & { focusMode?: string[]; exposureMode?: string[] })
+          | (MediaTrackCapabilities & { focusMode?: string[]; exposureMode?: string[]; whiteBalanceMode?: string[] })
           | undefined;
         const advanced: Array<Record<string, string>> = [];
         if (capabilities?.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
         if (capabilities?.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" });
+        if (capabilities?.whiteBalanceMode?.includes("continuous")) advanced.push({ whiteBalanceMode: "continuous" });
         if (advanced.length > 0) {
           await videoTrack.applyConstraints({ advanced } as MediaTrackConstraints).catch((err) => {
             console.warn("Could not apply continuous camera constraints", err);
@@ -964,12 +969,26 @@ export default function NoLlmScanPage() {
           edgeDensity: null,
           centerOffset: null,
           score: null,
+          sharpness: null,
           status: "Looking for card...",
         });
         return;
       }
 
-      const ready = stableFramesRef.current >= STABLE_FRAME_TARGET;
+      const minX = Math.min(...detection.points.map((point) => point.x));
+      const maxX = Math.max(...detection.points.map((point) => point.x));
+      const minY = Math.min(...detection.points.map((point) => point.y));
+      const maxY = Math.max(...detection.points.map((point) => point.y));
+      const textBandY = minY + (maxY - minY) * 0.45;
+      const sharpness = estimateImageSharpness(imageData, {
+        x: Math.max(0, minX / frameCanvas.width),
+        y: Math.max(0, textBandY / frameCanvas.height),
+        w: Math.min(1, (maxX - minX) / frameCanvas.width),
+        h: Math.min(1, ((maxY - minY) * 0.42) / frameCanvas.height),
+      });
+      const stable = stableFramesRef.current >= STABLE_FRAME_TARGET;
+      const sharpEnough = sharpness >= MIN_CAPTURE_SHARPNESS;
+      const ready = stable && sharpEnough;
       setMetrics({
         found: true,
         stableFrames: stableFramesRef.current,
@@ -979,7 +998,12 @@ export default function NoLlmScanPage() {
         edgeDensity: detection.edgeDensity,
         centerOffset: detection.centerOffset,
         score: detection.score,
-        status: ready ? "Card stable — captured" : "Hold steady...",
+        sharpness,
+        status: ready
+          ? "Card sharp — captured"
+          : stable
+            ? `Waiting for focus... ${Math.round(sharpness)}/${MIN_CAPTURE_SHARPNESS}`
+            : "Hold steady...",
       });
 
       if (ready && !capturedRef.current) {
@@ -1109,6 +1133,12 @@ export default function NoLlmScanPage() {
                 <div className="rounded-lg bg-gray-950 p-3">
                   <dt className="text-gray-500">Score</dt>
                   <dd className="text-gray-100 font-semibold">{formatPercent(metrics.score)}</dd>
+                </div>
+                <div className="rounded-lg bg-gray-950 p-3">
+                  <dt className="text-gray-500">Sharpness</dt>
+                  <dd className={metrics.sharpness != null && metrics.sharpness >= MIN_CAPTURE_SHARPNESS ? "text-green-400 font-semibold" : "text-amber-300 font-semibold"}>
+                    {metrics.sharpness == null ? "—" : `${Math.round(metrics.sharpness)}/${MIN_CAPTURE_SHARPNESS}`}
+                  </dd>
                 </div>
               </dl>
             </div>
