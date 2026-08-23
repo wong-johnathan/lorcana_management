@@ -470,6 +470,11 @@ function drawDetectionOverlay(
   ctx.stroke();
 }
 
+type BrowserImageCapture = {
+  takePhoto?: () => Promise<Blob>;
+  grabFrame?: () => Promise<ImageBitmap>;
+};
+
 function warpCardToCanvas(
   cv: CvModule,
   imageData: ImageData,
@@ -529,6 +534,56 @@ function warpCardToCanvas(
     dstTri.delete();
     transform.delete();
   }
+}
+
+function imageBitmapToImageData(bitmap: ImageBitmap): ImageData | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+async function captureStillImageData(video: HTMLVideoElement, stream: MediaStream | null): Promise<ImageData | null> {
+  const track = stream?.getVideoTracks()[0];
+  const ImageCaptureCtor = (window as typeof window & {
+    ImageCapture?: new (track: MediaStreamTrack) => BrowserImageCapture;
+  }).ImageCapture;
+
+  if (track && ImageCaptureCtor) {
+    try {
+      const capture = new ImageCaptureCtor(track) as BrowserImageCapture;
+      if (capture.takePhoto) {
+        const blob = await capture.takePhoto();
+        const bitmap = await createImageBitmap(blob);
+        try {
+          return imageBitmapToImageData(bitmap);
+        } finally {
+          bitmap.close?.();
+        }
+      }
+      if (capture.grabFrame) {
+        const bitmap = await capture.grabFrame();
+        try {
+          return imageBitmapToImageData(bitmap);
+        } finally {
+          bitmap.close?.();
+        }
+      }
+    } catch (err) {
+      console.warn("ImageCapture still frame failed; falling back to video frame", err);
+    }
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
 export default function NoLlmScanPage() {
@@ -919,7 +974,7 @@ export default function NoLlmScanPage() {
   useEffect(() => {
     if (!cameraReady || !scannerActive || error) return;
 
-    const interval = window.setInterval(() => {
+    const interval = window.setInterval(async () => {
       const cv = cvRef.current;
       const video = videoRef.current;
       const frameCanvas = frameCanvasRef.current;
@@ -1008,22 +1063,29 @@ export default function NoLlmScanPage() {
 
       if (ready && !capturedRef.current) {
         capturedRef.current = true;
+        setMetrics((current) => ({ ...current, status: "Taking high-res still..." }));
 
-        const highResCanvas = document.createElement("canvas");
-        highResCanvas.width = video.videoWidth;
-        highResCanvas.height = video.videoHeight;
-        const highResCtx = highResCanvas.getContext("2d", { willReadFrequently: true });
-        if (!highResCtx) return;
-        highResCtx.drawImage(video, 0, 0, highResCanvas.width, highResCanvas.height);
-        const highResImageData = highResCtx.getImageData(0, 0, highResCanvas.width, highResCanvas.height);
+        const stillImageData = await captureStillImageData(video, streamRef.current);
+        if (!stillImageData) {
+          capturedRef.current = false;
+          setMetrics((current) => ({ ...current, status: "Still capture failed — try again" }));
+          return;
+        }
+
+        const stillSourceCrop = getCoverSourceRect(
+          stillImageData.width,
+          stillImageData.height,
+          frameCanvas.width,
+          frameCanvas.height
+        );
         const highResPoints = mapPointsFromDetectionFrameToVideo(
           detection.points,
           frameCanvas.width,
           frameCanvas.height,
-          sourceCrop
+          stillSourceCrop
         );
 
-        warpCardToCanvas(cv, highResImageData, highResPoints, cropCanvas);
+        warpCardToCanvas(cv, stillImageData, highResPoints, cropCanvas);
         const initialOrientation: ManualOrientation = { degrees: 0, flipX: false, flipY: false };
         setManualOrientation(initialOrientation);
         setCapturedAt(new Date().toLocaleTimeString());
