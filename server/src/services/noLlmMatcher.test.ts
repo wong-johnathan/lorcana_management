@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildRecognizedOcr, parseCollectorIdentifier, rankNoLlmMatches } from "./noLlmMatcher.js";
+import { buildRecognizedOcr, parseCollectorIdentifier, parseInkCost, rankNoLlmMatches } from "./noLlmMatcher.js";
 
 test("parseCollectorIdentifier normalizes OCR substitutions and full identifiers", () => {
   assert.deepEqual(parseCollectorIdentifier("I/2O4 · EN · l"), {
@@ -29,6 +29,8 @@ test("rankNoLlmMatches prefers exact full identifier over fuzzy name", () => {
       subtitle: "On Human Legs",
       cardType: "Character",
       types: ["Storyborn"],
+      inkCost: 3,
+      color: "Amber",
     },
     {
       id: "right",
@@ -38,6 +40,8 @@ test("rankNoLlmMatches prefers exact full identifier over fuzzy name", () => {
       subtitle: "On Human Legs",
       cardType: "Character",
       types: ["Storyborn"],
+      inkCost: 3,
+      color: "Amber",
     },
   ];
 
@@ -45,4 +49,43 @@ test("rankNoLlmMatches prefers exact full identifier over fuzzy name", () => {
 
   assert.equal(matches[0].card.id, "right");
   assert.ok(matches[0].score > matches[1].score);
+});
+
+test("parseInkCost normalizes common OCR substitutions", () => {
+  assert.equal(parseInkCost("O"), 0);
+  assert.equal(parseInkCost("l"), 1);
+  assert.equal(parseInkCost("5"), 5);
+});
+
+test("rankNoLlmMatches uses ink cost and color as weak disambiguation hints", () => {
+  const cards = [
+    {
+      id: "wrong-ink",
+      cardNumber: "9/204 • EN • 3",
+      setCode: "3",
+      name: "Russell",
+      subtitle: "Wilderness Explorer",
+      cardType: "Character",
+      types: ["Storyborn", "Hero"],
+      inkCost: 4,
+      color: "Amber",
+    },
+    {
+      id: "right-ink",
+      cardNumber: "10/204 • EN • 3",
+      setCode: "3",
+      name: "Russell",
+      subtitle: "Wilderness Explorer",
+      cardType: "Character",
+      types: ["Storyborn", "Hero"],
+      inkCost: 5,
+      color: "Emerald",
+    },
+  ];
+
+  const matches = rankNoLlmMatches(cards, buildRecognizedOcr({ name: "Russell", inkCost: "5", color: "Emerald" }));
+
+  assert.equal(matches[0].card.id, "right-ink");
+  assert.ok(matches[0].reasons.includes("Ink cost hint matches"));
+  assert.ok(matches[0].reasons.includes("Ink color hint matches"));
 });

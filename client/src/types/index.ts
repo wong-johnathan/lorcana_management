@@ -92,6 +92,8 @@ export interface NoLlmRecognizedCard {
   name: string;
   subtitle: string;
   typeLine: string;
+  inkCost: string;
+  color: string;
   rawText: Record<string, string>;
 }
 

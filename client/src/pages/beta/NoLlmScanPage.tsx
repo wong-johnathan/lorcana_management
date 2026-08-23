@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
-import { getRectangleShapeAspect, isCardShapeAspect } from "./noLlmDetection";
+import { getRectangleShapeAspect, isCardShapeAspect, scoreCardCandidate } from "./noLlmDetection";
 import {
   chooseBestOrientation,
   formatManualOrientation,
@@ -12,6 +12,17 @@ import {
   type ManualOrientation,
   type OrientationCandidate,
 } from "./noLlmOrientation";
+import {
+  DEFAULT_OCR_ZONES,
+  OCR_ZONE_META,
+  isPointInOcrZone,
+  moveOcrZone,
+  normalizeOcrZones,
+  resizeOcrZone,
+  type OcrZone,
+  type OcrZoneKey,
+  type OcrZoneMap,
+} from "./noLlmZones";
 import {
   getCoverSourceRect,
   getTcgGuideRect,
@@ -55,7 +66,14 @@ type OcrState = {
   error: string;
 };
 
-const TARGET_CARD_ASPECT = TCG_CARD_HEIGHT / TCG_CARD_WIDTH;
+type ZoneDragState = {
+  key: OcrZoneKey;
+  mode: "move" | "resize";
+  startX: number;
+  startY: number;
+  startZone: OcrZone;
+};
+
 const DETECTION_INTERVAL_MS = 260;
 const STABLE_FRAME_TARGET = 3;
 const MIN_AREA_RATIO = 0.015;
@@ -69,11 +87,8 @@ let cvPromise: Promise<CvModule> | null = null;
 type OcrWorker = Awaited<ReturnType<typeof createWorker>>;
 let ocrWorkerPromise: Promise<OcrWorker> | null = null;
 
-const OCR_ZONES = {
-  identifier: { x: 0.015, y: 0.875, w: 0.68, h: 0.105 },
-  title: { x: 0.055, y: 0.025, w: 0.74, h: 0.085 },
-  typeLine: { x: 0.05, y: 0.535, w: 0.9, h: 0.075 },
-} as const;
+const OCR_ZONE_STORAGE_KEY = "lorcana-no-llm-ocr-zones:v1";
+const INK_COLOR_OPTIONS = ["", "Amber", "Amethyst", "Emerald", "Ruby", "Sapphire", "Steel"];
 
 const IDENTIFIER_WHITELIST = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/•·.-|! ";
 const TEXT_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -'.,•:";
@@ -231,10 +246,6 @@ function getRectPoints(cv: CvModule, rect: any): Point[] {
   }));
 }
 
-function similarityScore(value: number, target: number, tolerance: number): number {
-  return Math.max(0, 1 - Math.abs(value - target) / tolerance);
-}
-
 function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null {
   const src = cv.matFromImageData(imageData);
   const gray = new cv.Mat();
@@ -303,13 +314,14 @@ function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null
             const maxCenterDistance = Math.hypot(imageData.width / 2, imageData.height / 2);
             const centerOffset = centerDistance / maxCenterDistance;
 
-            const aspectScore = similarityScore(aspectRatio, TARGET_CARD_ASPECT, 0.5);
-            const fillScore = similarityScore(fillRatio, 0.72, 0.55);
-            const areaScore = Math.min(1, areaRatio / 0.28);
-            const centerScore = Math.max(0, 1 - centerOffset);
-            const score =
-              (areaScore * 0.28 + aspectScore * 0.34 + fillScore * 0.16 + centerScore * 0.22) *
-              sourceWeight;
+            const score = scoreCardCandidate({
+              aspectRatio,
+              fillRatio,
+              areaRatio,
+              centerOffset,
+              sourceWeight,
+            });
+            if (score <= 0) continue;
 
             if (!best || score > best.score) {
               best = {
@@ -478,6 +490,8 @@ export default function NoLlmScanPage() {
   const frameCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const zoneOverlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const zoneDragRef = useRef<ZoneDragState | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const cvRef = useRef<CvModule | null>(null);
   const previousDetectionRef = useRef<Detection | null>(null);
@@ -513,6 +527,16 @@ export default function NoLlmScanPage() {
     flipX: false,
     flipY: false,
   });
+  const [ocrZones, setOcrZones] = useState<OcrZoneMap>(() => {
+    if (typeof window === "undefined") return DEFAULT_OCR_ZONES;
+    try {
+      return normalizeOcrZones(JSON.parse(window.localStorage.getItem(OCR_ZONE_STORAGE_KEY) || "null"));
+    } catch {
+      return DEFAULT_OCR_ZONES;
+    }
+  });
+  const [selectedOcrZone, setSelectedOcrZone] = useState<OcrZoneKey>("title");
+  const [inkColorHint, setInkColorHint] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -617,14 +641,17 @@ export default function NoLlmScanPage() {
         status: "reading",
         message: "Reading OCR zones using your confirmed orientation...",
       }));
-      const identifier = await recognizeZone(worker, canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
-      const title = await recognizeZone(worker, canvas, OCR_ZONES.title, TEXT_WHITELIST);
-      const typeLine = await recognizeZone(worker, canvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
+      const identifier = await recognizeZone(worker, canvas, ocrZones.identifier, IDENTIFIER_WHITELIST);
+      const title = await recognizeZone(worker, canvas, ocrZones.title, TEXT_WHITELIST);
+      const typeLine = await recognizeZone(worker, canvas, ocrZones.typeLine, TEXT_WHITELIST);
+      const inkCost = await recognizeZone(worker, canvas, ocrZones.inkCost, "0123456789OoQIl|! ");
       const rawText = {
         orientation: formatManualOrientation(orientation),
         identifier,
         title,
         typeLine,
+        inkCost,
+        inkColor: inkColorHint,
       };
 
       setOcrState({ status: "matching", message: "Matching OCR text against card database...", rawText, matches: [], error: "" });
@@ -632,6 +659,8 @@ export default function NoLlmScanPage() {
         fullIdentifier: identifier,
         name: title,
         typeLine,
+        inkCost,
+        color: inkColorHint,
         rawText,
       });
 
@@ -653,7 +682,7 @@ export default function NoLlmScanPage() {
         error: err instanceof Error ? err.message : "Unknown OCR error",
       });
     }
-  }, []);
+  }, [inkColorHint, ocrZones]);
 
   const applyManualCanvasTransform = useCallback(
     (nextOrientation: ManualOrientation, degrees: 0 | 90 | 180 | 270, flipX: boolean, flipY = false) => {
@@ -722,6 +751,120 @@ export default function NoLlmScanPage() {
     const ctx = canvas?.getContext("2d");
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     setMetrics((current) => ({ ...current, stableFrames: 0, status: "Looking for card..." }));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(OCR_ZONE_STORAGE_KEY, JSON.stringify(ocrZones));
+  }, [ocrZones]);
+
+  const drawOcrZoneOverlay = useCallback(() => {
+    const overlay = zoneOverlayCanvasRef.current;
+    const cropCanvas = cropCanvasRef.current;
+    if (!overlay || !cropCanvas || !capturedAt) return;
+
+    const rect = cropCanvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    overlay.width = Math.round(rect.width * dpr);
+    overlay.height = Math.round(rect.height * dpr);
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+
+    const ctx = overlay.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.lineWidth = 2;
+
+    (Object.keys(ocrZones) as OcrZoneKey[]).forEach((key) => {
+      const zone = ocrZones[key];
+      const x = zone.x * rect.width;
+      const y = zone.y * rect.height;
+      const w = zone.w * rect.width;
+      const h = zone.h * rect.height;
+      const selected = key === selectedOcrZone;
+      ctx.strokeStyle = selected ? "#22c55e" : "rgba(251, 191, 36, 0.82)";
+      ctx.fillStyle = selected ? "rgba(34, 197, 94, 0.16)" : "rgba(251, 191, 36, 0.10)";
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = selected ? "rgba(20, 83, 45, 0.92)" : "rgba(120, 53, 15, 0.92)";
+      const label = OCR_ZONE_META[key].shortLabel;
+      const labelWidth = ctx.measureText(label).width + 10;
+      ctx.fillRect(x, Math.max(0, y - 18), labelWidth, 18);
+      ctx.fillStyle = "white";
+      ctx.fillText(label, x + 5, Math.max(12, y - 5));
+      if (selected) {
+        ctx.fillStyle = "#22c55e";
+        ctx.fillRect(x + w - 10, y + h - 10, 10, 10);
+      }
+    });
+  }, [capturedAt, ocrZones, selectedOcrZone]);
+
+  useEffect(() => {
+    drawOcrZoneOverlay();
+    window.addEventListener("resize", drawOcrZoneOverlay);
+    return () => window.removeEventListener("resize", drawOcrZoneOverlay);
+  }, [drawOcrZoneOverlay, manualOrientation]);
+
+  function pointOnZoneOverlay(event: React.PointerEvent<HTMLCanvasElement>) {
+    const overlay = zoneOverlayCanvasRef.current;
+    if (!overlay) return null;
+    const rect = overlay.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) / Math.max(rect.width, 1),
+      y: (event.clientY - rect.top) / Math.max(rect.height, 1),
+    };
+  }
+
+  const handleZonePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!capturedAt) return;
+    const point = pointOnZoneOverlay(event);
+    if (!point) return;
+
+    const hitKey = (["inkCost", "identifier", "typeLine", "title"] as OcrZoneKey[]).find((key) =>
+      isPointInOcrZone(ocrZones[key], point.x, point.y)
+    );
+    if (!hitKey) return;
+
+    const zone = ocrZones[hitKey];
+    const nearResizeCorner = point.x > zone.x + zone.w - 0.04 && point.y > zone.y + zone.h - 0.04;
+    setSelectedOcrZone(hitKey);
+    zoneDragRef.current = {
+      key: hitKey,
+      mode: nearResizeCorner ? "resize" : "move",
+      startX: point.x,
+      startY: point.y,
+      startZone: zone,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }, [capturedAt, ocrZones]);
+
+  const handleZonePointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = zoneDragRef.current;
+    const point = pointOnZoneOverlay(event);
+    if (!drag || !point) return;
+
+    const dx = point.x - drag.startX;
+    const dy = point.y - drag.startY;
+    setOcrZones((current) => ({
+      ...current,
+      [drag.key]: drag.mode === "move" ? moveOcrZone(drag.startZone, dx, dy) : resizeOcrZone(drag.startZone, dx, dy),
+    }));
+  }, []);
+
+  const handleZonePointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    zoneDragRef.current = null;
+  }, []);
+
+  const resetOcrZones = useCallback(() => {
+    setOcrZones(DEFAULT_OCR_ZONES);
+    setSelectedOcrZone("title");
   }, []);
 
   useEffect(() => {
@@ -932,7 +1075,19 @@ export default function NoLlmScanPage() {
                 {capturedAt && <span className="text-xs text-green-400">Captured {capturedAt}</span>}
               </div>
               <div className="relative rounded-xl bg-black border border-gray-800 overflow-hidden min-h-[260px] flex items-center justify-center">
-                <canvas ref={cropCanvasRef} className="max-h-[520px] max-w-full" />
+                <div className="relative inline-flex max-w-full items-center justify-center">
+                  <canvas ref={cropCanvasRef} className="max-h-[520px] max-w-full" />
+                  {capturedAt && (
+                    <canvas
+                      ref={zoneOverlayCanvasRef}
+                      className="absolute inset-0 touch-none cursor-move"
+                      onPointerDown={handleZonePointerDown}
+                      onPointerMove={handleZonePointerMove}
+                      onPointerUp={handleZonePointerUp}
+                      onPointerCancel={handleZonePointerUp}
+                    />
+                  )}
+                </div>
                 {!capturedAt && <p className="absolute text-sm text-gray-600">Hold a card in frame</p>}
               </div>
               {capturedAt && (
@@ -974,6 +1129,53 @@ export default function NoLlmScanPage() {
                     >
                       ⇅ Flip V
                     </button>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/70 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-amber-100">OCR zones</div>
+                        <p className="text-xs text-gray-400">Tap a box, then drag to move; drag the green corner to resize.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetOcrZones}
+                        disabled={ocrBusy}
+                        className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                      >
+                        Reset zones
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {(Object.keys(OCR_ZONE_META) as OcrZoneKey[]).map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setSelectedOcrZone(key)}
+                          disabled={ocrBusy}
+                          className={`rounded-lg border px-2 py-2 text-left ${
+                            selectedOcrZone === key
+                              ? "border-green-500 bg-green-500/15 text-green-100"
+                              : "border-gray-700 bg-gray-900 text-gray-300"
+                          } disabled:opacity-40`}
+                        >
+                          <span className="font-semibold">{OCR_ZONE_META[key].label}</span>
+                          <span className="mt-1 block text-[11px] text-gray-500">{OCR_ZONE_META[key].help}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <label className="block text-xs text-gray-400">
+                      Ink color hint
+                      <select
+                        value={inkColorHint}
+                        onChange={(event) => setInkColorHint(event.target.value)}
+                        disabled={ocrBusy}
+                        className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 disabled:opacity-40"
+                      >
+                        {INK_COLOR_OPTIONS.map((color) => (
+                          <option key={color || "none"} value={color}>{color || "No color hint"}</option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                   <button
                     type="button"
@@ -1031,6 +1233,14 @@ export default function NoLlmScanPage() {
                   <div className="flex gap-2">
                     <dt className="w-24 text-gray-500">Type zone</dt>
                     <dd className="text-gray-200 break-all">{ocrState.rawText.typeLine || "—"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 text-gray-500">Ink cost</dt>
+                    <dd className="text-gray-200 break-all">{ocrState.rawText.inkCost || "—"}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="w-24 text-gray-500">Ink color</dt>
+                    <dd className="text-gray-200 break-all">{ocrState.rawText.inkColor || "—"}</dd>
                   </div>
                 </dl>
               </div>

@@ -7,6 +7,8 @@ export interface NoLlmOcrInput {
   name?: string;
   subtitle?: string;
   typeLine?: string;
+  inkCost?: string | number;
+  color?: string;
   rawText?: Record<string, string>;
 }
 
@@ -17,6 +19,8 @@ export interface NoLlmRecognizedCard {
   name: string;
   subtitle: string;
   typeLine: string;
+  inkCost: string;
+  color: string;
   rawText: Record<string, string>;
 }
 
@@ -87,6 +91,8 @@ export function buildRecognizedOcr(input: NoLlmOcrInput): NoLlmRecognizedCard {
     name: normalizeOcrText(input.name || rawText.title || ""),
     subtitle: normalizeOcrText(input.subtitle || rawText.subtitle || ""),
     typeLine: normalizeOcrText(input.typeLine || rawText.typeLine || ""),
+    inkCost: normalizeOcrText(String(input.inkCost ?? rawText.inkCost ?? "")),
+    color: normalizeOcrText(input.color || rawText.inkColor || rawText.color || ""),
     rawText,
   };
 }
@@ -129,7 +135,13 @@ function fuzzyTextScore(ocrText: string, cardText: string): number {
   return ratio >= 0.68 ? ratio : 0;
 }
 
-export function scoreNoLlmCardMatch<TCard extends Pick<Card, "cardNumber" | "setCode" | "name" | "subtitle" | "cardType" | "types">>(
+export function parseInkCost(raw: string): number | null {
+  const normalized = normalizeNumericToken(normalizeOcrText(raw));
+  const match = normalized.match(/\b([0-9])\b/);
+  return match ? Number(match[1]) : null;
+}
+
+export function scoreNoLlmCardMatch<TCard extends Pick<Card, "cardNumber" | "setCode" | "name" | "subtitle" | "cardType" | "types" | "inkCost" | "color">>(
   card: TCard,
   ocr: NoLlmRecognizedCard
 ): NoLlmMatch<TCard> {
@@ -181,10 +193,21 @@ export function scoreNoLlmCardMatch<TCard extends Pick<Card, "cardNumber" | "set
     }
   }
 
+  const parsedInkCost = parseInkCost(ocr.inkCost);
+  if (parsedInkCost != null && parsedInkCost === card.inkCost) {
+    score += 8;
+    reasons.push("Ink cost hint matches");
+  }
+
+  if (ocr.color && card.color && comparable(card.color) === comparable(ocr.color)) {
+    score += 10;
+    reasons.push("Ink color hint matches");
+  }
+
   return { card, score, reasons };
 }
 
-export function rankNoLlmMatches<TCard extends Pick<Card, "cardNumber" | "setCode" | "name" | "subtitle" | "cardType" | "types">>(
+export function rankNoLlmMatches<TCard extends Pick<Card, "cardNumber" | "setCode" | "name" | "subtitle" | "cardType" | "types" | "inkCost" | "color">>(
   cards: TCard[],
   ocr: NoLlmRecognizedCard
 ): NoLlmMatch<TCard>[] {
