@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
+import { getRectangleShapeAspect, isCardShapeAspect } from "./noLlmDetection";
 import { chooseBestOrientation, type OrientationCandidate } from "./noLlmOrientation";
 import {
   getCoverSourceRect,
@@ -273,7 +274,7 @@ function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null
             const rightHeight = distance(orderedPoints[1], orderedPoints[2]);
             const visibleWidth = Math.max((topWidth + bottomWidth) / 2, 1);
             const visibleHeight = Math.max((leftHeight + rightHeight) / 2, 1);
-            const aspectRatio = visibleHeight / visibleWidth;
+            const aspectRatio = getRectangleShapeAspect(visibleWidth, visibleHeight);
             const rectWidth = Math.max(rect.size.width, 1);
             const rectHeight = Math.max(rect.size.height, 1);
             const rectArea = rectWidth * rectHeight;
@@ -281,9 +282,9 @@ function detectRoundedCard(cv: CvModule, imageData: ImageData): Detection | null
             const fillRatio = contourArea / rectArea;
 
             if (areaRatio < MIN_AREA_RATIO || areaRatio > MAX_AREA_RATIO) continue;
-            // Force portrait TCG geometry. The old long-side/short-side check accepted landscape
-            // room rectangles because 16:9-ish background edges can still report ~1.4.
-            if (aspectRatio < 1.18 || aspectRatio > 1.72) continue;
+            // Accept rotated cards too: minAreaRect may return a sideways TCG-like rectangle
+            // when the user holds the card/label at 90°. Orientation is normalized later by OCR.
+            if (!isCardShapeAspect(aspectRatio)) continue;
             if (fillRatio < 0.18 || fillRatio > 1.15) continue;
 
             const centerDistance = Math.hypot(
