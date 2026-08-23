@@ -10,6 +10,12 @@ export type ScoredOrientationCandidate = OrientationCandidate & {
   score: number;
 };
 
+export type ManualOrientation = {
+  degrees: 0 | 90 | 180 | 270;
+  flipX: boolean;
+  flipY: boolean;
+};
+
 function normalizeIdentifierOcr(value: string): string {
   return value
     .replace(/[OoQ]/g, "0")
@@ -97,6 +103,29 @@ export function scoreOrientationCandidate(candidate: OrientationCandidate): numb
   const titleScore = candidate.title ? scoreReadableTextOcr(candidate.title) : 0;
   const typeScore = candidate.typeLine ? scoreReadableTextOcr(candidate.typeLine) : 0;
   return Math.max(identifierScore, Math.min(100, titleScore + Math.min(20, typeScore * 0.35)));
+}
+
+export function formatManualOrientation(orientation: ManualOrientation): string {
+  return [
+    `${orientation.degrees}°`,
+    orientation.flipX ? "flip H" : "",
+    orientation.flipY ? "flip V" : "",
+  ]
+    .filter(Boolean)
+    .join(" + ");
+}
+
+export function rotateManualOrientation(orientation: ManualOrientation, delta: 90 | -90): ManualOrientation {
+  const degrees = ((((orientation.degrees + delta) % 360) + 360) % 360) as ManualOrientation["degrees"];
+  return { ...orientation, degrees };
+}
+
+export function toggleManualFlipX(orientation: ManualOrientation): ManualOrientation {
+  return { ...orientation, flipX: !orientation.flipX };
+}
+
+export function toggleManualFlipY(orientation: ManualOrientation): ManualOrientation {
+  return { ...orientation, flipY: !orientation.flipY };
 }
 
 export function chooseBestOrientation<T extends OrientationCandidate>(candidates: T[]): T & { score: number } {

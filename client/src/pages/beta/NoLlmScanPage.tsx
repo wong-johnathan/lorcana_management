@@ -3,7 +3,15 @@ import { createWorker, PSM } from "tesseract.js";
 import { cards as cardsApi, inventory as inventoryApi } from "../../services/api";
 import type { NoLlmCardMatch } from "../../types";
 import { getRectangleShapeAspect, isCardShapeAspect } from "./noLlmDetection";
-import { chooseBestOrientation, type OrientationCandidate } from "./noLlmOrientation";
+import {
+  chooseBestOrientation,
+  formatManualOrientation,
+  rotateManualOrientation,
+  toggleManualFlipX,
+  toggleManualFlipY,
+  type ManualOrientation,
+  type OrientationCandidate,
+} from "./noLlmOrientation";
 import {
   getCoverSourceRect,
   getTcgGuideRect,
@@ -154,7 +162,8 @@ function formatCardLine(match: NoLlmCardMatch): string {
 function transformCanvas(
   sourceCanvas: HTMLCanvasElement,
   degrees: 0 | 90 | 180 | 270,
-  flipX: boolean
+  flipX: boolean,
+  flipY = false
 ): HTMLCanvasElement {
   const output = document.createElement("canvas");
   const sideways = degrees === 90 || degrees === 270;
@@ -166,7 +175,7 @@ function transformCanvas(
 
   ctx.translate(output.width / 2, output.height / 2);
   ctx.rotate((degrees * Math.PI) / 180);
-  ctx.scale(flipX ? -1 : 1, 1);
+  ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
   ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
   return output;
 }
@@ -493,12 +502,17 @@ export default function NoLlmScanPage() {
   const [capturedAt, setCapturedAt] = useState<string | null>(null);
   const [ocrState, setOcrState] = useState<OcrState>({
     status: "idle",
-    message: "Capture a card to read OCR zones.",
+    message: "Capture a card to adjust orientation before OCR.",
     rawText: {},
     matches: [],
     error: "",
   });
   const [inventoryMessage, setInventoryMessage] = useState("");
+  const [manualOrientation, setManualOrientation] = useState<ManualOrientation>({
+    degrees: 0,
+    flipX: false,
+    flipY: false,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -585,93 +599,37 @@ export default function NoLlmScanPage() {
     };
   }, [error, loadingCv]);
 
-  const recognizeCapturedCard = useCallback(async (canvas: HTMLCanvasElement) => {
+  const recognizeCapturedCard = useCallback(async (canvas: HTMLCanvasElement, orientation: ManualOrientation) => {
     setInventoryMessage("");
-    setOcrState({ status: "loading", message: "Loading browser OCR worker...", rawText: {}, matches: [], error: "" });
+    setOcrState({
+      status: "loading",
+      message: "Loading browser OCR worker...",
+      rawText: { orientation: formatManualOrientation(orientation) },
+      matches: [],
+      error: "",
+    });
 
     try {
       const worker = await getOcrWorker();
-      const rotations: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
-      const transforms = rotations.flatMap((degree) => [
-        { degree, flipX: false },
-        { degree, flipX: true },
-      ]);
-      const transformedCanvases = transforms.map((transform) => ({
-        ...transform,
-        canvas: transformCanvas(canvas, transform.degree, transform.flipX),
-      }));
-      const orientationCandidates: OrientationCandidate[] = [];
-
-      setOcrState((current) => ({ ...current, status: "orienting", message: "Finding upright card orientation..." }));
-      for (const candidate of transformedCanvases) {
-        const identifier = await recognizeZone(worker, candidate.canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
-        orientationCandidates.push({ degrees: candidate.degree, flipX: candidate.flipX, identifier });
-        setOcrState((current) => ({
-          ...current,
-          rawText: { ...current.rawText, [`identifier_${candidate.degree}${candidate.flipX ? "_flip" : ""}`]: identifier },
-        }));
-      }
-
-      let bestOrientation = chooseBestOrientation(orientationCandidates);
-
-      if (bestOrientation.score < 70) {
-        setOcrState((current) => ({
-          ...current,
-          status: "orienting",
-          message: "Identifier is unclear; checking title text for mirror/flip correction...",
-        }));
-
-        for (const candidate of transformedCanvases) {
-          const title = await recognizeZone(worker, candidate.canvas, OCR_ZONES.title, TEXT_WHITELIST);
-          const orientationCandidate = orientationCandidates.find(
-            (item) => item.degrees === candidate.degree && item.flipX === candidate.flipX
-          );
-          if (orientationCandidate) orientationCandidate.title = title;
-          setOcrState((current) => ({
-            ...current,
-            rawText: { ...current.rawText, [`title_${candidate.degree}${candidate.flipX ? "_flip" : ""}`]: title },
-          }));
-        }
-
-        bestOrientation = chooseBestOrientation(orientationCandidates);
-      }
-
-      const orientedCanvas =
-        transformedCanvases.find(
-          (candidate) => candidate.degree === bestOrientation.degrees && candidate.flipX === bestOrientation.flipX
-        )?.canvas ?? canvas;
-      copyCanvas(orientedCanvas, canvas);
 
       setOcrState((current) => ({
         ...current,
         status: "reading",
-        message: `Reading upright card zones (${bestOrientation.degrees}°${bestOrientation.flipX ? ", flipped" : ""}, identifier score ${bestOrientation.score})...`,
-        rawText: {
-          ...current.rawText,
-          orientation: `${bestOrientation.degrees}°${bestOrientation.flipX ? " + flip" : ""}`,
-          identifier: bestOrientation.identifier,
-        },
+        message: "Reading OCR zones using your confirmed orientation...",
       }));
-
-      const title = await recognizeZone(worker, orientedCanvas, OCR_ZONES.title, TEXT_WHITELIST);
-
-      setOcrState((current) => ({
-        ...current,
-        message: "Reading type line...",
-        rawText: { ...current.rawText, title },
-      }));
-      const typeLine = await recognizeZone(worker, orientedCanvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
+      const identifier = await recognizeZone(worker, canvas, OCR_ZONES.identifier, IDENTIFIER_WHITELIST);
+      const title = await recognizeZone(worker, canvas, OCR_ZONES.title, TEXT_WHITELIST);
+      const typeLine = await recognizeZone(worker, canvas, OCR_ZONES.typeLine, TEXT_WHITELIST);
       const rawText = {
-        orientation: `${bestOrientation.degrees}°${bestOrientation.flipX ? " + flip" : ""}`,
-        orientationScore: String(bestOrientation.score),
-        identifier: bestOrientation.identifier,
+        orientation: formatManualOrientation(orientation),
+        identifier,
         title,
         typeLine,
       };
 
       setOcrState({ status: "matching", message: "Matching OCR text against card database...", rawText, matches: [], error: "" });
       const result = await cardsApi.matchNoLlm({
-        fullIdentifier: bestOrientation.identifier,
+        fullIdentifier: identifier,
         name: title,
         typeLine,
         rawText,
@@ -683,19 +641,62 @@ export default function NoLlmScanPage() {
         message: hasMatch ? "Best database match found." : "No confident database match found.",
         rawText: { ...rawText, ...result.recognized.rawText },
         matches: result.matches,
-        error: hasMatch ? "" : "Try better lighting or tap Scan again.",
+        error: hasMatch ? "" : "Try better lighting, adjust orientation, or tap Scan again.",
       });
     } catch (err) {
       console.error("No-LLM OCR/match failed", err);
       setOcrState({
         status: "error",
         message: "OCR or matching failed.",
-        rawText: {},
+        rawText: { orientation: formatManualOrientation(orientation) },
         matches: [],
         error: err instanceof Error ? err.message : "Unknown OCR error",
       });
     }
   }, []);
+
+  const applyManualCanvasTransform = useCallback(
+    (nextOrientation: ManualOrientation, degrees: 0 | 90 | 180 | 270, flipX: boolean, flipY = false) => {
+      const canvas = cropCanvasRef.current;
+      if (!canvas || !capturedAt) return;
+      const transformed = transformCanvas(canvas, degrees, flipX, flipY);
+      copyCanvas(transformed, canvas);
+      setManualOrientation(nextOrientation);
+      setInventoryMessage("");
+      setOcrState({
+        status: "idle",
+        message: "Adjust rotation/flip until the card text is readable, then run OCR.",
+        rawText: { orientation: formatManualOrientation(nextOrientation) },
+        matches: [],
+        error: "",
+      });
+    },
+    [capturedAt]
+  );
+
+  const rotateCapturedCrop = useCallback(
+    (delta: 90 | -90) => {
+      const nextOrientation = rotateManualOrientation(manualOrientation, delta);
+      applyManualCanvasTransform(nextOrientation, delta === 90 ? 90 : 270, false);
+    },
+    [applyManualCanvasTransform, manualOrientation]
+  );
+
+  const flipCapturedCropX = useCallback(() => {
+    const nextOrientation = toggleManualFlipX(manualOrientation);
+    applyManualCanvasTransform(nextOrientation, 0, true);
+  }, [applyManualCanvasTransform, manualOrientation]);
+
+  const flipCapturedCropY = useCallback(() => {
+    const nextOrientation = toggleManualFlipY(manualOrientation);
+    applyManualCanvasTransform(nextOrientation, 0, false, true);
+  }, [applyManualCanvasTransform, manualOrientation]);
+
+  const runManualOcr = useCallback(() => {
+    const canvas = cropCanvasRef.current;
+    if (!canvas || !capturedAt) return;
+    void recognizeCapturedCard(canvas, manualOrientation);
+  }, [capturedAt, manualOrientation, recognizeCapturedCard]);
 
   const addMatchToInventory = useCallback(async (match: NoLlmCardMatch, normalDelta: number, foilDelta: number) => {
     setInventoryMessage(`Adding ${formatCardLine(match)}...`);
@@ -714,7 +715,8 @@ export default function NoLlmScanPage() {
     previousDetectionRef.current = null;
     setCapturedAt(null);
     setScannerActive(true);
-    setOcrState({ status: "idle", message: "Capture a card to read OCR zones.", rawText: {}, matches: [], error: "" });
+    setManualOrientation({ degrees: 0, flipX: false, flipY: false });
+    setOcrState({ status: "idle", message: "Capture a card to adjust orientation before OCR.", rawText: {}, matches: [], error: "" });
     setInventoryMessage("");
     const canvas = cropCanvasRef.current;
     const ctx = canvas?.getContext("2d");
@@ -811,9 +813,17 @@ export default function NoLlmScanPage() {
         );
 
         warpCardToCanvas(cv, highResImageData, highResPoints, cropCanvas);
+        const initialOrientation: ManualOrientation = { degrees: 0, flipX: false, flipY: false };
+        setManualOrientation(initialOrientation);
         setCapturedAt(new Date().toLocaleTimeString());
         setScannerActive(false);
-        void recognizeCapturedCard(cropCanvas);
+        setOcrState({
+          status: "idle",
+          message: "Adjust rotation/flip until the card text is readable, then run OCR.",
+          rawText: { orientation: formatManualOrientation(initialOrientation) },
+          matches: [],
+          error: "",
+        });
       }
     }, DETECTION_INTERVAL_MS);
 
@@ -823,6 +833,7 @@ export default function NoLlmScanPage() {
   const formatPercent = (value: number | null) => (value == null ? "—" : `${(value * 100).toFixed(1)}%`);
   const formatNumber = (value: number | null) => (value == null ? "—" : value.toFixed(2));
   const bestMatch = ocrState.matches[0];
+  const ocrBusy = ["loading", "orienting", "reading", "matching"].includes(ocrState.status);
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 p-4 md:p-6">
@@ -924,8 +935,58 @@ export default function NoLlmScanPage() {
                 <canvas ref={cropCanvasRef} className="max-h-[520px] max-w-full" />
                 {!capturedAt && <p className="absolute text-sm text-gray-600">Hold a card in frame</p>}
               </div>
+              {capturedAt && (
+                <div className="mt-3 rounded-xl border border-amber-700/30 bg-amber-950/20 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-amber-200 font-semibold">Manual orientation</span>
+                    <span className="text-xs text-gray-300">{formatManualOrientation(manualOrientation)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => rotateCapturedCrop(-90)}
+                      disabled={ocrBusy}
+                      className="rounded-lg border border-gray-700 px-3 py-2 font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                    >
+                      ↶ Rotate left
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => rotateCapturedCrop(90)}
+                      disabled={ocrBusy}
+                      className="rounded-lg border border-gray-700 px-3 py-2 font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                    >
+                      ↷ Rotate right
+                    </button>
+                    <button
+                      type="button"
+                      onClick={flipCapturedCropX}
+                      disabled={ocrBusy}
+                      className="rounded-lg border border-gray-700 px-3 py-2 font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                    >
+                      ⇆ Flip H
+                    </button>
+                    <button
+                      type="button"
+                      onClick={flipCapturedCropY}
+                      disabled={ocrBusy}
+                      className="rounded-lg border border-gray-700 px-3 py-2 font-semibold text-gray-200 hover:bg-gray-800 disabled:opacity-40"
+                    >
+                      ⇅ Flip V
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={runManualOcr}
+                    disabled={ocrBusy}
+                    className="w-full rounded-lg bg-green-500 px-3 py-2 text-sm font-semibold text-gray-950 hover:bg-green-400 disabled:opacity-40"
+                  >
+                    Looks correct — run OCR
+                  </button>
+                </div>
+              )}
               <p className="text-xs text-gray-500 mt-3">
-                Crop is fed into browser OCR zones for identifier/name/type-line matching. All displayed card facts come from the database after match.
+                Adjust the crop until the text is upright/readable, then run OCR. All displayed card facts come from the database after match.
               </p>
             </div>
 
