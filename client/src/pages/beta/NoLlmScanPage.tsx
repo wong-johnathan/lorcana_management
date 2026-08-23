@@ -96,6 +96,7 @@ const INK_COLOR_OPTIONS = ["", "Amber", "Amethyst", "Emerald", "Ruby", "Sapphire
 
 const IDENTIFIER_WHITELIST = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/•·.-|! ";
 const TEXT_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -'.,•:";
+const AUTO_CAPTURE_ORIENTATION: ManualOrientation = { degrees: 90, flipX: true, flipY: false };
 
 function loadOpenCv(): Promise<CvModule> {
   if (!cvPromise) {
@@ -1086,14 +1087,20 @@ export default function NoLlmScanPage() {
         );
 
         warpCardToCanvas(cv, stillImageData, highResPoints, cropCanvas);
-        const initialOrientation: ManualOrientation = { degrees: 0, flipX: false, flipY: false };
-        setManualOrientation(initialOrientation);
+        const autoOrientedCrop = transformCanvas(
+          cropCanvas,
+          AUTO_CAPTURE_ORIENTATION.degrees,
+          AUTO_CAPTURE_ORIENTATION.flipX,
+          AUTO_CAPTURE_ORIENTATION.flipY
+        );
+        copyCanvas(autoOrientedCrop, cropCanvas);
+        setManualOrientation(AUTO_CAPTURE_ORIENTATION);
         setCapturedAt(new Date().toLocaleTimeString());
         setScannerActive(false);
         setOcrState({
           status: "idle",
-          message: "Adjust rotation/flip until the card text is readable, then run OCR.",
-          rawText: { orientation: formatManualOrientation(initialOrientation) },
+          message: "Auto-rotated 90° right + flipped horizontally. Adjust if needed, then run OCR.",
+          rawText: { orientation: formatManualOrientation(AUTO_CAPTURE_ORIENTATION) },
           matches: [],
           error: "",
         });
