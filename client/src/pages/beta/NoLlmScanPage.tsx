@@ -7,6 +7,8 @@ import {
   chooseBestOrientation,
   formatManualOrientation,
   rotateManualOrientation,
+  scoreIdentifierOcr,
+  scoreReadableTextOcr,
   toggleManualFlipX,
   toggleManualFlipY,
   type ManualOrientation,
@@ -117,10 +119,14 @@ function cleanOcrText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+type OcrVariant = "contrast" | "threshold" | "threshold-invert" | "bright";
+type OcrMode = "identifier" | "text" | "number";
+
 function cropZoneToDataUrl(
   sourceCanvas: HTMLCanvasElement,
   zone: { x: number; y: number; w: number; h: number },
-  scale = 3
+  variant: OcrVariant,
+  scale = 4
 ): string {
   const sx = Math.round(sourceCanvas.width * zone.x);
   const sy = Math.round(sourceCanvas.height * zone.y);
@@ -139,23 +145,48 @@ function cropZoneToDataUrl(
 
   const imageData = ctx.getImageData(0, 0, output.width, output.height);
   const data = imageData.data;
+  const grayValues: number[] = [];
+
   for (let i = 0; i < data.length; i += 4) {
     const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
-    data[i] = contrasted;
-    data[i + 1] = contrasted;
-    data[i + 2] = contrasted;
+    grayValues.push(gray);
+  }
+  const averageGray = grayValues.reduce((sum, value) => sum + value, 0) / Math.max(grayValues.length, 1);
+  const threshold = Math.max(82, Math.min(185, averageGray + 18));
+
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    let value: number;
+    if (variant === "threshold" || variant === "threshold-invert") {
+      value = gray >= threshold ? 255 : 0;
+      if (variant === "threshold-invert") value = 255 - value;
+    } else if (variant === "bright") {
+      value = Math.max(0, Math.min(255, (gray - 105) * 2.2 + 150));
+    } else {
+      value = Math.max(0, Math.min(255, (gray - 128) * 1.75 + 128));
+    }
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
   }
   ctx.putImageData(imageData, 0, 0);
 
   return output.toDataURL("image/png");
 }
 
+function scoreOcrText(value: string, mode: OcrMode): number {
+  if (!value) return 0;
+  if (mode === "identifier") return scoreIdentifierOcr(value);
+  if (mode === "number") return /\d/.test(value) ? 70 + Math.min(20, value.length) : 0;
+  return scoreReadableTextOcr(value) + Math.min(20, value.replace(/[^A-Za-z0-9]/g, "").length);
+}
+
 async function recognizeZone(
   worker: OcrWorker,
   sourceCanvas: HTMLCanvasElement,
   zone: { x: number; y: number; w: number; h: number },
-  whitelist: string
+  whitelist: string,
+  mode: OcrMode
 ): Promise<string> {
   await worker.setParameters({
     tessedit_pageseg_mode: PSM.SINGLE_LINE,
@@ -163,9 +194,22 @@ async function recognizeZone(
     preserve_interword_spaces: "1",
     user_defined_dpi: "300",
   });
-  const image = cropZoneToDataUrl(sourceCanvas, zone);
-  const result = await worker.recognize(image);
-  return cleanOcrText(result.data.text);
+
+  let bestText = "";
+  let bestScore = 0;
+  const variants: OcrVariant[] = ["contrast", "bright", "threshold", "threshold-invert"];
+  for (const variant of variants) {
+    const image = cropZoneToDataUrl(sourceCanvas, zone, variant);
+    const result = await worker.recognize(image);
+    const text = cleanOcrText(result.data.text);
+    const score = scoreOcrText(text, mode);
+    if (score > bestScore) {
+      bestScore = score;
+      bestText = text;
+    }
+  }
+
+  return bestText;
 }
 
 function formatCardLine(match: NoLlmCardMatch): string {
@@ -641,10 +685,10 @@ export default function NoLlmScanPage() {
         status: "reading",
         message: "Reading OCR zones using your confirmed orientation...",
       }));
-      const identifier = await recognizeZone(worker, canvas, ocrZones.identifier, IDENTIFIER_WHITELIST);
-      const title = await recognizeZone(worker, canvas, ocrZones.title, TEXT_WHITELIST);
-      const typeLine = await recognizeZone(worker, canvas, ocrZones.typeLine, TEXT_WHITELIST);
-      const inkCost = await recognizeZone(worker, canvas, ocrZones.inkCost, "0123456789OoQIl|! ");
+      const identifier = await recognizeZone(worker, canvas, ocrZones.identifier, IDENTIFIER_WHITELIST, "identifier");
+      const title = await recognizeZone(worker, canvas, ocrZones.title, TEXT_WHITELIST, "text");
+      const typeLine = await recognizeZone(worker, canvas, ocrZones.typeLine, TEXT_WHITELIST, "text");
+      const inkCost = await recognizeZone(worker, canvas, ocrZones.inkCost, "0123456789OoQIl|! ", "number");
       const rawText = {
         orientation: formatManualOrientation(orientation),
         identifier,
