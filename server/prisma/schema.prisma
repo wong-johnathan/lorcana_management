@@ -8,28 +8,31 @@ datasource db {
 }
 
 model Card {
-  id            String   @id @default(cuid())
-  externalId    Int      @unique
-  tcgPlayerId   Int?
-  cardTraderUrl String?
-  cardmarketUrl String?
-  displayPrice  Float?
-  name          String
-  subtitle      String   @default("")
-  character     String?
-  types         String[]
-  cardType      String   @default("")
-  color         String
-  setCode       String
-  setName       String
-  rarity        String
-  inkCost       Int      @default(0)
-  strength      Int      @default(0)
-  willpower     Int      @default(0)
-  lore          Int      @default(0)
-  abilities     String   @default("")
-  cardNumber    String   @default("")
-  imageUrl      String   @default("")
+  id              String   @id @default(cuid())
+  externalId      Int      @unique
+  tcgPlayerId     Int?
+  cardTraderUrl   String?
+  cardmarketUrl   String?
+  displayPrice    Float?
+  name            String
+  subtitle        String   @default("")
+  character       String?
+  types           String[]
+  cardType        String   @default("")
+  color           String
+  setCode         String
+  setNumber       Int?
+  setName         String
+  rarity          String
+  inkCost         Int      @default(0)
+  strength        Int      @default(0)
+  willpower       Int      @default(0)
+  lore            Int      @default(0)
+  abilities       String   @default("")
+  cardNumber      String   @default("")
+  collectorNumber Int?
+  foilTypes       String[] @default([])
+  imageUrl        String   @default("")
 
   inventoryEntries InventoryEntry[]
   analysis         CardAnalysis?
@@ -38,6 +41,8 @@ model Card {
   @@index([name])
   @@index([color])
   @@index([setName])
+  @@index([setNumber])
+  @@index([collectorNumber])
   @@index([rarity])
   @@index([tcgPlayerId])
   @@index([displayPrice])
@@ -54,9 +59,10 @@ model User {
 }
 
 model InventoryEntry {
-  id           String @id @default(cuid())
-  quantity     Int    @default(0)
-  foilQuantity Int    @default(0)
+  id               String @id @default(cuid())
+  quantity         Int    @default(0)
+  foilQuantity     Int    @default(0)
+  holofoilQuantity Int    @default(0)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

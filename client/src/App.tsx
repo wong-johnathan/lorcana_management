@@ -2,14 +2,12 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import LoginPage from "./pages/LoginPage";
-import ScanPage from "./pages/ScanPage";
 import InventoryPage from "./pages/InventoryPage";
 import DatabasePage from "./pages/DatabasePage";
 import SettingsPage from "./pages/SettingsPage";
 import PublicCollectionPage from "./pages/PublicCollectionPage";
 import CardDetailPage from "./pages/CardDetailPage";
 import MasterSetPage from "./pages/MasterSetPage";
-import NoLlmScanPage from "./pages/beta/NoLlmScanPage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -31,8 +29,6 @@ export default function App() {
         <Route path="/collection/:userId" element={<PublicCollectionPage />} />
         {user ? (
           <>
-            <Route path="/scan" element={<ScanPage />} />
-            <Route path="/beta/no-llm-scan" element={<NoLlmScanPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </>

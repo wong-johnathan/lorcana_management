@@ -5,10 +5,6 @@ import type {
   InventoryEntry,
   FilterOptions,
   InventoryStats,
-  RecognizeResult,
-  NoLlmMatchResult,
-  BatchItem,
-  BatchResult,
   UserSettings,
   PublicCollection,
   CardAnalysis,
@@ -70,16 +66,6 @@ export const cards = {
   filters: () => request<FilterOptions>("/cards/filters"),
   masterSetEstimate: (params: Record<string, string>) =>
     request<MasterSetEstimate>(`/cards/master-set/estimate?${new URLSearchParams(params).toString()}`),
-  recognize: (image: string) =>
-    request<RecognizeResult>("/cards/recognize", {
-      method: "POST",
-      body: JSON.stringify({ image }),
-    }),
-  matchNoLlm: (ocr: Record<string, unknown>) =>
-    request<NoLlmMatchResult>("/cards/match-no-llm", {
-      method: "POST",
-      body: JSON.stringify({ ocr }),
-    }),
 };
 
 export const inventory = {
@@ -102,11 +88,6 @@ export const inventory = {
   wipe: () =>
     request<{ deleted: number }>("/inventory", { method: "DELETE" }),
   stats: () => request<InventoryStats>("/inventory/stats"),
-  batchAdd: (items: BatchItem[]) =>
-    request<BatchResult>("/inventory/batch", {
-      method: "POST",
-      body: JSON.stringify({ items }),
-    }),
 };
 
 export const sync = {

@@ -1,14 +1,13 @@
 # Lorcana Inventory Manager
 
-A personal card inventory system for **Disney Lorcana TCG** collectors. Scan cards with AI, track your collection, and browse the full catalog — all through a dark-themed responsive web app.
+A personal card inventory system for **Disney Lorcana TCG** collectors. Track your collection and browse the full catalog — all through a dark-themed responsive web app.
 
 ## Features
 
-- **📸 AI Card Scanning** — Snap a photo of any card and Gemini Flash identifies it, matches it against the database, and adds it to your inventory. Batch scan up to 50 cards at once.
 - **📊 Collection Tracking** — Track normal and foil/enchanted quantities separately. Stats dashboard shows unique cards, total count, and per-set completion breakdowns.
 - **🔍 Full Card Database** — Browse every Lorcana card ever released with rich filtering by set, color, rarity, type, character, and ownership status (Owned / Not Owned).
 - **👥 Multi-User** — Each collector gets their own account with JWT auth. Inventories are isolated per user.
-- **📱 Responsive** — Bottom tab navigation on mobile (primary scanning use case), sidebar on desktop.
+- **📱 Responsive** — Bottom tab navigation on mobile, sidebar on desktop.
 - **🔄 Auto-Synced Data** — Card data sourced from [LorcanaJSON](https://lorcanajson.org/), seeded on startup and refreshable when new sets drop.
 
 ## Tech Stack
@@ -19,7 +18,6 @@ A personal card inventory system for **Disney Lorcana TCG** collectors. Scan car
 | Backend  | Express 5, TypeScript, Prisma ORM                                 |
 | Database | PostgreSQL 16                                                     |
 | Auth     | JWT (bcrypt password hashing)                                     |
-| AI       | Gemini 2.5 Flash (card recognition from photos)                   |
 | Infra    | Docker Compose, Nginx reverse proxy, GitHub Actions CI/CD         |
 
 ## Quick Start (Docker)
@@ -29,9 +27,6 @@ A personal card inventory system for **Disney Lorcana TCG** collectors. Scan car
 git clone https://github.com/wong-johnathan/lorcana_management.git
 cd lorcana_management
 
-# (Optional) Add your Gemini API key for AI card scanning
-echo "GEMINI_API_KEY=your-key-here" > .env
-
 # Launch dev stack (PostgreSQL + server + nginx + Vite dev server)
 docker compose --profile dev up -d
 
@@ -39,8 +34,6 @@ docker compose --profile dev up -d
 ```
 
 The server auto-runs Prisma migrations and seeds the card database from LorcanaJSON on first start.
-
-Without `GEMINI_API_KEY`, manual search-based card adding still works — only the photo recognition feature requires it.
 
 ## Architecture
 
@@ -51,11 +44,6 @@ Without `GEMINI_API_KEY`, manual search-based card adding still works — only t
 │  :5173       │     │   proxy)     │     │              │     users,
 │              │     │  :80         │     │              │     inventory)
 └──────────────┘     └──────────────┘     └──────┬───────┘
-                                                 │
-                                          ┌──────▼───────┐
-                                          │  Gemini API  │
-                                          │  (card recog)│
-                                          └──────────────┘
 ```
 
 ## Development (local, no Docker)
@@ -68,7 +56,7 @@ docker run --name lorcana-pg -e POSTGRES_USER=lorcana \
 
 # Terminal 2: Server
 cd server
-cp .env.example .env   # edit DATABASE_URL + JWT_SECRET + GEMINI_API_KEY
+cp .env.example .env   # edit DATABASE_URL + JWT_SECRET
 npm install
 npx prisma migrate deploy
 npm run seed
@@ -94,7 +82,6 @@ npm run dev             # :5173
 | GET    | `/api/cards`          | List/search/filter all cards         |
 | GET    | `/api/cards/:id`      | Single card details                  |
 | GET    | `/api/cards/filters`  | Available filter values              |
-| POST   | `/api/cards/recognize`| AI card recognition from base64 image|
 
 ### Inventory (authenticated)
 | Method | Endpoint               | Description                  |
@@ -102,7 +89,6 @@ npm run dev             # :5173
 | GET    | `/api/inventory`       | List user's collection       |
 | GET    | `/api/inventory/stats` | Collection statistics        |
 | POST   | `/api/inventory`       | Add card to inventory        |
-| POST   | `/api/inventory/batch` | Batch add via AI recognition |
 | PATCH  | `/api/inventory/:id`   | Update quantity              |
 | DELETE | `/api/inventory/:id`   | Remove card                  |
 
@@ -115,7 +101,6 @@ npm run dev             # :5173
 # On your server:
 git pull
 echo "JWT_SECRET=your-secure-secret" > .env
-echo "GEMINI_API_KEY=your-key" >> .env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -137,7 +122,7 @@ lorcana_management/
 ├── client/                    # React frontend
 │   ├── src/
 │   │   ├── components/        # CardGrid, CardDetail, FilterBar, Layout
-│   │   ├── pages/             # ScanPage, InventoryPage, DatabasePage, LoginPage
+│   │   ├── pages/             # InventoryPage, DatabasePage, LoginPage
 │   │   ├── context/           # AuthContext
 │   │   ├── services/          # API client
 │   │   └── types/             # TypeScript interfaces
@@ -146,7 +131,7 @@ lorcana_management/
 │   ├── src/
 │   │   ├── routes/            # auth, cards, inventory, sync
 │   │   ├── middleware/        # JWT authentication
-│   │   └── services/          # cardRecognition (Gemini), cardSync (LorcanaJSON)
+│   │   └── services/          # cardSync (LorcanaJSON), price sync, analysis
 │   ├── prisma/
 │   │   ├── schema.prisma      # Card, User, InventoryEntry
 │   │   ├── migrations/

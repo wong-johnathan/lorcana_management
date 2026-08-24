@@ -55,6 +55,17 @@ function parseData(raw: string): LorcanaData {
   return JSON.parse(raw);
 }
 
+function parseSetNumber(setCode: string): number | null {
+  const match = setCode.match(/\d+/);
+  return match ? Number(match[0]) : null;
+}
+
+function parseCollectorNumber(card: LorcanaCard): number | null {
+  if (typeof card.number === "number") return card.number;
+  const match = card.fullIdentifier?.match(/^(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
 export async function upsertCards(
   data: LorcanaData,
   onProgress?: UpsertProgressCallback
@@ -72,6 +83,8 @@ export async function upsertCards(
 
     try {
       const setCode = card.setCode || "";
+      const setNumber = parseSetNumber(setCode);
+      const collectorNumber = parseCollectorNumber(card);
       const setName = setMap[setCode]?.name || `Set ${setCode}`;
       const abilitiesText =
         card.fullText ||
@@ -92,6 +105,7 @@ export async function upsertCards(
           cardType: card.type || "",
           color: card.color || "",
           setCode,
+          setNumber,
           setName,
           rarity: card.rarity || "",
           inkCost: card.cost || 0,
@@ -100,6 +114,7 @@ export async function upsertCards(
           lore: card.lore || 0,
           abilities: abilitiesText,
           cardNumber: card.fullIdentifier || String(card.number || ""),
+          collectorNumber,
           imageUrl: card.images?.full || "",
         },
         update: {
@@ -113,6 +128,7 @@ export async function upsertCards(
           cardType: card.type || "",
           color: card.color || "",
           setCode,
+          setNumber,
           setName,
           rarity: card.rarity || "",
           inkCost: card.cost || 0,
@@ -121,6 +137,7 @@ export async function upsertCards(
           lore: card.lore || 0,
           abilities: abilitiesText,
           cardNumber: card.fullIdentifier || String(card.number || ""),
+          collectorNumber,
           imageUrl: card.images?.full || "",
         },
       });

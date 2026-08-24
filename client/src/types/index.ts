@@ -69,67 +69,6 @@ export interface FilterOptions {
   types: string[];
 }
 
-export interface RecognizedCard {
-  name: string;
-  subtitle: string;
-  color: string;
-  inkCost: number;
-  strength: number;
-  willpower: number;
-  cardNumber: string;
-}
-
-export interface RecognizeResult {
-  recognized: RecognizedCard | null;
-  matches: Card[];
-  error?: string;
-}
-
-export interface NoLlmRecognizedCard {
-  fullIdentifier: string;
-  collectorNumber: string;
-  setCode: string;
-  name: string;
-  subtitle: string;
-  typeLine: string;
-  inkCost: string;
-  color: string;
-  rawText: Record<string, string>;
-}
-
-export interface NoLlmCardMatch {
-  card: Card;
-  score: number;
-  reasons: string[];
-}
-
-export interface NoLlmMatchResult {
-  recognized: NoLlmRecognizedCard;
-  matches: NoLlmCardMatch[];
-  error?: string;
-}
-
-export interface BatchItem {
-  image: string;
-  quantity: number;
-  foilQuantity: number;
-}
-
-export interface BatchResultItem {
-  index: number;
-  status: "success" | "failed";
-  recognized: RecognizedCard | null;
-  card?: Card;
-  error?: string;
-  quantity?: number;
-  foilQuantity?: number;
-  entryId?: string;
-}
-
-export interface BatchResult {
-  results: BatchResultItem[];
-}
-
 export interface InventoryStats {
   totalUnique: number;
   totalCards: number;
