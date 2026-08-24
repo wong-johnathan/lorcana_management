@@ -6,6 +6,20 @@ import { recognizeCard } from "../services/cardRecognition.js";
 const prisma = new PrismaClient();
 export const inventoryRouter = Router();
 
+type InventoryPrice = { variant: string; marketPrice: number | null };
+
+const FOIL_VARIANTS = ["Foil", "Cold Foil", "Holofoil"];
+
+function marketPriceForVariant(
+  prices: InventoryPrice[],
+  variants: string[]
+): number | null {
+  const price = variants
+    .map((variant) => prices.find((p) => p.variant.toLowerCase() === variant.toLowerCase()))
+    .find((p): p is InventoryPrice => Boolean(p));
+  return price?.marketPrice ?? null;
+}
+
 inventoryRouter.use(authenticateToken);
 
 inventoryRouter.get("/", async (req: AuthRequest, res: Response) => {
@@ -36,7 +50,7 @@ inventoryRouter.get("/", async (req: AuthRequest, res: Response) => {
 
     const entries = await prisma.inventoryEntry.findMany({
       where,
-      include: { card: true },
+      include: { card: { include: { prices: true } } },
       orderBy: { card: { name: "asc" } },
     });
 
@@ -53,7 +67,14 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
 
     const entries = await prisma.inventoryEntry.findMany({
       where: { userId },
-      include: { card: { select: { setName: true } } },
+      include: {
+        card: {
+          select: {
+            setName: true,
+            prices: { select: { variant: true, marketPrice: true } },
+          },
+        },
+      },
     });
 
     const totalUnique = entries.length;
@@ -63,9 +84,23 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
     );
 
     const bySet: Record<string, number> = {};
+    let totalValue = 0;
+    let missingPriceCount = 0;
     for (const entry of entries) {
       const setName = entry.card.setName;
       bySet[setName] = (bySet[setName] || 0) + 1;
+
+      const normalPrice = marketPriceForVariant(entry.card.prices, ["Normal"]);
+      const foilPrice = marketPriceForVariant(entry.card.prices, FOIL_VARIANTS);
+
+      if (entry.quantity > 0) {
+        if (normalPrice == null) missingPriceCount += entry.quantity;
+        else totalValue += entry.quantity * normalPrice;
+      }
+      if (entry.foilQuantity > 0) {
+        if (foilPrice == null) missingPriceCount += entry.foilQuantity;
+        else totalValue += entry.foilQuantity * foilPrice;
+      }
     }
 
     const totalBySet = await prisma.card.groupBy({
@@ -79,7 +114,13 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
       total: s._count,
     }));
 
-    res.json({ totalUnique, totalCards, setBreakdown });
+    res.json({
+      totalUnique,
+      totalCards,
+      totalValue: Number(totalValue.toFixed(2)),
+      missingPriceCount,
+      setBreakdown,
+    });
   } catch (error) {
     console.error("Stats error:", error);
     res.status(500).json({ error: "Internal server error" });

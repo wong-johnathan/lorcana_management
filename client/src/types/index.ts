@@ -133,6 +133,8 @@ export interface BatchResult {
 export interface InventoryStats {
   totalUnique: number;
   totalCards: number;
+  totalValue?: number;
+  missingPriceCount?: number;
   setBreakdown: { setName: string; owned: number; total: number }[];
 }
 

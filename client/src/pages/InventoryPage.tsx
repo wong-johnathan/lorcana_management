@@ -5,6 +5,11 @@ import type { Card, InventoryEntry, InventoryStats } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardDetail from "../components/CardDetail";
 
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
 export default function InventoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<InventoryEntry[]>([]);
@@ -73,15 +78,15 @@ export default function InventoryPage() {
     }
   };
 
-  const handleExport = (format: "csv" | "decklist") => {
+  const handleExport = () => {
     const token = localStorage.getItem("token");
-    const url = `/api/inventory/export/${format}`;
+    const url = "/api/inventory/export/csv";
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.blob())
       .then((blob) => {
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = format === "csv" ? "lorcana_collection.csv" : "lorcana_decklist.txt";
+        a.download = "lorcana_collection.csv";
         a.click();
         URL.revokeObjectURL(a.href);
       })
@@ -126,6 +131,17 @@ export default function InventoryPage() {
               {stats.totalCards}
             </p>
           </div>
+          <div className="bg-gray-900 rounded-lg p-3">
+            <p className="text-xs text-gray-500">Total Value</p>
+            <p className="text-2xl font-bold text-emerald-400">
+              {currencyFormatter.format(stats.totalValue ?? 0)}
+            </p>
+            {(stats.missingPriceCount ?? 0) > 0 && (
+              <p className="text-[10px] text-gray-500 mt-1">
+                Excludes {stats.missingPriceCount} card{stats.missingPriceCount === 1 ? "" : "s"} missing market price
+              </p>
+            )}
+          </div>
           {stats.setBreakdown.map((s) => (
             <div key={s.setName} className="bg-gray-900 rounded-lg p-3">
               <p className="text-xs text-gray-500 truncate">{s.setName}</p>
@@ -143,22 +159,13 @@ export default function InventoryPage() {
           <h2 className="text-lg font-semibold">My Collection</h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleExport("csv")}
+              onClick={handleExport}
               className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors text-gray-300"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               CSV
-            </button>
-            <button
-              onClick={() => handleExport("decklist")}
-              className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors text-gray-300"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Deck List
             </button>
             <button
               onClick={() => setWipeConfirmOpen(true)}
