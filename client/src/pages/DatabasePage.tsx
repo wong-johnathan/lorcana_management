@@ -8,6 +8,8 @@ import FilterBar from "../components/FilterBar";
 import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
 
+type InventoryVariant = "normal" | "foil";
+
 function filtersFromParams(params: URLSearchParams): Record<string, string> {
   const filters: Record<string, string> = {};
   for (const key of [
@@ -54,6 +56,7 @@ export default function DatabasePage() {
   const [inventoryMap, setInventoryMap] = useState<
     Map<string, { quantity: number; foilQuantity: number; entryId: string }>
   >(new Map());
+  const [updatingQuantityKeys, setUpdatingQuantityKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [cardSyncStatus, setCardSyncStatus] = useState<SyncStatus | null>(null);
@@ -320,10 +323,97 @@ export default function DatabasePage() {
     foilQuantity: number
   ) => {
     try {
-      await inventoryApi.add(cardId, quantity, foilQuantity);
-      await loadInventory();
+      const entry = await inventoryApi.add(cardId, quantity, foilQuantity);
+      setInventoryMap((prev) => {
+        const next = new Map(prev);
+        next.set(entry.cardId, {
+          quantity: entry.quantity,
+          foilQuantity: entry.foilQuantity,
+          entryId: entry.id,
+        });
+        return next;
+      });
     } catch (err) {
       console.error("Failed to add:", err);
+    }
+  };
+
+  const setCardQuantityUpdating = (cardId: string, isUpdating: boolean) => {
+    setUpdatingQuantityKeys((prev) => {
+      const next = new Set(prev);
+      for (const variant of ["normal", "foil"] as const) {
+        const key = `${cardId}:${variant}`;
+        if (isUpdating) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
+  };
+
+  const upsertInventoryMapEntry = (entry: InventoryEntry) => {
+    setInventoryMap((prev) => {
+      const next = new Map(prev);
+      next.set(entry.cardId, {
+        quantity: entry.quantity,
+        foilQuantity: entry.foilQuantity,
+        entryId: entry.id,
+      });
+      return next;
+    });
+  };
+
+  const removeInventoryMapEntry = (cardId: string) => {
+    setInventoryMap((prev) => {
+      const next = new Map(prev);
+      next.delete(cardId);
+      return next;
+    });
+  };
+
+  const handleQuantityChange = async (
+    card: Card,
+    variant: InventoryVariant,
+    delta: 1 | -1
+  ) => {
+    setCardQuantityUpdating(card.id, true);
+    try {
+      if (delta === 1) {
+        const entry = await inventoryApi.add(
+          card.id,
+          variant === "normal" ? 1 : 0,
+          variant === "foil" ? 1 : 0
+        );
+        upsertInventoryMapEntry(entry);
+        return;
+      }
+
+      const current = inventoryMap.get(card.id);
+      if (!current) return;
+
+      const nextQuantity =
+        variant === "normal" ? Math.max(0, current.quantity - 1) : current.quantity;
+      const nextFoilQuantity =
+        variant === "foil" ? Math.max(0, current.foilQuantity - 1) : current.foilQuantity;
+
+      if (nextQuantity === current.quantity && nextFoilQuantity === current.foilQuantity) {
+        return;
+      }
+
+      if (nextQuantity + nextFoilQuantity === 0) {
+        await inventoryApi.remove(current.entryId);
+        removeInventoryMapEntry(card.id);
+        return;
+      }
+
+      const entry = await inventoryApi.update(current.entryId, {
+        quantity: nextQuantity,
+        foilQuantity: nextFoilQuantity,
+      });
+      upsertInventoryMapEntry(entry);
+    } catch (err) {
+      console.error("Failed to update inventory quantity:", err);
+    } finally {
+      setCardQuantityUpdating(card.id, false);
     }
   };
 
@@ -486,6 +576,8 @@ export default function DatabasePage() {
             onSelect={handleSelectCard}
             ownedCardIds={user ? ownedCardIds : undefined}
             ownedQuantities={user ? ownedQuantities : undefined}
+            onQuantityChange={user ? handleQuantityChange : undefined}
+            updatingQuantityKeys={updatingQuantityKeys}
             priceContext={priceContext}
           />
 

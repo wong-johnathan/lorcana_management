@@ -1,5 +1,7 @@
 import type { Card, MasterSetPriceField } from "../types";
 
+type InventoryVariant = "normal" | "foil";
+
 interface CardGridPriceContext {
   variant: string;
   priceField: MasterSetPriceField;
@@ -11,6 +13,8 @@ interface CardGridProps {
   onSelect: (card: Card) => void;
   ownedCardIds?: Set<string>;
   ownedQuantities?: Map<string, { quantity: number; foilQuantity: number }>;
+  onQuantityChange?: (card: Card, variant: InventoryVariant, delta: 1 | -1) => void;
+  updatingQuantityKeys?: Set<string>;
   priceContext?: CardGridPriceContext;
 }
 
@@ -47,11 +51,54 @@ function priceContextLabel(context: CardGridPriceContext): string {
   return `${status} ${variant}`;
 }
 
+function QuantityRow({
+  label,
+  count,
+  onDecrease,
+  onIncrease,
+  disabled,
+}: {
+  label: string;
+  count: number;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-gray-400">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onDecrease}
+          disabled={disabled || count <= 0}
+          className="h-6 w-6 rounded bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Remove ${label.toLowerCase()} card`}
+        >
+          −
+        </button>
+        <span className="min-w-5 text-center font-semibold text-gray-100">{count}</span>
+        <button
+          type="button"
+          onClick={onIncrease}
+          disabled={disabled}
+          className="h-6 w-6 rounded bg-amber-600 text-black font-bold hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Add ${label.toLowerCase()} card`}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function CardGrid({
   cards,
   onSelect,
   ownedCardIds,
   ownedQuantities,
+  onQuantityChange,
+  updatingQuantityKeys,
   priceContext,
 }: CardGridProps) {
   if (cards.length === 0) {
@@ -65,71 +112,101 @@ export default function CardGrid({
       {cards.map((card) => {
         const borderClass = COLOR_CLASSES[card.color] || "border-gray-700";
         const isOwned = ownedCardIds?.has(card.id);
-        const qty = ownedQuantities?.get(card.id);
+        const qty = ownedQuantities?.get(card.id) ?? { quantity: 0, foilQuantity: 0 };
         const marketPrice = priceForContext(card, priceContext);
+        const normalKey = `${card.id}:normal`;
+        const foilKey = `${card.id}:foil`;
+        const normalUpdating = updatingQuantityKeys?.has(normalKey);
+        const foilUpdating = updatingQuantityKeys?.has(foilKey);
 
         return (
-          <button
+          <div
             key={card.id}
-            onClick={() => onSelect(card)}
             className={`relative rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden hover:scale-105 transition-transform text-left`}
           >
-            {card.imageUrl ? (
-              <img
-                src={card.imageUrl}
-                alt={`${card.name} - ${card.subtitle}`}
-                className="w-full aspect-[2/3] object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center text-gray-500 text-xs text-center p-2">
-                {card.name}
-                <br />
-                {card.subtitle}
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => onSelect(card)}
+              className="block w-full text-left"
+            >
+              <div className="relative">
+                {card.imageUrl ? (
+                  <img
+                    src={card.imageUrl}
+                    alt={`${card.name} - ${card.subtitle}`}
+                    className="w-full aspect-[2/3] object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center text-gray-500 text-xs text-center p-2">
+                    {card.name}
+                    <br />
+                    {card.subtitle}
+                  </div>
+                )}
 
-            {isOwned && qty && (
-              <div className="absolute top-1 right-1 bg-amber-500 text-black text-xs font-bold px-1.5 py-0.5 rounded">
-                {qty.quantity + qty.foilQuantity}x
-              </div>
-            )}
+                {isOwned && (
+                  <div className="absolute top-1 right-1 bg-amber-500 text-black text-xs font-bold px-1.5 py-0.5 rounded">
+                    {qty.quantity + qty.foilQuantity}x
+                  </div>
+                )}
 
-            {marketPrice != null && (
-              <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-                ${marketPrice.toFixed(2)}
-              </div>
-            )}
+                {marketPrice != null && (
+                  <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                    ${marketPrice.toFixed(2)}
+                  </div>
+                )}
 
-            {priceContext && marketPrice == null && (
-              <div className="absolute bottom-1 right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded max-w-[90%] truncate">
-                {priceContextLabel(priceContext)}
-              </div>
-            )}
+                {priceContext && marketPrice == null && (
+                  <div className="absolute bottom-1 right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded max-w-[90%] truncate">
+                    {priceContextLabel(priceContext)}
+                  </div>
+                )}
 
-            {priceContext && marketPrice != null && (
-              <div className="absolute bottom-7 right-1 bg-sky-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                {priceContext.variant}
+                {priceContext && marketPrice != null && (
+                  <div className="absolute bottom-7 right-1 bg-sky-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                    {priceContext.variant}
+                  </div>
+                )}
               </div>
-            )}
 
-            <div className="p-2">
-              <p className="text-xs font-semibold truncate">{card.name}</p>
-              {card.subtitle && (
-                <p className="text-xs text-gray-400 truncate">
-                  {card.subtitle}
+              <div className="p-2">
+                <p className="text-xs font-semibold truncate">{card.name}</p>
+                {card.subtitle && (
+                  <p className="text-xs text-gray-400 truncate">
+                    {card.subtitle}
+                  </p>
+                )}
+                <div className="flex items-center gap-1 mt-1">
+                  <span className="text-xs text-gray-500">{card.rarity}</span>
+                  <span className="text-xs text-gray-600">·</span>
+                  <span className="text-xs text-gray-500">{card.inkCost} ink</span>
+                </div>
+                <p className="text-[10px] text-gray-600 truncate mt-0.5">
+                  {card.setName} (set {card.setCode})
                 </p>
-              )}
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-xs text-gray-500">{card.rarity}</span>
-                <span className="text-xs text-gray-600">·</span>
-                <span className="text-xs text-gray-500">{card.inkCost} ink</span>
               </div>
-              <p className="text-[10px] text-gray-600 truncate mt-0.5">
-                {card.setName} (set {card.setCode})
-              </p>
-            </div>
-          </button>
+            </button>
+
+            {ownedQuantities && onQuantityChange && (
+              <div className="border-t border-gray-800 p-2 space-y-1 bg-black/20">
+                <QuantityRow
+                  label="Normal"
+                  count={qty.quantity}
+                  disabled={normalUpdating}
+                  onDecrease={() => onQuantityChange(card, "normal", -1)}
+                  onIncrease={() => onQuantityChange(card, "normal", 1)}
+                />
+                <QuantityRow
+                  label="Foil"
+                  count={qty.foilQuantity}
+                  disabled={foilUpdating}
+                  onDecrease={() => onQuantityChange(card, "foil", -1)}
+                  onIncrease={() => onQuantityChange(card, "foil", 1)}
+                />
+              </div>
+            )}
+          </div>
         );
       })}
     </div>
