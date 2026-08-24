@@ -4,6 +4,28 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 export const publicRouter = Router();
 
+type PublicPrice = { variant: string; marketPrice: number | null };
+
+const FOIL_VARIANTS = ["Foil", "Cold Foil"];
+const HOLOFOIL_VARIANTS = ["Holofoil", "Cold Foil", "Foil"];
+
+function marketPriceForVariant(
+  prices: PublicPrice[],
+  variants: string[]
+): number | null {
+  const price = variants
+    .map((variant) => prices.find((p) => p.variant.toLowerCase() === variant.toLowerCase()))
+    .find((p): p is PublicPrice => Boolean(p));
+  return price?.marketPrice ?? null;
+}
+
+function compareNullableNumber(a: number | null, b: number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a - b;
+}
+
 publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
   try {
     const { userId } = req.params as { userId: string };
@@ -42,8 +64,17 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
 
     const entries = await prisma.inventoryEntry.findMany({
       where,
-      include: { card: true },
-      orderBy: { card: { name: "asc" } },
+      include: { card: { include: { prices: true } } },
+    });
+
+    entries.sort((a, b) => {
+      const setCompare = compareNullableNumber(a.card.setNumber, b.card.setNumber);
+      if (setCompare !== 0) return setCompare;
+      const collectorCompare = compareNullableNumber(a.card.collectorNumber, b.card.collectorNumber);
+      if (collectorCompare !== 0) return collectorCompare;
+      const cardNumberCompare = a.card.cardNumber.localeCompare(b.card.cardNumber);
+      if (cardNumberCompare !== 0) return cardNumberCompare;
+      return a.card.name.localeCompare(b.card.name);
     });
 
     const totalUnique = entries.length;
@@ -53,14 +84,34 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
     );
 
     const bySet: Record<string, number> = {};
+    let totalValue = 0;
+    let missingPriceCount = 0;
     for (const entry of entries) {
       const setName = entry.card.setName;
       bySet[setName] = (bySet[setName] || 0) + 1;
+
+      const normalPrice = marketPriceForVariant(entry.card.prices, ["Normal"]);
+      const foilPrice = marketPriceForVariant(entry.card.prices, FOIL_VARIANTS);
+      const holofoilPrice = marketPriceForVariant(entry.card.prices, HOLOFOIL_VARIANTS);
+
+      if (entry.quantity > 0) {
+        if (normalPrice == null) missingPriceCount += entry.quantity;
+        else totalValue += entry.quantity * normalPrice;
+      }
+      if (entry.foilQuantity > 0) {
+        if (foilPrice == null) missingPriceCount += entry.foilQuantity;
+        else totalValue += entry.foilQuantity * foilPrice;
+      }
+      if (entry.holofoilQuantity > 0) {
+        if (holofoilPrice == null) missingPriceCount += entry.holofoilQuantity;
+        else totalValue += entry.holofoilQuantity * holofoilPrice;
+      }
     }
 
     const totalBySet = await prisma.card.groupBy({
-      by: ["setName"],
+      by: ["setName", "setNumber"],
       _count: true,
+      orderBy: [{ setNumber: "asc" }, { setName: "asc" }],
     });
 
     const setBreakdown = totalBySet.map((s) => ({
@@ -79,7 +130,13 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
     res.json({
       user: { id: user.id, username: user.username },
       cards,
-      stats: { totalUnique, totalCards, setBreakdown },
+      stats: {
+        totalUnique,
+        totalCards,
+        totalValue: Number(totalValue.toFixed(2)),
+        missingPriceCount,
+        setBreakdown,
+      },
     });
   } catch (error) {
     console.error("Public collection error:", error);
