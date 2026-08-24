@@ -3,10 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { inventory as inventoryApi, cards as cardsApi } from "../services/api";
 import type { Card, InventoryEntry, InventoryStats } from "../types";
 import FilterBar from "../components/FilterBar";
+import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
 import {
   availableInventoryVariants,
   type InventoryCounts,
+  type InventoryVariant,
   totalInventoryCount,
 } from "../utils/cardVariants";
 
@@ -15,6 +17,13 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
+type InventoryViewMode = "grid" | "rows";
+
+function getInitialViewMode(): InventoryViewMode {
+  if (typeof window === "undefined") return "rows";
+  return localStorage.getItem("inventoryViewMode") === "grid" ? "grid" : "rows";
+}
+
 export default function InventoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [entries, setEntries] = useState<InventoryEntry[]>([]);
@@ -22,6 +31,8 @@ export default function InventoryPage() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailCard, setDetailCard] = useState<Card | null>(null);
+  const [viewMode, setViewMode] = useState<InventoryViewMode>(getInitialViewMode);
+  const [updatingQuantityKeys, setUpdatingQuantityKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [wipeConfirmOpen, setWipeConfirmOpen] = useState(false);
 
@@ -36,16 +47,28 @@ export default function InventoryPage() {
   }, [cardId]);
 
   const entryByCardId = useMemo(() => {
-    const map = new Map<string, InventoryCounts>();
+    const map = new Map<string, InventoryCounts & { entryId: string }>();
     for (const e of entries) {
       map.set(e.cardId, {
         quantity: e.quantity,
         foilQuantity: e.foilQuantity,
         holofoilQuantity: e.holofoilQuantity,
+        entryId: e.id,
       });
     }
     return map;
   }, [entries]);
+
+  const cardList = useMemo(() => entries.map((entry) => entry.card), [entries]);
+
+  const ownedCardIds = useMemo(
+    () => new Set(entries.map((entry) => entry.cardId)),
+    [entries]
+  );
+
+  useEffect(() => {
+    localStorage.setItem("inventoryViewMode", viewMode);
+  }, [viewMode]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +100,45 @@ export default function InventoryPage() {
       await load();
     } catch (err) {
       console.error("Failed to update:", err);
+    }
+  };
+
+  const handleGridQuantityChange = async (
+    card: Card,
+    variant: InventoryVariant,
+    delta: 1 | -1
+  ) => {
+    const entry = entryByCardId.get(card.id);
+    if (!entry) return;
+
+    const key = `${card.id}:${variant}`;
+    setUpdatingQuantityKeys((prev) => new Set(prev).add(key));
+
+    const next = {
+      quantity: entry.quantity,
+      foilQuantity: entry.foilQuantity,
+      holofoilQuantity: entry.holofoilQuantity,
+    };
+
+    if (variant === "normal") next.quantity = Math.max(0, next.quantity + delta);
+    if (variant === "foil") next.foilQuantity = Math.max(0, next.foilQuantity + delta);
+    if (variant === "holofoil") next.holofoilQuantity = Math.max(0, next.holofoilQuantity + delta);
+
+    try {
+      if (totalInventoryCount(next) === 0) {
+        await inventoryApi.remove(entry.entryId);
+      } else {
+        await inventoryApi.update(entry.entryId, next);
+      }
+      await load();
+    } catch (err) {
+      console.error("Failed to update grid quantity:", err);
+    } finally {
+      setUpdatingQuantityKeys((prev) => {
+        const updated = new Set(prev);
+        updated.delete(key);
+        return updated;
+      });
     }
   };
 
@@ -166,9 +228,33 @@ export default function InventoryPage() {
       )}
 
       <div className="p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <h2 className="text-lg font-semibold">My Collection</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-md border border-gray-700 overflow-hidden text-sm">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                className={`px-3 py-1.5 transition-colors ${
+                  viewMode === "grid"
+                    ? "bg-amber-600 text-black font-semibold"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                }`}
+              >
+                Grid
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("rows")}
+                className={`px-3 py-1.5 border-l border-gray-700 transition-colors ${
+                  viewMode === "rows"
+                    ? "bg-amber-600 text-black font-semibold"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                }`}
+              >
+                Rows
+              </button>
+            </div>
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-sm px-3 py-1.5 rounded-md transition-colors text-gray-300"
@@ -196,8 +282,17 @@ export default function InventoryPage() {
         <div className="text-center text-gray-500 py-12">Loading...</div>
       ) : entries.length === 0 ? (
         <div className="text-center text-gray-500 py-12">
-          No cards in your inventory yet. Go scan some cards!
+          No cards in your inventory yet. Add cards from the database.
         </div>
+      ) : viewMode === "grid" ? (
+        <CardGrid
+          cards={cardList}
+          onSelect={handleSelectCard}
+          ownedCardIds={ownedCardIds}
+          ownedQuantities={entryByCardId}
+          onQuantityChange={handleGridQuantityChange}
+          updatingQuantityKeys={updatingQuantityKeys}
+        />
       ) : (
         <div className="px-3 space-y-2 pb-4">
           {entries.map((entry) => {
