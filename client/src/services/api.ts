@@ -73,12 +73,12 @@ export const inventory = {
     const query = params ? "?" + new URLSearchParams(params).toString() : "";
     return request<InventoryEntry[]>(`/inventory${query}`);
   },
-  add: (cardId: string, quantity: number, foilQuantity: number) =>
+  add: (cardId: string, quantity: number, foilQuantity: number, holofoilQuantity = 0) =>
     request<InventoryEntry>("/inventory", {
       method: "POST",
-      body: JSON.stringify({ cardId, quantity, foilQuantity }),
+      body: JSON.stringify({ cardId, quantity, foilQuantity, holofoilQuantity }),
     }),
-  update: (id: string, data: { quantity?: number; foilQuantity?: number }) =>
+  update: (id: string, data: { quantity?: number; foilQuantity?: number; holofoilQuantity?: number }) =>
     request<InventoryEntry>(`/inventory/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

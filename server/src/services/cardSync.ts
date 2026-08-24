@@ -27,6 +27,7 @@ interface LorcanaCard {
   abilities?: LorcanaAbility[];
   number?: number;
   fullIdentifier?: string;
+  foilTypes?: string[];
   images?: { full?: string; thumbnail?: string };
   externalLinks?: { tcgPlayerId?: number; cardTraderUrl?: string; cardmarketUrl?: string };
 }
@@ -115,6 +116,7 @@ export async function upsertCards(
           abilities: abilitiesText,
           cardNumber: card.fullIdentifier || String(card.number || ""),
           collectorNumber,
+          foilTypes: card.foilTypes || [],
           imageUrl: card.images?.full || "",
         },
         update: {
@@ -138,6 +140,7 @@ export async function upsertCards(
           abilities: abilitiesText,
           cardNumber: card.fullIdentifier || String(card.number || ""),
           collectorNumber,
+          foilTypes: card.foilTypes || [],
           imageUrl: card.images?.full || "",
         },
       });

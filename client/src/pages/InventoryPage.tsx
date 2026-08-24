@@ -4,6 +4,11 @@ import { inventory as inventoryApi, cards as cardsApi } from "../services/api";
 import type { Card, InventoryEntry, InventoryStats } from "../types";
 import FilterBar from "../components/FilterBar";
 import CardDetail from "../components/CardDetail";
+import {
+  availableInventoryVariants,
+  type InventoryCounts,
+  totalInventoryCount,
+} from "../utils/cardVariants";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -31,8 +36,14 @@ export default function InventoryPage() {
   }, [cardId]);
 
   const entryByCardId = useMemo(() => {
-    const map = new Map<string, { quantity: number; foilQuantity: number }>();
-    for (const e of entries) map.set(e.cardId, { quantity: e.quantity, foilQuantity: e.foilQuantity });
+    const map = new Map<string, InventoryCounts>();
+    for (const e of entries) {
+      map.set(e.cardId, {
+        quantity: e.quantity,
+        foilQuantity: e.foilQuantity,
+        holofoilQuantity: e.holofoilQuantity,
+      });
+    }
     return map;
   }, [entries]);
 
@@ -59,7 +70,7 @@ export default function InventoryPage() {
 
   const handleUpdate = async (
     id: string,
-    data: { quantity?: number; foilQuantity?: number }
+    data: { quantity?: number; foilQuantity?: number; holofoilQuantity?: number }
   ) => {
     try {
       await inventoryApi.update(id, data);
@@ -192,6 +203,10 @@ export default function InventoryPage() {
           {entries.map((entry) => {
             const card = entry.card;
             const isExpanded = expandedId === entry.id;
+            const variants = availableInventoryVariants(card);
+            const showNormal = variants.includes("normal") || entry.quantity > 0;
+            const showFoil = variants.includes("foil") || entry.foilQuantity > 0;
+            const showHolofoil = variants.includes("holofoil") || entry.holofoilQuantity > 0;
 
             return (
               <div
@@ -237,11 +252,21 @@ export default function InventoryPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium">
-                      {entry.quantity}x
+                      {totalInventoryCount(entry)}x
                     </p>
+                    {entry.quantity > 0 && (
+                      <p className="text-xs text-gray-400">
+                        {entry.quantity}x normal
+                      </p>
+                    )}
                     {entry.foilQuantity > 0 && (
                       <p className="text-xs text-amber-400">
                         {entry.foilQuantity}x foil
+                      </p>
+                    )}
+                    {entry.holofoilQuantity > 0 && (
+                      <p className="text-xs text-purple-300">
+                        {entry.holofoilQuantity}x holofoil
                       </p>
                     )}
                   </div>
@@ -275,8 +300,9 @@ export default function InventoryPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      {showNormal && (
+                      <div className="flex-1 min-w-24">
                         <label className="text-xs text-gray-500">Normal</label>
                         <div className="flex items-center gap-2">
                           <button
@@ -298,13 +324,16 @@ export default function InventoryPage() {
                                 quantity: entry.quantity + 1,
                               })
                             }
-                            className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700"
+                            disabled={!variants.includes("normal")}
+                            className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             +
                           </button>
                         </div>
                       </div>
-                      <div className="flex-1">
+                      )}
+                      {showFoil && (
+                      <div className="flex-1 min-w-24">
                         <label className="text-xs text-gray-500">Foil</label>
                         <div className="flex items-center gap-2">
                           <button
@@ -329,12 +358,48 @@ export default function InventoryPage() {
                                 foilQuantity: entry.foilQuantity + 1,
                               })
                             }
-                            className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700"
+                            disabled={!variants.includes("foil")}
+                            className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             +
                           </button>
                         </div>
                       </div>
+                      )}
+                      {showHolofoil && (
+                      <div className="flex-1 min-w-24">
+                        <label className="text-xs text-gray-500">Holofoil</label>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() =>
+                              handleUpdate(entry.id, {
+                                holofoilQuantity: Math.max(
+                                  0,
+                                  entry.holofoilQuantity - 1
+                                ),
+                              })
+                            }
+                            className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center font-medium">
+                            {entry.holofoilQuantity}
+                          </span>
+                          <button
+                            onClick={() =>
+                              handleUpdate(entry.id, {
+                                holofoilQuantity: entry.holofoilQuantity + 1,
+                              })
+                            }
+                            disabled={!variants.includes("holofoil")}
+                            className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      )}
                     </div>
 
                     <button

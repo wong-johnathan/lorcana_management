@@ -9,6 +9,7 @@ interface PublicEntry {
   card: Card;
   quantity: number;
   foilQuantity: number;
+  holofoilQuantity: number;
 }
 
 export default function PublicCollectionPage() {
@@ -162,10 +163,22 @@ export default function PublicCollectionPage() {
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-medium">{entry.quantity}x</p>
+                  <p className="text-sm font-medium">
+                    {entry.quantity + entry.foilQuantity + entry.holofoilQuantity}x
+                  </p>
+                  {entry.quantity > 0 && (
+                    <p className="text-xs text-gray-400">
+                      {entry.quantity}x normal
+                    </p>
+                  )}
                   {entry.foilQuantity > 0 && (
                     <p className="text-xs text-amber-400">
                       {entry.foilQuantity}x foil
+                    </p>
+                  )}
+                  {entry.holofoilQuantity > 0 && (
+                    <p className="text-xs text-purple-300">
+                      {entry.holofoilQuantity}x holofoil
                     </p>
                   )}
                 </div>

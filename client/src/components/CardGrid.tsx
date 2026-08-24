@@ -1,6 +1,10 @@
 import type { Card, MasterSetPriceField } from "../types";
-
-type InventoryVariant = "normal" | "foil";
+import {
+  availableInventoryVariants,
+  type InventoryCounts,
+  type InventoryVariant,
+  totalInventoryCount,
+} from "../utils/cardVariants";
 
 interface CardGridPriceContext {
   variant: string;
@@ -12,7 +16,7 @@ interface CardGridProps {
   cards: Card[];
   onSelect: (card: Card) => void;
   ownedCardIds?: Set<string>;
-  ownedQuantities?: Map<string, { quantity: number; foilQuantity: number }>;
+  ownedQuantities?: Map<string, InventoryCounts>;
   onQuantityChange?: (card: Card, variant: InventoryVariant, delta: 1 | -1) => void;
   updatingQuantityKeys?: Set<string>;
   priceContext?: CardGridPriceContext;
@@ -112,12 +116,15 @@ export default function CardGrid({
       {cards.map((card) => {
         const borderClass = COLOR_CLASSES[card.color] || "border-gray-700";
         const isOwned = ownedCardIds?.has(card.id);
-        const qty = ownedQuantities?.get(card.id) ?? { quantity: 0, foilQuantity: 0 };
+        const qty = ownedQuantities?.get(card.id) ?? { quantity: 0, foilQuantity: 0, holofoilQuantity: 0 };
+        const variants = availableInventoryVariants(card);
         const marketPrice = priceForContext(card, priceContext);
         const normalKey = `${card.id}:normal`;
         const foilKey = `${card.id}:foil`;
+        const holofoilKey = `${card.id}:holofoil`;
         const normalUpdating = updatingQuantityKeys?.has(normalKey);
         const foilUpdating = updatingQuantityKeys?.has(foilKey);
+        const holofoilUpdating = updatingQuantityKeys?.has(holofoilKey);
 
         return (
           <div
@@ -147,7 +154,7 @@ export default function CardGrid({
 
                 {isOwned && (
                   <div className="absolute top-1 right-1 bg-amber-500 text-black text-xs font-bold px-1.5 py-0.5 rounded">
-                    {qty.quantity + qty.foilQuantity}x
+                    {totalInventoryCount(qty)}x
                   </div>
                 )}
 
@@ -190,20 +197,33 @@ export default function CardGrid({
 
             {ownedQuantities && onQuantityChange && (
               <div className="border-t border-gray-800 p-2 space-y-1 bg-black/20">
-                <QuantityRow
-                  label="Normal"
-                  count={qty.quantity}
-                  disabled={normalUpdating}
-                  onDecrease={() => onQuantityChange(card, "normal", -1)}
-                  onIncrease={() => onQuantityChange(card, "normal", 1)}
-                />
-                <QuantityRow
-                  label="Foil"
-                  count={qty.foilQuantity}
-                  disabled={foilUpdating}
-                  onDecrease={() => onQuantityChange(card, "foil", -1)}
-                  onIncrease={() => onQuantityChange(card, "foil", 1)}
-                />
+                {variants.includes("normal") && (
+                  <QuantityRow
+                    label="Normal"
+                    count={qty.quantity}
+                    disabled={normalUpdating}
+                    onDecrease={() => onQuantityChange(card, "normal", -1)}
+                    onIncrease={() => onQuantityChange(card, "normal", 1)}
+                  />
+                )}
+                {variants.includes("foil") && (
+                  <QuantityRow
+                    label="Foil"
+                    count={qty.foilQuantity}
+                    disabled={foilUpdating}
+                    onDecrease={() => onQuantityChange(card, "foil", -1)}
+                    onIncrease={() => onQuantityChange(card, "foil", 1)}
+                  />
+                )}
+                {variants.includes("holofoil") && (
+                  <QuantityRow
+                    label="Holofoil"
+                    count={qty.holofoilQuantity}
+                    disabled={holofoilUpdating}
+                    onDecrease={() => onQuantityChange(card, "holofoil", -1)}
+                    onIncrease={() => onQuantityChange(card, "holofoil", 1)}
+                  />
+                )}
               </div>
             )}
           </div>

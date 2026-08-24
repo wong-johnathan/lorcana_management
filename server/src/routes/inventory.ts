@@ -6,8 +6,30 @@ const prisma = new PrismaClient();
 export const inventoryRouter = Router();
 
 type InventoryPrice = { variant: string; marketPrice: number | null };
+type InventoryVariant = "normal" | "foil" | "holofoil";
+type InventoryCountsInput = {
+  quantity?: unknown;
+  foilQuantity?: unknown;
+  holofoilQuantity?: unknown;
+};
+type CardFinishInfo = { foilTypes: string[] };
 
-const FOIL_VARIANTS = ["Foil", "Cold Foil", "Holofoil"];
+const FOIL_VARIANTS = ["Foil", "Cold Foil"];
+const HOLOFOIL_VARIANTS = ["Holofoil", "Cold Foil", "Foil"];
+const HOLOFOIL_FOIL_TYPES = new Set([
+  "CalendarWave",
+  "FreeForm1",
+  "FreeForm2",
+  "Glitter",
+  "Lava",
+  "Lore",
+  "Magma",
+  "RainbowPillars",
+  "Satin",
+  "SeaWave",
+  "Tempest",
+  "VerticalWave",
+]);
 
 function marketPriceForVariant(
   prices: InventoryPrice[],
@@ -17,6 +39,37 @@ function marketPriceForVariant(
     .map((variant) => prices.find((p) => p.variant.toLowerCase() === variant.toLowerCase()))
     .find((p): p is InventoryPrice => Boolean(p));
   return price?.marketPrice ?? null;
+}
+
+function availableInventoryVariants(card: CardFinishInfo): Set<InventoryVariant> {
+  const foilTypes = card.foilTypes ?? [];
+  const variants = new Set<InventoryVariant>();
+
+  if (foilTypes.length === 0 || foilTypes.includes("None")) variants.add("normal");
+  if (foilTypes.includes("Silver")) variants.add("foil");
+  if (foilTypes.some((type) => HOLOFOIL_FOIL_TYPES.has(type))) variants.add("holofoil");
+
+  return variants;
+}
+
+function parseCount(value: unknown, defaultValue = 0): number {
+  if (value === undefined) return defaultValue;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error("Quantities must be non-negative integers");
+  }
+  return value;
+}
+
+function validateRequestedCounts(card: CardFinishInfo, counts: InventoryCountsInput): string | null {
+  const available = availableInventoryVariants(card);
+  const quantity = parseCount(counts.quantity);
+  const foilQuantity = parseCount(counts.foilQuantity);
+  const holofoilQuantity = parseCount(counts.holofoilQuantity);
+
+  if (quantity > 0 && !available.has("normal")) return "Normal is not available for this card";
+  if (foilQuantity > 0 && !available.has("foil")) return "Foil is not available for this card";
+  if (holofoilQuantity > 0 && !available.has("holofoil")) return "Holofoil is not available for this card";
+  return null;
 }
 
 inventoryRouter.use(authenticateToken);
@@ -78,7 +131,7 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
 
     const totalUnique = entries.length;
     const totalCards = entries.reduce(
-      (sum, e) => sum + e.quantity + e.foilQuantity,
+      (sum, e) => sum + e.quantity + e.foilQuantity + e.holofoilQuantity,
       0
     );
 
@@ -91,6 +144,7 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
 
       const normalPrice = marketPriceForVariant(entry.card.prices, ["Normal"]);
       const foilPrice = marketPriceForVariant(entry.card.prices, FOIL_VARIANTS);
+      const holofoilPrice = marketPriceForVariant(entry.card.prices, HOLOFOIL_VARIANTS);
 
       if (entry.quantity > 0) {
         if (normalPrice == null) missingPriceCount += entry.quantity;
@@ -99,6 +153,10 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
       if (entry.foilQuantity > 0) {
         if (foilPrice == null) missingPriceCount += entry.foilQuantity;
         else totalValue += entry.foilQuantity * foilPrice;
+      }
+      if (entry.holofoilQuantity > 0) {
+        if (holofoilPrice == null) missingPriceCount += entry.holofoilQuantity;
+        else totalValue += entry.holofoilQuantity * holofoilPrice;
       }
     }
 
@@ -152,6 +210,7 @@ inventoryRouter.get("/export/csv", async (req: AuthRequest, res: Response) => {
       const cardNum = (e.card.cardNumber || "").split(/[/•]/)[0].trim();
       if (e.quantity > 0) lines.push(`${setNum},${cardNum},normal,${e.quantity}`);
       if (e.foilQuantity > 0) lines.push(`${setNum},${cardNum},foil,${e.foilQuantity}`);
+      if (e.holofoilQuantity > 0) lines.push(`${setNum},${cardNum},holofoil,${e.holofoilQuantity}`);
     }
 
     res.setHeader("Content-Type", "text/csv");
@@ -173,7 +232,7 @@ inventoryRouter.get("/export/decklist", async (req: AuthRequest, res: Response) 
     });
 
     const lines = entries.map((e) => {
-      const total = e.quantity + e.foilQuantity;
+      const total = e.quantity + e.foilQuantity + e.holofoilQuantity;
       const name = e.card.subtitle
         ? `${e.card.name} - ${e.card.subtitle}`
         : e.card.name;
@@ -192,10 +251,27 @@ inventoryRouter.get("/export/decklist", async (req: AuthRequest, res: Response) 
 inventoryRouter.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    const { cardId, quantity = 1, foilQuantity = 0 } = req.body;
+    const {
+      cardId,
+      quantity: rawQuantity = 1,
+      foilQuantity: rawFoilQuantity = 0,
+      holofoilQuantity: rawHolofoilQuantity = 0,
+    } = req.body;
 
     if (!cardId) {
       res.status(400).json({ error: "cardId is required" });
+      return;
+    }
+
+    let quantity: number;
+    let foilQuantity: number;
+    let holofoilQuantity: number;
+    try {
+      quantity = parseCount(rawQuantity, 1);
+      foilQuantity = parseCount(rawFoilQuantity);
+      holofoilQuantity = parseCount(rawHolofoilQuantity);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid quantity" });
       return;
     }
 
@@ -205,14 +281,21 @@ inventoryRouter.post("/", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    const validationError = validateRequestedCounts(card, { quantity, foilQuantity, holofoilQuantity });
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
     const entry = await prisma.inventoryEntry.upsert({
       where: { userId_cardId: { userId, cardId } },
-      create: { userId, cardId, quantity, foilQuantity },
+      create: { userId, cardId, quantity, foilQuantity, holofoilQuantity },
       update: {
         quantity: { increment: quantity },
         foilQuantity: { increment: foilQuantity },
+        holofoilQuantity: { increment: holofoilQuantity },
       },
-      include: { card: true },
+      include: { card: { include: { prices: true } } },
     });
 
     res.status(201).json(entry);
@@ -226,13 +309,33 @@ inventoryRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
     const id = req.params.id as string;
-    const { quantity, foilQuantity } = req.body;
+    const { quantity, foilQuantity, holofoilQuantity } = req.body;
+
+    try {
+      if (quantity !== undefined) parseCount(quantity);
+      if (foilQuantity !== undefined) parseCount(foilQuantity);
+      if (holofoilQuantity !== undefined) parseCount(holofoilQuantity);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid quantity" });
+      return;
+    }
 
     const existing = await prisma.inventoryEntry.findFirst({
       where: { id, userId },
+      include: { card: true },
     });
     if (!existing) {
       res.status(404).json({ error: "Inventory entry not found" });
+      return;
+    }
+
+    const validationError = validateRequestedCounts(existing.card, {
+      quantity: quantity ?? 0,
+      foilQuantity: foilQuantity ?? 0,
+      holofoilQuantity: holofoilQuantity ?? 0,
+    });
+    if (validationError) {
+      res.status(400).json({ error: validationError });
       return;
     }
 
@@ -241,8 +344,9 @@ inventoryRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       data: {
         ...(quantity !== undefined && { quantity }),
         ...(foilQuantity !== undefined && { foilQuantity }),
+        ...(holofoilQuantity !== undefined && { holofoilQuantity }),
       },
-      include: { card: true },
+      include: { card: { include: { prices: true } } },
     });
 
     res.json(entry);

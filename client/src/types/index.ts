@@ -28,6 +28,7 @@ export interface Card {
   lore: number;
   abilities: string;
   cardNumber: string;
+  foilTypes: string[];
   imageUrl: string;
   prices: CardPrice[];
 }
@@ -36,6 +37,7 @@ export interface InventoryEntry {
   id: string;
   quantity: number;
   foilQuantity: number;
+  holofoilQuantity: number;
   userId: string;
   cardId: string;
   card: Card;
@@ -84,7 +86,7 @@ export interface UserSettings {
 
 export interface PublicCollection {
   user: User;
-  cards: { card: Card; quantity: number; foilQuantity: number }[];
+  cards: { card: Card; quantity: number; foilQuantity: number; holofoilQuantity: number }[];
   stats: InventoryStats;
 }
 

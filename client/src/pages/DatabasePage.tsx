@@ -7,8 +7,7 @@ import type { Card, InventoryEntry, MasterSetPriceField, SyncStatus } from "../t
 import FilterBar from "../components/FilterBar";
 import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
-
-type InventoryVariant = "normal" | "foil";
+import { type InventoryCounts, type InventoryVariant } from "../utils/cardVariants";
 
 function filtersFromParams(params: URLSearchParams): Record<string, string> {
   const filters: Record<string, string> = {};
@@ -54,7 +53,7 @@ export default function DatabasePage() {
   const [totalPages, setTotalPages] = useState(1);
   const [detailCard, setDetailCard] = useState<Card | null>(null);
   const [inventoryMap, setInventoryMap] = useState<
-    Map<string, { quantity: number; foilQuantity: number; entryId: string }>
+    Map<string, InventoryCounts & { entryId: string }>
   >(new Map());
   const [updatingQuantityKeys, setUpdatingQuantityKeys] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -87,12 +86,13 @@ export default function DatabasePage() {
       const entries: InventoryEntry[] = await inventoryApi.list();
       const map = new Map<
         string,
-        { quantity: number; foilQuantity: number; entryId: string }
+        InventoryCounts & { entryId: string }
       >();
       for (const e of entries) {
         map.set(e.cardId, {
           quantity: e.quantity,
           foilQuantity: e.foilQuantity,
+          holofoilQuantity: e.holofoilQuantity,
           entryId: e.id,
         });
       }
@@ -320,15 +320,17 @@ export default function DatabasePage() {
   const handleAdd = async (
     cardId: string,
     quantity: number,
-    foilQuantity: number
+    foilQuantity: number,
+    holofoilQuantity: number
   ) => {
     try {
-      const entry = await inventoryApi.add(cardId, quantity, foilQuantity);
+      const entry = await inventoryApi.add(cardId, quantity, foilQuantity, holofoilQuantity);
       setInventoryMap((prev) => {
         const next = new Map(prev);
         next.set(entry.cardId, {
           quantity: entry.quantity,
           foilQuantity: entry.foilQuantity,
+          holofoilQuantity: entry.holofoilQuantity,
           entryId: entry.id,
         });
         return next;
@@ -341,7 +343,7 @@ export default function DatabasePage() {
   const setCardQuantityUpdating = (cardId: string, isUpdating: boolean) => {
     setUpdatingQuantityKeys((prev) => {
       const next = new Set(prev);
-      for (const variant of ["normal", "foil"] as const) {
+      for (const variant of ["normal", "foil", "holofoil"] as const) {
         const key = `${cardId}:${variant}`;
         if (isUpdating) next.add(key);
         else next.delete(key);
@@ -356,6 +358,7 @@ export default function DatabasePage() {
       next.set(entry.cardId, {
         quantity: entry.quantity,
         foilQuantity: entry.foilQuantity,
+        holofoilQuantity: entry.holofoilQuantity,
         entryId: entry.id,
       });
       return next;
@@ -381,7 +384,8 @@ export default function DatabasePage() {
         const entry = await inventoryApi.add(
           card.id,
           variant === "normal" ? 1 : 0,
-          variant === "foil" ? 1 : 0
+          variant === "foil" ? 1 : 0,
+          variant === "holofoil" ? 1 : 0
         );
         upsertInventoryMapEntry(entry);
         return;
@@ -394,12 +398,18 @@ export default function DatabasePage() {
         variant === "normal" ? Math.max(0, current.quantity - 1) : current.quantity;
       const nextFoilQuantity =
         variant === "foil" ? Math.max(0, current.foilQuantity - 1) : current.foilQuantity;
+      const nextHolofoilQuantity =
+        variant === "holofoil" ? Math.max(0, current.holofoilQuantity - 1) : current.holofoilQuantity;
 
-      if (nextQuantity === current.quantity && nextFoilQuantity === current.foilQuantity) {
+      if (
+        nextQuantity === current.quantity &&
+        nextFoilQuantity === current.foilQuantity &&
+        nextHolofoilQuantity === current.holofoilQuantity
+      ) {
         return;
       }
 
-      if (nextQuantity + nextFoilQuantity === 0) {
+      if (nextQuantity + nextFoilQuantity + nextHolofoilQuantity === 0) {
         await inventoryApi.remove(current.entryId);
         removeInventoryMapEntry(card.id);
         return;
@@ -408,6 +418,7 @@ export default function DatabasePage() {
       const entry = await inventoryApi.update(current.entryId, {
         quantity: nextQuantity,
         foilQuantity: nextFoilQuantity,
+        holofoilQuantity: nextHolofoilQuantity,
       });
       upsertInventoryMapEntry(entry);
     } catch (err) {
@@ -421,7 +432,11 @@ export default function DatabasePage() {
   const ownedQuantities = new Map(
     Array.from(inventoryMap.entries()).map(([id, data]) => [
       id,
-      { quantity: data.quantity, foilQuantity: data.foilQuantity },
+      {
+        quantity: data.quantity,
+        foilQuantity: data.foilQuantity,
+        holofoilQuantity: data.holofoilQuantity,
+      },
     ])
   );
   const priceContext = filters.priceVariant

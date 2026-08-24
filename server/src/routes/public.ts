@@ -48,7 +48,7 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
 
     const totalUnique = entries.length;
     const totalCards = entries.reduce(
-      (sum, e) => sum + e.quantity + e.foilQuantity,
+      (sum, e) => sum + e.quantity + e.foilQuantity + e.holofoilQuantity,
       0
     );
 
@@ -73,6 +73,7 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
       card: e.card,
       quantity: e.quantity,
       foilQuantity: e.foilQuantity,
+      holofoilQuantity: e.holofoilQuantity,
     }));
 
     res.json({
