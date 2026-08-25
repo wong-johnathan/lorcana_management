@@ -386,16 +386,33 @@ describe("settings, public collection, and sync routes", () => {
     await request(app).get("/api/public/collection/user_1").expect(404, { error: "Collection not found" });
 
     prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: true });
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ quantity: 1, foilQuantity: 0, holofoilQuantity: 0, card: card({ id: "b", setNumber: 2, collectorNumber: 1, prices: [{ variant: "Normal", marketPrice: 2 }] }) }),
-      entry({ id: "entry_2", quantity: 1, foilQuantity: 1, holofoilQuantity: 0, card: card({ id: "a", setNumber: 1, collectorNumber: 2, prices: [{ variant: "Normal", marketPrice: 3 }, { variant: "Cold Foil", marketPrice: 4 }] }) }),
+    prismaMock.inventoryEntry.findMany
+      .mockResolvedValueOnce([
+        entry({ quantity: 1, foilQuantity: 0, holofoilQuantity: 0, card: card({ id: "b", setNumber: 2, collectorNumber: 1, prices: [{ variant: "Normal", marketPrice: 2 }] }) }),
+        entry({ id: "entry_2", quantity: 1, foilQuantity: 1, holofoilQuantity: 0, card: card({ id: "a", setNumber: 1, collectorNumber: 2, prices: [{ variant: "Normal", marketPrice: 3 }, { variant: "Cold Foil", marketPrice: 4 }] }) }),
+      ])
+      .mockResolvedValueOnce([
+        entry({ quantity: 1, foilQuantity: 0, holofoilQuantity: 0, card: card({ id: "b", setName: "Filtered Set", setNumber: 2, collectorNumber: 1, prices: [{ variant: "Normal", marketPrice: 2 }] }) }),
+        entry({ id: "entry_2", quantity: 1, foilQuantity: 1, holofoilQuantity: 0, card: card({ id: "a", setName: "Filtered Set", setNumber: 1, collectorNumber: 2, prices: [{ variant: "Normal", marketPrice: 3 }, { variant: "Cold Foil", marketPrice: 4 }] }) }),
+        entry({ id: "entry_3", quantity: 4, foilQuantity: 0, holofoilQuantity: 0, card: card({ id: "c", setName: "Unfiltered Set", setNumber: 3, collectorNumber: 1, prices: [{ variant: "Normal", marketPrice: 10 }] }) }),
+      ]);
+    prismaMock.card.groupBy.mockResolvedValueOnce([
+      { setName: "Filtered Set", setNumber: 1, _count: 2 },
+      { setName: "Unfiltered Set", setNumber: 3, _count: 1 },
     ]);
-    prismaMock.card.groupBy.mockResolvedValueOnce([{ setName: "The First Chapter", setNumber: 1, _count: 2 }]);
     const res = await request(app).get("/api/public/collection/user_1").query({ search: "Mickey", color: "Amber", set: "The First Chapter", rarity: "Legendary", type: "Hero", character: "Mickey" }).expect(200);
     expect(res.body.user).toEqual({ id: "user_1", username: "jw" });
     expect(res.body.cards.map((c: any) => c.card.id)).toEqual(["a", "b"]);
-    expect(res.body.stats.totalValue).toBe(9);
-    expect(res.body.stats.totalCards).toBe(3);
+    expect(res.body.stats.totalValue).toBe(49);
+    expect(res.body.stats.totalCards).toBe(7);
+    expect(res.body.stats.setBreakdown).toEqual([
+      { setName: "Filtered Set", owned: 2, total: 2 },
+      { setName: "Unfiltered Set", owned: 1, total: 1 },
+    ]);
+    expect(prismaMock.inventoryEntry.findMany).toHaveBeenNthCalledWith(2, {
+      where: { userId: "user_1" },
+      include: { card: { include: { prices: true } } },
+    });
 
     prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: true });
     prismaMock.inventoryEntry.findMany.mockRejectedValueOnce(new Error("db"));
@@ -406,11 +423,14 @@ describe("settings, public collection, and sync routes", () => {
 
   it("sorts public cards by fallback keys and counts missing variant prices", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: true });
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+    const publicEntries = [
       entry({ id: "e1", quantity: 1, foilQuantity: 1, holofoilQuantity: 1, card: card({ id: "z", setNumber: 1, collectorNumber: 1, cardNumber: "2/204", name: "Zed", prices: [] }) }),
       entry({ id: "e2", quantity: 1, foilQuantity: 0, holofoilQuantity: 0, card: card({ id: "a", setNumber: 1, collectorNumber: 1, cardNumber: "1/204", name: "Alpha", prices: [{ variant: "Normal", marketPrice: 1 }] }) }),
       entry({ id: "e3", quantity: 1, foilQuantity: 0, holofoilQuantity: 0, card: card({ id: "b", setNumber: 1, collectorNumber: 1, cardNumber: "1/204", name: "Beta", prices: [{ variant: "Normal", marketPrice: 2 }] }) }),
-    ]);
+    ];
+    prismaMock.inventoryEntry.findMany
+      .mockResolvedValueOnce(publicEntries)
+      .mockResolvedValueOnce(publicEntries);
     prismaMock.card.groupBy.mockResolvedValueOnce([{ setName: "The First Chapter", setNumber: 1, _count: 3 }]);
     const res = await request(app).get("/api/public/collection/user_1").expect(200);
     expect(res.body.cards.map((c: any) => c.card.id)).toEqual(["a", "b", "z"]);
