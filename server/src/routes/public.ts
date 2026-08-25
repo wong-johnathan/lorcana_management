@@ -77,8 +77,13 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
       return a.card.name.localeCompare(b.card.name);
     });
 
-    const totalUnique = entries.length;
-    const totalCards = entries.reduce(
+    const statsEntries = await prisma.inventoryEntry.findMany({
+      where: { userId },
+      include: { card: { include: { prices: true } } },
+    });
+
+    const totalUnique = statsEntries.length;
+    const totalCards = statsEntries.reduce(
       (sum, e) => sum + e.quantity + e.foilQuantity + e.holofoilQuantity,
       0
     );
@@ -86,7 +91,7 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
     const bySet: Record<string, number> = {};
     let totalValue = 0;
     let missingPriceCount = 0;
-    for (const entry of entries) {
+    for (const entry of statsEntries) {
       const setName = entry.card.setName;
       bySet[setName] = (bySet[setName] || 0) + 1;
 

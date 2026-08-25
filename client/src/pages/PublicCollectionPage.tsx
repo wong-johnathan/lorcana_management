@@ -1,23 +1,31 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { publicCollection as publicApi, cards as cardsApi } from "../services/api";
 import type { Card, InventoryStats, User } from "../types";
-import FilterBar from "../components/FilterBar";
-import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
+import InventoryTabs from "../components/inventory/InventoryTabs";
+import CollectionStatsPanel from "../components/inventory/CollectionStatsPanel";
+import InventoryCollectionView, {
+  type InventoryCollectionCapabilities,
+  type InventoryCollectionEntry,
+} from "../components/inventory/InventoryCollectionView";
 import { type InventoryCounts } from "../utils/cardVariants";
+import { parseInventoryTab, type InventoryTab } from "../utils/inventoryTabs";
 
-interface PublicEntry {
+interface PublicEntry extends InventoryCollectionEntry {
   card: Card;
   quantity: number;
   foilQuantity: number;
   holofoilQuantity: number;
 }
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
+const publicCapabilities: InventoryCollectionCapabilities = {
+  canEditQuantities: false,
+  canRemoveCards: false,
+  canWipeInventory: false,
+  canExportCsv: false,
+  canSwitchViewMode: false,
+};
 
 export default function PublicCollectionPage() {
   const { userId } = useParams<{ userId: string }>();
@@ -31,25 +39,18 @@ export default function PublicCollectionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const cardId = searchParams.get("card");
+  const activeTab = parseInventoryTab(searchParams.get("tab"));
 
-  const cardList = useMemo(() => entries.map((entry) => entry.card), [entries]);
-
-  const ownedCardIds = useMemo(
-    () => new Set(entries.map((entry) => entry.card.id)),
-    [entries]
+  const ownedQuantities = new Map<string, InventoryCounts>(
+    entries.map((entry) => [
+      entry.card.id,
+      {
+        quantity: entry.quantity,
+        foilQuantity: entry.foilQuantity,
+        holofoilQuantity: entry.holofoilQuantity,
+      },
+    ])
   );
-
-  const ownedQuantities = useMemo(() => {
-    const map = new Map<string, InventoryCounts>();
-    for (const e of entries) {
-      map.set(e.card.id, {
-        quantity: e.quantity,
-        foilQuantity: e.foilQuantity,
-        holofoilQuantity: e.holofoilQuantity,
-      });
-    }
-    return map;
-  }, [entries]);
 
   useEffect(() => {
     if (cardId) {
@@ -91,13 +92,12 @@ export default function PublicCollectionPage() {
     setSearchParams(params, { replace: true });
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-gray-400">Loading...</div>
-      </div>
-    );
-  }
+  const handleTabChange = (tab: InventoryTab) => {
+    if (tab === activeTab && !searchParams.has("tab")) return;
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", tab);
+    setSearchParams(params);
+  };
 
   if (error) {
     return (
@@ -105,7 +105,7 @@ export default function PublicCollectionPage() {
         <div className="text-center space-y-2">
           <p className="text-red-400 text-lg">Collection not found</p>
           <p className="text-gray-500 text-sm">
-            This collection is private or doesn't exist.
+            This collection is private or doesn&apos;t exist.
           </p>
         </div>
       </div>
@@ -114,69 +114,30 @@ export default function PublicCollectionPage() {
 
   return (
     <div>
-      {stats && (
-        <div className="p-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-gray-900 rounded-lg p-3">
-            <p className="text-xs text-gray-500">Unique Cards</p>
-            <p className="text-2xl font-bold text-amber-400">
-              {stats.totalUnique}
-            </p>
-          </div>
-          <div className="bg-gray-900 rounded-lg p-3">
-            <p className="text-xs text-gray-500">Total Cards</p>
-            <p className="text-2xl font-bold text-amber-400">
-              {stats.totalCards}
-            </p>
-          </div>
-          <div className="bg-gray-900 rounded-lg p-3">
-            <p className="text-xs text-gray-500">Total Value</p>
-            <p className="text-2xl font-bold text-emerald-400">
-              {currencyFormatter.format(stats.totalValue ?? 0)}
-            </p>
-            {(stats.missingPriceCount ?? 0) > 0 && (
-              <p className="text-[10px] text-gray-500 mt-1">
-                Excludes {stats.missingPriceCount} card{stats.missingPriceCount === 1 ? "" : "s"} missing market price
-              </p>
-            )}
-          </div>
-          {stats.setBreakdown.map((s) => (
-            <div key={s.setName} className="bg-gray-900 rounded-lg p-3">
-              <p className="text-xs text-gray-500 truncate">{s.setName}</p>
-              <p className="text-lg font-semibold">
-                {s.owned}
-                <span className="text-gray-500 text-sm">/{s.total}</span>
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+      <InventoryTabs activeTab={activeTab} onTabChange={handleTabChange} />
 
-      <div className="p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h2 className="text-lg font-semibold">
-              {user?.username}&rsquo;s Collection
-            </h2>
-            <p className="text-xs text-gray-500">Shared read-only collection</p>
-          </div>
-        </div>
-        <FilterBar filters={filters} onChange={setFilters} />
-      </div>
-
-      {entries.length === 0 ? (
-        <div className="text-center text-gray-500 py-12">
-          No cards in this collection yet.
-        </div>
+      {activeTab === "stats" ? (
+        stats ? (
+          <CollectionStatsPanel stats={stats} />
+        ) : (
+          <div className="text-center text-gray-500 py-12">Loading...</div>
+        )
       ) : (
-        <CardGrid
-          cards={cardList}
-          onSelect={handleSelectCard}
-          ownedCardIds={ownedCardIds}
-          ownedQuantities={ownedQuantities}
+        <InventoryCollectionView
+          title={`${user?.username ?? "Shared"}'s Collection`}
+          subtitle="Shared read-only collection"
+          entries={entries}
+          filters={filters}
+          onFiltersChange={setFilters}
+          loading={loading}
+          emptyMessage="No cards in this collection yet."
+          viewMode="grid"
+          capabilities={publicCapabilities}
+          onSelectCard={handleSelectCard}
         />
       )}
 
-      {detailCard && (
+      {activeTab === "collection" && detailCard && (
         <CardDetail
           card={detailCard}
           onClose={handleCloseDetail}

@@ -1,12 +1,26 @@
 import { MemoryRouter } from "react-router-dom";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import CardGrid from "../components/CardGrid";
 import CardDetail from "../components/CardDetail";
 import CardPriceTable from "../components/CardPriceTable";
 import MarketplaceLink from "../components/MarketplaceLink";
-import type { Card } from "../types";
+import InventoryTabs from "../components/inventory/InventoryTabs";
+import CollectionStatsPanel from "../components/inventory/CollectionStatsPanel";
+import InventoryCollectionView, {
+  type InventoryCollectionCapabilities,
+} from "../components/inventory/InventoryCollectionView";
+import { parseInventoryTab } from "../utils/inventoryTabs";
+import type { Card, InventoryEntry, InventoryStats } from "../types";
+
+vi.mock("../components/FilterBar", () => ({
+  default: ({ onChange }: { filters: Record<string, string>; onChange: (filters: Record<string, string>) => void }) => (
+    <button type="button" onClick={() => onChange({ search: "mickey" })}>
+      Mock filters
+    </button>
+  ),
+}));
 
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
@@ -40,7 +54,247 @@ function makeCard(overrides: Partial<Card> = {}): Card {
   };
 }
 
+function makeInventoryEntry(overrides: Partial<InventoryEntry> = {}): InventoryEntry {
+  const card = overrides.card ?? makeCard();
+  return {
+    id: "entry_1",
+    userId: "user_1",
+    cardId: card.id,
+    card,
+    quantity: 1,
+    foilQuantity: 2,
+    holofoilQuantity: 0,
+    ...overrides,
+  };
+}
+
+const editableCapabilities: InventoryCollectionCapabilities = {
+  canEditQuantities: true,
+  canRemoveCards: true,
+  canWipeInventory: true,
+  canExportCsv: true,
+  canSwitchViewMode: true,
+};
+
+const readOnlyCapabilities: InventoryCollectionCapabilities = {
+  canEditQuantities: false,
+  canRemoveCards: false,
+  canWipeInventory: false,
+  canExportCsv: false,
+  canSwitchViewMode: false,
+};
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ colors: [], sets: [], rarities: [], cardTypes: [], types: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("presentational components", () => {
+  it("parses inventory tab query values and renders controlled tab buttons", async () => {
+    const onTabChange = vi.fn();
+
+    expect(parseInventoryTab(null)).toBe("collection");
+    expect(parseInventoryTab("bad-tab")).toBe("collection");
+    expect(parseInventoryTab("stats")).toBe("stats");
+
+    render(<InventoryTabs activeTab="collection" onTabChange={onTabChange} />);
+    expect(screen.getByRole("tab", { name: "Collection" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Stats" })).toHaveAttribute("aria-selected", "false");
+
+    await userEvent.click(screen.getByRole("tab", { name: "Stats" }));
+    expect(onTabChange).toHaveBeenCalledWith("stats");
+
+    render(<InventoryTabs activeTab="stats" onTabChange={onTabChange} collectionLabel="Cards" statsLabel="Numbers" />);
+    await userEvent.click(screen.getByRole("tab", { name: "Cards" }));
+    expect(onTabChange).toHaveBeenCalledWith("collection");
+  });
+
+  it("renders collection stats and set breakdown including missing price warning", () => {
+    const stats: InventoryStats = {
+      totalUnique: 3,
+      totalCards: 7,
+      totalValue: 12.5,
+      missingPriceCount: 2,
+      setBreakdown: [
+        { setName: "The First Chapter", owned: 2, total: 204 },
+        { setName: "Rise of the Floodborn", owned: 1, total: 204 },
+      ],
+    };
+
+    render(<CollectionStatsPanel stats={stats} />);
+
+    expect(screen.getByText("Unique Cards")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("Total Cards")).toBeInTheDocument();
+    expect(screen.getByText("7")).toBeInTheDocument();
+    expect(screen.getByText("$12.50")).toBeInTheDocument();
+    expect(screen.getByText(/Excludes 2 cards missing market price/i)).toBeInTheDocument();
+    expect(screen.getByText("The First Chapter")).toBeInTheDocument();
+    expect(screen.getByText("2/204")).toBeInTheDocument();
+  });
+
+  it("renders authenticated collection controls from capabilities", async () => {
+    const onViewModeChange = vi.fn();
+    const onExportCsv = vi.fn();
+    const onWipeInventory = vi.fn();
+    render(
+      <InventoryCollectionView
+        title="My Collection"
+        entries={[makeInventoryEntry()]}
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        loading={false}
+        emptyMessage="No cards"
+        viewMode="grid"
+        onViewModeChange={onViewModeChange}
+        capabilities={editableCapabilities}
+        onSelectCard={vi.fn()}
+        onExportCsv={onExportCsv}
+        onWipeInventory={onWipeInventory}
+        onQuantityChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "My Collection" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Rows" }));
+    await userEvent.click(screen.getByRole("button", { name: "CSV" }));
+    await userEvent.click(screen.getByRole("button", { name: "Wipe" }));
+    expect(onViewModeChange).toHaveBeenCalledWith("rows");
+    expect(onExportCsv).toHaveBeenCalled();
+    expect(onWipeInventory).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /add normal card/i })).toBeInTheDocument();
+  });
+
+  it("renders public collection read-only with no authenticated inventory controls", () => {
+    render(
+      <InventoryCollectionView
+        title="Alice's Collection"
+        subtitle="Shared read-only collection"
+        entries={[makeInventoryEntry()]}
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        loading={false}
+        emptyMessage="No cards"
+        viewMode="grid"
+        capabilities={readOnlyCapabilities}
+        onSelectCard={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Alice's Collection" })).toBeInTheDocument();
+    expect(screen.getByText("Shared read-only collection")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Grid" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rows" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "CSV" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wipe" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add normal card/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Remove from collection")).not.toBeInTheDocument();
+  });
+
+  it("renders inventory collection loading, empty, and editable rows states", async () => {
+    const onExpandedIdChange = vi.fn();
+    const onUpdateEntry = vi.fn();
+    const onRemoveEntry = vi.fn();
+    const onSelectCard = vi.fn();
+    const entry = makeInventoryEntry();
+    const { rerender } = render(
+      <InventoryCollectionView
+        title="My Collection"
+        entries={[]}
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        loading={true}
+        emptyMessage="No cards"
+        viewMode="rows"
+        onViewModeChange={vi.fn()}
+        capabilities={editableCapabilities}
+        onSelectCard={onSelectCard}
+      />
+    );
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+
+    rerender(
+      <InventoryCollectionView
+        title="My Collection"
+        entries={[]}
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        loading={false}
+        emptyMessage="No cards"
+        viewMode="rows"
+        onViewModeChange={vi.fn()}
+        capabilities={editableCapabilities}
+        onSelectCard={onSelectCard}
+      />
+    );
+    expect(screen.getByText("No cards")).toBeInTheDocument();
+
+    rerender(
+      <InventoryCollectionView
+        title="My Collection"
+        entries={[entry]}
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        loading={false}
+        emptyMessage="No cards"
+        viewMode="rows"
+        onViewModeChange={vi.fn()}
+        capabilities={editableCapabilities}
+        onSelectCard={onSelectCard}
+        expandedId="entry_1"
+        onExpandedIdChange={onExpandedIdChange}
+        onUpdateEntry={onUpdateEntry}
+        onRemoveEntry={onRemoveEntry}
+      />
+    );
+
+    await userEvent.click(screen.getByAltText("Mickey Mouse"));
+    expect(onSelectCard).toHaveBeenCalledWith(entry.card);
+    await userEvent.click(screen.getByRole("button", { name: /Mickey Mouse/i }));
+    expect(onExpandedIdChange).toHaveBeenCalledWith(null);
+    await userEvent.click(screen.getByRole("button", { name: "Grid" }));
+
+    const plusButtons = screen.getAllByRole("button", { name: "+" });
+    const minusButtons = screen.getAllByRole("button", { name: "-" });
+    await userEvent.click(minusButtons[0]);
+    await userEvent.click(plusButtons[0]);
+    await userEvent.click(minusButtons[1]);
+    await userEvent.click(plusButtons[1]);
+    await userEvent.click(minusButtons[2]);
+    await userEvent.click(plusButtons[2]);
+    await userEvent.click(screen.getByRole("button", { name: "Remove from collection" }));
+
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { quantity: 0 });
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { quantity: 2 });
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { foilQuantity: 1 });
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { foilQuantity: 3 });
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { holofoilQuantity: 0 });
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { holofoilQuantity: 1 });
+    expect(onRemoveEntry).toHaveBeenCalledWith("entry_1");
+  });
+
+  it("renders no stats breakdown for empty set data and no missing-price warning at zero", () => {
+    render(<CollectionStatsPanel stats={{ totalUnique: 0, totalCards: 0, setBreakdown: [] }} />);
+    expect(screen.getByText("$0.00")).toBeInTheDocument();
+    expect(screen.queryByText("Set Breakdown")).not.toBeInTheDocument();
+    expect(screen.queryByText(/could not be included/i)).not.toBeInTheDocument();
+
+    render(<CollectionStatsPanel stats={{ totalUnique: 1, totalCards: 1, totalValue: 2, missingPriceCount: 1, setBreakdown: [{ setName: "Zero Set", owned: 1, total: 0 }] }} />);
+    expect(screen.getByText(/Excludes 1 card missing market price/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Zero Set completion 0%")).toBeInTheDocument();
+  });
+
   it("renders empty card grids and card metadata/price badges", () => {
     render(<CardGrid cards={[]} onSelect={vi.fn()} />);
     expect(screen.getByText("No cards found.")).toBeInTheDocument();
