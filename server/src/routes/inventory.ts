@@ -5,14 +5,14 @@ import { authenticateToken, AuthRequest } from "../middleware/auth.js";
 const prisma = new PrismaClient();
 export const inventoryRouter = Router();
 
-type InventoryPrice = { variant: string; marketPrice: number | null };
-type InventoryVariant = "normal" | "foil" | "holofoil";
-type InventoryCountsInput = {
+export type InventoryPrice = { variant: string; marketPrice: number | null };
+export type InventoryVariant = "normal" | "foil" | "holofoil";
+export type InventoryCountsInput = {
   quantity?: unknown;
   foilQuantity?: unknown;
   holofoilQuantity?: unknown;
 };
-type CardFinishInfo = { foilTypes: string[] };
+export type CardFinishInfo = { foilTypes: string[] };
 
 const FOIL_VARIANTS = ["Foil", "Cold Foil"];
 const HOLOFOIL_VARIANTS = ["Holofoil", "Cold Foil", "Foil"];
@@ -31,7 +31,7 @@ const HOLOFOIL_FOIL_TYPES = new Set([
   "VerticalWave",
 ]);
 
-function marketPriceForVariant(
+export function marketPriceForVariant(
   prices: InventoryPrice[],
   variants: string[]
 ): number | null {
@@ -41,7 +41,7 @@ function marketPriceForVariant(
   return price?.marketPrice ?? null;
 }
 
-function availableInventoryVariants(card: CardFinishInfo): Set<InventoryVariant> {
+export function availableInventoryVariants(card: CardFinishInfo): Set<InventoryVariant> {
   const foilTypes = card.foilTypes ?? [];
   const variants = new Set<InventoryVariant>();
 
@@ -52,7 +52,7 @@ function availableInventoryVariants(card: CardFinishInfo): Set<InventoryVariant>
   return variants;
 }
 
-function parseCount(value: unknown, defaultValue = 0): number {
+export function parseCount(value: unknown, defaultValue = 0): number {
   if (value === undefined) return defaultValue;
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     throw new Error("Quantities must be non-negative integers");
@@ -60,7 +60,7 @@ function parseCount(value: unknown, defaultValue = 0): number {
   return value;
 }
 
-function validateRequestedCounts(card: CardFinishInfo, counts: InventoryCountsInput): string | null {
+export function validateRequestedCounts(card: CardFinishInfo, counts: InventoryCountsInput): string | null {
   const available = availableInventoryVariants(card);
   const quantity = parseCount(counts.quantity);
   const foilQuantity = parseCount(counts.foilQuantity);

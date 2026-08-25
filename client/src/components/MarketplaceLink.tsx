@@ -10,13 +10,16 @@ export default function MarketplaceLink({ href, label, colorClass, className }: 
 
   if (!href) {
     return (
-      <span
+      <button
+        type="button"
+        disabled
+        aria-label={`${label} unavailable`}
         aria-disabled="true"
         title="Link not available"
         className={`${base} bg-gray-800/30 text-gray-600 border border-gray-700/30 cursor-not-allowed`}
       >
         {label}
-      </span>
+      </button>
     );
   }
 

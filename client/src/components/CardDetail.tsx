@@ -165,9 +165,11 @@ export default function CardDetail({
                   {variants.includes("normal") && (
                     <div className="flex-1 min-w-24">
                       <label className="text-xs text-gray-500 block mb-1">
+                        <span className="sr-only">Normal quantity</span>
                         Normal qty
                       </label>
                       <input
+                        aria-label="Normal qty"
                         type="number"
                         min="0"
                         value={quantity}
@@ -180,9 +182,11 @@ export default function CardDetail({
                   {variants.includes("foil") && (
                     <div className="flex-1 min-w-24">
                       <label className="text-xs text-gray-500 block mb-1">
+                        <span className="sr-only">Foil quantity</span>
                         Foil qty
                       </label>
                       <input
+                        aria-label="Foil qty"
                         type="number"
                         min="0"
                         value={foilQuantity}
@@ -195,9 +199,11 @@ export default function CardDetail({
                   {variants.includes("holofoil") && (
                     <div className="flex-1 min-w-24">
                       <label className="text-xs text-gray-500 block mb-1">
+                        <span className="sr-only">Holofoil quantity</span>
                         Holofoil qty
                       </label>
                       <input
+                        aria-label="Holofoil qty"
                         type="number"
                         min="0"
                         value={holofoilQuantity}

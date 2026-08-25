@@ -9,7 +9,7 @@ type PublicPrice = { variant: string; marketPrice: number | null };
 const FOIL_VARIANTS = ["Foil", "Cold Foil"];
 const HOLOFOIL_VARIANTS = ["Holofoil", "Cold Foil", "Foil"];
 
-function marketPriceForVariant(
+export function marketPriceForVariant(
   prices: PublicPrice[],
   variants: string[]
 ): number | null {
@@ -19,7 +19,7 @@ function marketPriceForVariant(
   return price?.marketPrice ?? null;
 }
 
-function compareNullableNumber(a: number | null, b: number | null): number {
+export function compareNullableNumber(a: number | null, b: number | null): number {
   if (a == null && b == null) return 0;
   if (a == null) return 1;
   if (b == null) return -1;

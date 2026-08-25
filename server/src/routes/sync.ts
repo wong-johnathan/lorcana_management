@@ -41,6 +41,11 @@ function idleStatus(): SyncStatus {
 export let cardSyncStatus: SyncStatus = idleStatus();
 export let priceSyncStatus: SyncStatus = idleStatus();
 
+export function resetSyncStatuses() {
+  cardSyncStatus = idleStatus();
+  priceSyncStatus = idleStatus();
+}
+
 async function runCardUpsert(data: LorcanaData): Promise<void> {
   cardSyncStatus = {
     status: "running",

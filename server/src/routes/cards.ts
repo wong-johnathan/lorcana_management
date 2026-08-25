@@ -14,7 +14,7 @@ const BATCH_RARITIES = ["Enchanted", "Special", "Iconic"];
 const PRICE_FIELDS = ["lowPrice", "midPrice", "highPrice", "marketPrice"] as const;
 type PriceField = (typeof PRICE_FIELDS)[number];
 
-function parseCsvParam(value: unknown): string[] {
+export function parseCsvParam(value: unknown): string[] {
   if (!value || typeof value !== "string") return [];
   return value
     .split(",")
@@ -22,7 +22,7 @@ function parseCsvParam(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function toPriceField(value: unknown): PriceField {
+export function toPriceField(value: unknown): PriceField {
   return typeof value === "string" && (PRICE_FIELDS as readonly string[]).includes(value)
     ? (value as PriceField)
     : "marketPrice";
@@ -32,15 +32,19 @@ const VARIANT_ALIASES: Record<string, string[]> = {
   Foil: ["Foil", "Cold Foil", "Holofoil"],
 };
 
-function variantsFor(requestedVariant: string): string[] {
+export function variantsFor(requestedVariant: string): string[] {
   return VARIANT_ALIASES[requestedVariant] ?? [requestedVariant];
 }
 
-function pricePresenceCondition(requestedVariant: string, priceField: PriceField) {
+export function pricePresenceCondition(requestedVariant: string, priceField: PriceField) {
   return {
     variant: { in: variantsFor(requestedVariant) },
     [priceField]: { not: null },
   };
+}
+
+function numericSetCode(setCode: string): number {
+  return Number(setCode.match(/\d+/)?.[0] ?? Number.MAX_SAFE_INTEGER);
 }
 
 export function priceForVariant(
@@ -228,7 +232,7 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
 
     res.json({
       colors: colors.map((c) => c.color),
-      sets: sets.sort((a, b) => (parseInt(a.setCode, 10) || 0) - (parseInt(b.setCode, 10) || 0)).map((s) => s.setName),
+      sets: sets.sort((a, b) => numericSetCode(a.setCode) - numericSetCode(b.setCode)).map((s) => s.setName),
       rarities: rarities.map((r) => r.rarity),
       cardTypes: cardTypes.map((t) => t.cardType),
       types: allSubtypes,

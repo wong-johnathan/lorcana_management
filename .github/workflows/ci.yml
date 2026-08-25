@@ -15,7 +15,7 @@ env:
   JWT_SECRET: ci-secret-do-not-use
 
 jobs:
-  lint:
+  type-check:
     name: Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -46,24 +46,10 @@ jobs:
         working-directory: client
         run: npx tsc --noEmit
 
-  unit-tests:
-    name: Unit Tests
+  server-tests:
+    name: Server Tests / Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ env.POSTGRES_DB }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U lorcana -d lorcana_inventory"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -79,37 +65,65 @@ jobs:
         working-directory: server
         run: npx prisma generate
 
-      - name: Run database migrations
+      - name: Run server tests with coverage gate
         working-directory: server
-        run: npx prisma migrate deploy
+        run: npm run test:coverage
 
-      - name: Run server tests
-        working-directory: server
-        run: |
-          if grep -q '"test"' package.json; then
-            npm test -- --passWithNoTests
-          else
-            echo "No test script configured — skipping"
-          fi
+  client-tests:
+    name: Client Tests / Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Install client dependencies
         working-directory: client
         run: npm ci
 
-      - name: Run client tests
+      - name: Run client tests with coverage gate
         working-directory: client
-        run: |
-          if grep -q '"test"' package.json; then
-            npm test -- --passWithNoTests
-          else
-            echo "No test script configured — skipping"
-          fi
+        run: npm run test:coverage
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: client
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E tests
+        working-directory: client
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: client/playwright-report/
+          retention-days: 7
 
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [lint, unit-tests]
+    needs: [type-check, server-tests, client-tests, e2e-tests]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -127,7 +141,7 @@ jobs:
 
       - name: Build server
         working-directory: server
-        run: npx tsc
+        run: npm run build
 
       - name: Install client dependencies
         working-directory: client
@@ -137,11 +151,41 @@ jobs:
         working-directory: client
         run: npm run build
 
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Build server image
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: ./server
+          push: false
+          tags: lorcana-server:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build nginx image
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: .
+          file: ./nginx/Dockerfile
+          push: false
+          tags: lorcana-nginx:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   docker-publish:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [build]
+    needs: [docker-build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

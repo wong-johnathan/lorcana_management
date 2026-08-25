@@ -2,13 +2,13 @@
 const SEARXNG_URL = process.env.SEARXNG_URL || "http://searxng:8080";
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 
-interface SearchResult {
+export interface SearchResult {
   title: string;
   url: string;
   content: string;
 }
 
-interface PriceData {
+export interface PriceData {
   source: string;        // "eBay", "TCGPlayer", "PriceCharting"
   url: string;
   prices: string[];      // extracted dollar amounts or price strings
@@ -33,7 +33,7 @@ async function searchSearxNG(query: string): Promise<SearchResult[]> {
   return parseSearxNGResults(html);
 }
 
-function parseSearxNGResults(html: string): SearchResult[] {
+export function parseSearxNGResults(html: string): SearchResult[] {
   const results: SearchResult[] = [];
 
   const articleRegex = /<article[^>]*class="[^"]*result[^"]*"[^>]*>([\s\S]*?)<\/article>/gi;
@@ -75,7 +75,7 @@ function parseSearxNGResults(html: string): SearchResult[] {
   return results.slice(0, 15);
 }
 
-function stripHtml(str: string): string {
+export function stripHtml(str: string): string {
   return str.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
     .replace(/&nbsp;/g, " ").trim();
@@ -83,7 +83,7 @@ function stripHtml(str: string): string {
 
 // ── Price extraction from search snippets ────────────────────────────────
 
-function extractPricesFromSnippet(snippet: string): string[] {
+export function extractPricesFromSnippet(snippet: string): string[] {
   const prices: string[] = [];
 
   // Match dollar amounts: $X.XX, $X, $X.XX-$Y.YY, $X.XX – $Y.YY, $X,XXX.XX
@@ -108,7 +108,7 @@ const PROMO_VARIANT_KEYWORDS = [
   /enchanted/i, /palace\s*heist/i, /top\s*prize/i,
 ];
 
-function isCardPromo(cardNumber: string, setName: string): boolean {
+export function isCardPromo(cardNumber: string, setName: string): boolean {
   // A card is a promo if it has a C-prefixed number (6/C2) or is in a Promo set
   const shortNumber = cardNumber.split("•")[0]?.trim() || cardNumber;
   if (/\/C\d/i.test(shortNumber)) return true;
@@ -116,7 +116,7 @@ function isCardPromo(cardNumber: string, setName: string): boolean {
   return false;
 }
 
-function isDifferentVariant(
+export function isDifferentVariant(
   snippet: string,
   title: string,
   cardNumber: string,
@@ -217,7 +217,7 @@ async function searchSourcePrices(
 
 // ── Build structured price section for the prompt ────────────────────────
 
-function buildPriceSection(priceData: (PriceData | null)[]): string {
+export function buildPriceSection(priceData: (PriceData | null)[]): string {
   const sections: string[] = [];
 
   for (const pd of priceData) {

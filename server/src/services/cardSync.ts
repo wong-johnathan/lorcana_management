@@ -9,7 +9,7 @@ interface LorcanaAbility {
   fullText?: string;
 }
 
-interface LorcanaCard {
+export interface LorcanaCard {
   id: number;
   name: string;
   version?: string;
@@ -52,16 +52,16 @@ export type UpsertProgressCallback = (
   total: number
 ) => void;
 
-function parseData(raw: string): LorcanaData {
+export function parseData(raw: string): LorcanaData {
   return JSON.parse(raw);
 }
 
-function parseSetNumber(setCode: string): number | null {
+export function parseSetNumber(setCode: string): number | null {
   const match = setCode.match(/\d+/);
   return match ? Number(match[0]) : null;
 }
 
-function parseCollectorNumber(card: LorcanaCard): number | null {
+export function parseCollectorNumber(card: LorcanaCard): number | null {
   if (typeof card.number === "number") return card.number;
   const match = card.fullIdentifier?.match(/^(\d+)/);
   return match ? Number(match[1]) : null;
