@@ -18,6 +18,19 @@ export const prismaMock = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  userInventoryPolicy: {
+    upsert: vi.fn(),
+    update: vi.fn(),
+  },
+  cardRetentionOverride: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    upsert: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  extraForSaleListing: {
+    findMany: vi.fn(),
+  },
   card: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
