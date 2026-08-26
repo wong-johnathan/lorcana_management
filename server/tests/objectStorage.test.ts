@@ -25,6 +25,7 @@ vi.mock("@aws-sdk/client-s3", () => ({
 import {
   deleteProfileImage,
   LOCAL_UPLOAD_ROOT,
+  normalizeProfileImageUrl,
   uploadProfileImage,
 } from "../src/services/objectStorage.js";
 
@@ -126,5 +127,21 @@ describe("object storage service", () => {
 
     expect(uploaded.objectKey).toMatch(/\.jpg$/);
     expect(uploaded.publicUrl).toContain("https://bucket.s3.us-east-1.amazonaws.com/profile-images/user_1/");
+  });
+
+  it("normalizes legacy profile image hostnames for persisted URLs", () => {
+    const legacyUrl = "https://lorcana-minio.johnathanwwh.com/lorcana-profile-images/profile-images/user_1/avatar.jpg";
+    expect(normalizeProfileImageUrl(legacyUrl)).toBe(
+      "https://minio.johnathanwwh.com/lorcana-profile-images/profile-images/user_1/avatar.jpg"
+    );
+
+    process.env.S3_PUBLIC_URL = "https://cdn.example.com/";
+    expect(normalizeProfileImageUrl(legacyUrl)).toBe(
+      "https://cdn.example.com/lorcana-profile-images/profile-images/user_1/avatar.jpg"
+    );
+    expect(normalizeProfileImageUrl("/api/profile-images/profile-images/user_1/avatar.jpg")).toBe(
+      "/api/profile-images/profile-images/user_1/avatar.jpg"
+    );
+    expect(normalizeProfileImageUrl(null)).toBeNull();
   });
 });

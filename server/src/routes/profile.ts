@@ -5,6 +5,7 @@ import {
   ALLOWED_IMAGE_MIME_TYPES,
   deleteProfileImage,
   MAX_PROFILE_IMAGE_BYTES,
+  normalizeProfileImageUrl,
   uploadProfileImage,
 } from "../services/objectStorage.js";
 
@@ -98,9 +99,13 @@ function serializeReference(reference: any) {
 }
 
 function serializeOwnerProfile(profile: any, references: any[]) {
-  return {
+  const payload = {
     ...emptyProfile(),
     ...(profile || {}),
+  };
+  return {
+    ...payload,
+    profileImageUrl: normalizeProfileImageUrl(payload.profileImageUrl),
     references: references.map(serializeReference),
   };
 }

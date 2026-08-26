@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import { normalizeProfileImageUrl } from "../services/objectStorage.js";
 
 const prisma = new PrismaClient();
 export const publicRouter = Router();
@@ -61,7 +62,7 @@ export function buildPublicProfile(
   const payload: Record<string, unknown> = {};
   if (profile) {
     addIfPresent(payload, "displayName", profile.displayName);
-    addIfPresent(payload, "profileImageUrl", profile.profileImageUrl);
+    addIfPresent(payload, "profileImageUrl", normalizeProfileImageUrl(profile.profileImageUrl));
     addIfPresent(payload, "countryOfResidence", profile.countryOfResidence);
     if (profile.instagramVisible) addIfPresent(payload, "instagram", profile.instagram);
     if (profile.telegramVisible) addIfPresent(payload, "telegram", profile.telegram);

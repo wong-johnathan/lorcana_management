@@ -7,6 +7,10 @@ vi.mock("../src/services/objectStorage.js", () => ({
     publicUrl: "/api/profile-images/profile-images/user_1/avatar.png",
   }),
   deleteProfileImage: vi.fn().mockResolvedValue(undefined),
+  normalizeProfileImageUrl: vi.fn((url: string | null | undefined) => {
+    if (typeof url !== "string") return url;
+    return url.replace("https://lorcana-minio.johnathanwwh.com", "https://minio.johnathanwwh.com");
+  }),
   ALLOWED_IMAGE_MIME_TYPES: ["image/jpeg", "image/png", "image/webp"],
   MAX_PROFILE_IMAGE_BYTES: 5 * 1024 * 1024,
   LOCAL_UPLOAD_ROOT: "/tmp/lorcana-profile-test-uploads",
@@ -242,7 +246,7 @@ describe("public collection profile payload", () => {
     expect(buildPublicProfile(null, [])).toEqual({});
     expect(buildPublicProfile({
       displayName: "Jane",
-      profileImageUrl: "https://img",
+      profileImageUrl: "https://lorcana-minio.johnathanwwh.com/lorcana-profile-images/profile-images/user_1/avatar.png",
       countryOfResidence: "Singapore",
       instagram: "jane",
       instagramVisible: true,
@@ -256,7 +260,7 @@ describe("public collection profile payload", () => {
       phoneNumberVisible: true,
     }, [visibleReference])).toMatchObject({
       displayName: "Jane",
-      profileImageUrl: "https://img",
+      profileImageUrl: "https://minio.johnathanwwh.com/lorcana-profile-images/profile-images/user_1/avatar.png",
       countryOfResidence: "Singapore",
       instagram: "jane",
       telegram: "jane_tg",

@@ -7,6 +7,9 @@ export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 export const ALLOWED_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 export const LOCAL_UPLOAD_ROOT = process.env.LOCAL_UPLOAD_ROOT || path.resolve(process.cwd(), "uploads");
 
+const DEFAULT_PROFILE_IMAGE_PUBLIC_URL = "https://minio.johnathanwwh.com";
+const LEGACY_PROFILE_IMAGE_PUBLIC_URLS = ["https://lorcana-minio.johnathanwwh.com"];
+
 type UploadProfileImageInput = {
   userId: string;
   buffer: Buffer;
@@ -56,6 +59,19 @@ function s3PublicUrl(bucket: string, objectKey: string): string {
 
 function s3Bucket(): string {
   return process.env.S3_BUCKET || process.env.MINIO_BUCKET || "lorcana-profile-images";
+}
+
+export function normalizeProfileImageUrl(url: string | null | undefined): string | null | undefined {
+  if (typeof url !== "string") return url;
+  const canonicalBase = (process.env.S3_PUBLIC_URL || DEFAULT_PROFILE_IMAGE_PUBLIC_URL).replace(/\/$/, "");
+  for (const legacyBase of LEGACY_PROFILE_IMAGE_PUBLIC_URLS) {
+    const normalizedLegacyBase = legacyBase.replace(/\/$/, "");
+    if (url === normalizedLegacyBase) return canonicalBase;
+    if (url.startsWith(`${normalizedLegacyBase}/`)) {
+      return `${canonicalBase}${url.slice(normalizedLegacyBase.length)}`;
+    }
+  }
+  return url;
 }
 
 export async function uploadProfileImage(input: UploadProfileImageInput): Promise<UploadProfileImageResult> {
