@@ -135,7 +135,7 @@ export default function CardGrid({
         return (
           <div
             key={card.id}
-            className={`relative flex h-full flex-col rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden text-left transition-transform hover:scale-105`}
+            className={`relative flex h-full flex-col rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden text-left transition-transform sm:hover:scale-105`}
           >
             <button
               type="button"
