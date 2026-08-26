@@ -28,11 +28,13 @@ Browser React SPA
   -> nginx / Vite dev proxy
   -> Express API on :3001
   -> PostgreSQL via Prisma
+  -> MinIO/S3-compatible object storage for public profile images
 
 External data paths:
   LorcanaJSON -> allCards.json -> Card table
   tcgcsv.com  -> CardPrice table -> displayPrice on Card
   Search/SearXNG + DeepSeek -> CardAnalysis table
+  Profile photos -> MinIO bucket -> https://minio.johnathanwwh.com/<bucket>/<key>
 ```
 
 The API is mounted under `/api`:
@@ -113,6 +115,8 @@ Prisma models live in `server/prisma/schema.prisma`:
 - `CardPrice` — per-card price rows by variant with low/mid/high/market prices.
 - `CardAnalysis` — per-card AI market analysis with status and timestamps.
 - `User` — username, password hash, public sharing flag.
+- `UserProfile` — optional public profile fields and profile image URL/object key.
+- `UserReference` — user-managed visible references/links for public profiles.
 - `InventoryEntry` — one row per user/card with normal, foil, and holofoil counts.
 
 When schema changes, commit both `schema.prisma` and a matching migration directory under `server/prisma/migrations/`. CI/prod use `npx prisma migrate deploy`; a green TypeScript build does not prove migrations are correct.
@@ -144,6 +148,7 @@ High-level completed work in this repo:
 - **Auth expiry chain matters:** Keep the API client's 401 `auth:expired` event and `AuthContext` listener intact.
 - **SPA cache trap:** New routes can appear broken in normal browsers if nginx serves a cached `index.html`; production nginx should avoid long-lived caching for the HTML shell while keeping hashed assets cacheable.
 - **Public collection must stay read-only:** Reuse display components carefully; do not leak authenticated inventory actions into public routes.
+- **Profile images use MinIO in production:** Compose sets `OBJECT_STORAGE_DRIVER=s3`, internal `S3_ENDPOINT=http://minio:9000`, and browser-facing `S3_PUBLIC_URL=https://minio.johnathanwwh.com`. Existing old-host URLs are migrated from `https://lorcana-minio.johnathanwwh.com` to the new hostname.
 
 ## Contribution workflow
 

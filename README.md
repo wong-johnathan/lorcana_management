@@ -100,11 +100,16 @@ npm run dev             # :5173
 
 # On your server:
 git pull
-echo "JWT_SECRET=your-secure-secret" > .env
+cat > .env <<'EOF'
+JWT_SECRET=your-secure-secret
+MINIO_ROOT_USER=your-minio-user
+MINIO_ROOT_PASSWORD=your-minio-password
+S3_PUBLIC_URL=https://minio.johnathanwwh.com
+EOF
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Production uses pre-built images from DockerHub (`wongjohnathanwh741/lorcana-server`, `wongjohnathanwh741/lorcana-nginx`).
+Production uses pre-built images from DockerHub (`wongjohnathanwh741/lorcana-server`, `wongjohnathanwh741/lorcana-nginx`) and stores public profile images in MinIO. `S3_PUBLIC_URL` must stay browser-reachable; the current public hostname is `https://minio.johnathanwwh.com`.
 
 ## CI/CD
 
