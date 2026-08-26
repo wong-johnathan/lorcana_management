@@ -8,6 +8,7 @@ import SettingsPage from "./pages/SettingsPage";
 import PublicCollectionPage from "./pages/PublicCollectionPage";
 import CardDetailPage from "./pages/CardDetailPage";
 import MasterSetPage from "./pages/MasterSetPage";
+import ExtrasForSalePage from "./pages/ExtrasForSalePage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -30,6 +31,7 @@ export default function App() {
         {user ? (
           <>
             <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/extras-for-sale" element={<ExtrasForSalePage />} />
             <Route path="/profile" element={<SettingsPage />} />
             <Route path="/settings" element={<Navigate to="/profile" replace />} />
           </>

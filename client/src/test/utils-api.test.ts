@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { availableInventoryVariants, isInventoryVariantAvailable, totalInventoryCount } from "../utils/cardVariants";
 import { formatTimeAgo } from "../utils/format";
-import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi } from "../services/api";
+import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi, extrasForSale } from "../services/api";
 
 describe("client utility helpers", () => {
   it("derives inventory variants from foilTypes and totals quantities", () => {
@@ -92,6 +92,16 @@ describe("API client wrapper", () => {
       inventory.add("card_1", 1, 0, 0),
       inventory.update("entry_1", { quantity: 2 }),
       inventory.wipe(),
+      inventory.getPolicy(),
+      inventory.updatePolicy({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true }),
+      inventory.getExtras(),
+      inventory.getRetentionOverride("card_1"),
+      inventory.updateRetentionOverride("card_1", { keepNormalQuantity: 8 }),
+      inventory.deleteRetentionOverride("card_1"),
+      extrasForSale.list(),
+      extrasForSale.create({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: null }),
+      extrasForSale.update("listing_1", { status: "paused" }),
+      extrasForSale.remove("listing_1"),
       sync.refresh(),
       sync.refreshStatus(),
       sync.prices(),
@@ -119,6 +129,7 @@ describe("API client wrapper", () => {
       profileApi.updateReference("ref_1", { visible: false }),
       profileApi.deleteReference("ref_1"),
       publicCollection.get("user_1", { rarity: "Common" }),
+      publicCollection.extras("user_1"),
       analysis.get("card_1"),
       analysis.analyze("card_1"),
       analysis.batchAnalyze(),
@@ -126,5 +137,6 @@ describe("API client wrapper", () => {
     ]);
     expect(fetchMock).toHaveBeenCalledWith("/api/cards?search=Mickey", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1?rarity=Common", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1/extras", expect.any(Object));
   });
 });

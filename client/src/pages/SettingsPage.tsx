@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { profile as profileApi, settings as settingsApi } from "../services/api";
-import type { ProfileImageUpload, UserProfile, UserProfileUpdate, UserReference, UserSettings } from "../types";
+import { inventory as inventoryApi, profile as profileApi, settings as settingsApi } from "../services/api";
+import type { InventoryPolicy, ProfileImageUpload, UserProfile, UserProfileUpdate, UserReference, UserSettings } from "../types";
 import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
 import UserReferencesEditor from "../components/profile/UserReferencesEditor";
+import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [extrasPolicy, setExtrasPolicy] = useState<InventoryPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -16,10 +18,11 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([settingsApi.get(), profileApi.get()])
-      .then(([nextSettings, nextProfile]) => {
+    Promise.all([settingsApi.get(), profileApi.get(), inventoryApi.getPolicy()])
+      .then(([nextSettings, nextProfile, nextPolicy]) => {
         setSettings(nextSettings);
         setProfile(nextProfile);
+        setExtrasPolicy(nextPolicy);
       })
       .catch((err) => setError(err?.message || "Failed to load settings"))
       .finally(() => setLoading(false));
@@ -49,6 +52,20 @@ export default function SettingsPage() {
       setSuccess("Profile saved");
     } catch (err: any) {
       setError(err?.message || "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExtrasPolicySave = async (data: InventoryPolicy) => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      setExtrasPolicy(await inventoryApi.updatePolicy(data));
+      setSuccess("Extras for Sale settings saved");
+    } catch (err: any) {
+      setError(err?.message || "Failed to save Extras for Sale settings");
     } finally {
       setSaving(false);
     }
@@ -154,7 +171,7 @@ export default function SettingsPage() {
     );
   }
 
-  if (!settings || !profile) {
+  if (!settings || !profile || !extrasPolicy) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-red-400">{error || "Failed to load settings"}</div>
@@ -193,6 +210,16 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
+      </div>
+
+      <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">
+        <ExtrasSettingsPanel
+          policy={extrasPolicy}
+          saving={saving}
+          publicEnabled={settings.publicEnabled}
+          showManageLink
+          onSave={handleExtrasPolicySave}
+        />
       </div>
 
       <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">

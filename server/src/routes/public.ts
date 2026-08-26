@@ -1,5 +1,16 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import {
+  DEFAULT_INVENTORY_POLICY,
+  calculateExtras,
+  publicQuantityForListing,
+  referencePriceForVariant,
+  resolveKeepCounts,
+  type InventoryCounts,
+  type InventoryPolicyLike,
+  type InventoryVariant,
+  type RetentionOverrideLike,
+} from "../services/extrasForSale.js";
 
 const prisma = new PrismaClient();
 export const publicRouter = Router();
@@ -82,6 +93,94 @@ export function buildPublicProfile(
   if (visibleReferences.length > 0) payload.references = visibleReferences;
   return payload;
 }
+
+function getVariantCount(counts: InventoryCounts, variant: InventoryVariant): number {
+  if (variant === "normal") return counts.quantity;
+  if (variant === "foil") return counts.foilQuantity;
+  return counts.holofoilQuantity;
+}
+
+function parsePublicListingVariant(value: string): InventoryVariant | null {
+  if (value === "normal" || value === "foil" || value === "holofoil") return value;
+  return null;
+}
+
+function currentPublicExtraForVariant(
+  entry: { quantity: number; foilQuantity: number; holofoilQuantity: number } | null,
+  policy: InventoryPolicyLike,
+  override: RetentionOverrideLike | null | undefined,
+  variant: InventoryVariant
+): number {
+  if (!entry) return 0;
+  const owned = {
+    quantity: entry.quantity,
+    foilQuantity: entry.foilQuantity,
+    holofoilQuantity: entry.holofoilQuantity,
+  };
+  return getVariantCount(calculateExtras(owned, resolveKeepCounts(policy, override)), variant);
+}
+
+publicRouter.get("/collection/:userId/extras", async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params as { userId: string };
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        publicEnabled: true,
+        profile: true,
+        references: true,
+      },
+    });
+
+    if (!user || !user.publicEnabled) {
+      res.status(404).json({ error: "Collection not found" });
+      return;
+    }
+
+    const listings = await prisma.extraForSaleListing.findMany({
+      where: { userId, status: "active" },
+      include: { card: { include: { prices: true } } },
+    });
+    const listedCardIds = [...new Set(listings.map((listing) => listing.cardId))];
+    const [policyRecord, overrides, entries] = await Promise.all([
+      prisma.userInventoryPolicy.findUnique({ where: { userId } }),
+      prisma.cardRetentionOverride.findMany({ where: { userId, cardId: { in: listedCardIds } } }),
+      prisma.inventoryEntry.findMany({ where: { userId, cardId: { in: listedCardIds } } }),
+    ]);
+    const policy = policyRecord ?? DEFAULT_INVENTORY_POLICY;
+    const overrideByCardId = new Map(overrides.map((override) => [override.cardId, override]));
+    const entryByCardId = new Map(entries.map((entry) => [entry.cardId, entry]));
+
+    const publicListings = listings
+      .map((listing) => {
+        const variant = parsePublicListingVariant(listing.variant);
+        if (!variant) return null;
+        const extraQuantity = currentPublicExtraForVariant(entryByCardId.get(listing.cardId) ?? null, policy, overrideByCardId.get(listing.cardId), variant);
+        const quantity = publicQuantityForListing(listing.desiredQuantity, extraQuantity);
+        if (quantity <= 0) return null;
+        return {
+          id: listing.id,
+          card: listing.card,
+          variant,
+          quantity,
+          referencePrice: referencePriceForVariant(listing.card.prices, variant),
+          note: listing.note ?? null,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({
+      user: { id: user.id, username: user.username },
+      profile: buildPublicProfile((user as any).profile, (user as any).references),
+      listings: publicListings,
+    });
+  } catch (error) {
+    console.error("Public extras error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
   try {

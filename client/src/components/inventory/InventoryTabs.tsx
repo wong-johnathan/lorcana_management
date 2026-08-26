@@ -7,6 +7,8 @@ interface InventoryTabsProps {
   statsLabel?: string;
   profileLabel?: string;
   showProfile?: boolean;
+  extrasLabel?: string;
+  showExtras?: boolean;
 }
 
 export default function InventoryTabs({
@@ -16,6 +18,8 @@ export default function InventoryTabs({
   statsLabel = "Stats",
   profileLabel = "Profile",
   showProfile = false,
+  extrasLabel = "Extras for Sale",
+  showExtras = false,
 }: InventoryTabsProps) {
   const tabClass = (tab: InventoryTab) =>
     `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -54,6 +58,17 @@ export default function InventoryTabs({
             onClick={() => onTabChange("profile")}
           >
             {profileLabel}
+          </button>
+        )}
+        {showExtras && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "extras"}
+            className={tabClass("extras")}
+            onClick={() => onTabChange("extras")}
+          >
+            {extrasLabel}
           </button>
         )}
       </div>

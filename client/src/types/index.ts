@@ -79,6 +79,70 @@ export interface InventoryStats {
   setBreakdown: { setName: string; owned: number; total: number }[];
 }
 
+export type InventoryVariant = "normal" | "foil" | "holofoil";
+
+export interface InventoryPolicy {
+  keepNormalQuantity: number;
+  keepFoilQuantity: number;
+  keepHolofoilQuantity: number;
+  autoSuggestExtras: boolean;
+}
+
+export interface CardRetentionOverride {
+  cardId?: string;
+  keepNormalQuantity: number | null;
+  keepFoilQuantity: number | null;
+  keepHolofoilQuantity: number | null;
+}
+
+export interface InventoryCountSet {
+  quantity: number;
+  foilQuantity: number;
+  holofoilQuantity: number;
+}
+
+export interface InventoryExtrasCard {
+  card: Card;
+  owned: InventoryCountSet;
+  keep: InventoryCountSet;
+  extras: InventoryCountSet;
+  activeListings: InventoryCountSet;
+  availableToList: InventoryCountSet;
+  referencePrices: { normal: number | null; foil: number | null; holofoil: number | null };
+}
+
+export interface InventoryExtrasResponse {
+  policy: InventoryPolicy;
+  cards: InventoryExtrasCard[];
+}
+
+export interface ExtraForSaleListing {
+  id: string;
+  cardId: string;
+  card: Card;
+  variant: InventoryVariant;
+  desiredQuantity: number;
+  publicQuantity: number;
+  referencePrice: number | null;
+  note: string | null;
+  status: "active" | "paused";
+}
+
+export interface PublicExtraForSaleListing {
+  id: string;
+  card: Card;
+  variant: InventoryVariant;
+  quantity: number;
+  referencePrice: number | null;
+  note: string | null;
+}
+
+export interface PublicExtrasForSale {
+  user: User;
+  profile?: PublicUserProfile;
+  listings: PublicExtraForSaleListing[];
+}
+
 export interface UserSettings {
   publicEnabled: boolean;
   publicUrl: string;

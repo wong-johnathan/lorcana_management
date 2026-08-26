@@ -19,6 +19,7 @@ export const prismaMock = {
     delete: vi.fn(),
   },
   userInventoryPolicy: {
+    findUnique: vi.fn(),
     upsert: vi.fn(),
     update: vi.fn(),
   },

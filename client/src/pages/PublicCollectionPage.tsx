@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { publicCollection as publicApi, cards as cardsApi } from "../services/api";
-import type { Card, InventoryStats, PublicUserProfile, User } from "../types";
+import type { Card, InventoryStats, PublicExtraForSaleListing, PublicUserProfile, User } from "../types";
 import CardDetail from "../components/CardDetail";
 import PublicProfilePanel from "../components/profile/PublicProfilePanel";
 import InventoryTabs from "../components/inventory/InventoryTabs";
@@ -12,6 +12,7 @@ import InventoryCollectionView, {
 } from "../components/inventory/InventoryCollectionView";
 import { type InventoryCounts } from "../utils/cardVariants";
 import { parseInventoryTab, type InventoryTab } from "../utils/inventoryTabs";
+import PublicExtrasForSalePanel from "../components/extras/PublicExtrasForSalePanel";
 
 interface PublicEntry extends InventoryCollectionEntry {
   card: Card;
@@ -34,6 +35,7 @@ export default function PublicCollectionPage() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [entries, setEntries] = useState<PublicEntry[]>([]);
+  const [extrasListings, setExtrasListings] = useState<PublicExtraForSaleListing[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [detailCard, setDetailCard] = useState<Card | null>(null);
@@ -67,11 +69,15 @@ export default function PublicCollectionPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await publicApi.get(userId, filters);
+      const [data, extrasData] = await Promise.all([
+        publicApi.get(userId, filters),
+        publicApi.extras(userId),
+      ]);
       setUser(data.user);
       setProfile(data.profile ?? null);
       setEntries(data.cards);
       setStats(data.stats);
+      setExtrasListings(extrasData.listings);
     } catch (err: any) {
       setError(err?.message || "Collection not found");
     } finally {
@@ -102,6 +108,13 @@ export default function PublicCollectionPage() {
     setSearchParams(params);
   };
 
+  const handleContactSeller = () => {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", "profile");
+    params.delete("card");
+    setSearchParams(params);
+  };
+
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -117,7 +130,7 @@ export default function PublicCollectionPage() {
 
   return (
     <div>
-      <InventoryTabs activeTab={activeTab} onTabChange={handleTabChange} showProfile />
+      <InventoryTabs activeTab={activeTab} onTabChange={handleTabChange} showProfile showExtras={extrasListings.length > 0 || activeTab === "extras"} />
 
       {activeTab === "profile" ? (
         <PublicProfilePanel profile={profile} username={user?.username ?? "This collector"} />
@@ -127,6 +140,13 @@ export default function PublicCollectionPage() {
         ) : (
           <div className="text-center text-gray-500 py-12">Loading...</div>
         )
+      ) : activeTab === "extras" ? (
+        <PublicExtrasForSalePanel
+          listings={extrasListings}
+          profile={profile}
+          username={user?.username ?? "This collector"}
+          onContactClick={handleContactSeller}
+        />
       ) : (
         <InventoryCollectionView
           title={`${user?.username ?? "Shared"}'s Collection`}

@@ -579,6 +579,67 @@ describe("settings, public collection, and sync routes", () => {
     expect(res.body.stats.totalValue).toBe(3);
   });
 
+  it("returns public extras for sale only when collection is public and listing remains extra", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: false });
+    await request(app).get("/api/public/collection/user_1/extras").expect(404, { error: "Collection not found" });
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: "user_1",
+      username: "jw",
+      publicEnabled: true,
+      profile: { telegram: "john", telegramVisible: true, email: "private@example.com", emailVisible: false },
+      references: [{ id: "ref_1", name: "Alice", description: "Trade ref", contactInfo: "@alice", visible: true }],
+    });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([{ id: "override_1", userId: "user_1", cardId: "card_1", keepNormalQuantity: 0, keepFoilQuantity: null, keepHolofoilQuantity: null }]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ quantity: 2, foilQuantity: 1, holofoilQuantity: 0 }),
+    ]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 5, note: "Meet near MRT", status: "active", card: card() },
+      { id: "listing_2", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, note: null, status: "active", card: card() },
+    ]);
+
+    await request(app).get("/api/public/collection/user_1/extras")
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.user).toEqual({ id: "user_1", username: "jw" });
+        expect(res.body.profile).toEqual({ telegram: "john", references: [{ id: "ref_1", name: "Alice", description: "Trade ref", contactInfo: "@alice" }] });
+        expect(res.body.listings).toHaveLength(1);
+        expect(res.body.listings[0]).toEqual(expect.objectContaining({
+          id: "listing_1",
+          variant: "normal",
+          quantity: 2,
+          referencePrice: 4,
+          note: "Meet near MRT",
+        }));
+      });
+  });
+
+  it("hides public extras with invalid variants/no current extras and returns persistence errors", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: "user_1",
+      username: "jw",
+      publicEnabled: true,
+      profile: null,
+      references: [],
+    });
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_bad", userId: "user_1", cardId: "card_1", variant: "misprint", desiredQuantity: 1, note: null, status: "active", card: card() },
+      { id: "listing_empty", userId: "user_1", cardId: "card_2", variant: "holofoil", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_2", prices: [{ variant: "Holofoil", marketPrice: 10 }] }) },
+    ]);
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([]);
+
+    await request(app).get("/api/public/collection/user_1/extras")
+      .expect(200)
+      .expect((res) => expect(res.body.listings).toEqual([]));
+
+    prismaMock.user.findUnique.mockRejectedValueOnce(new Error("db down"));
+    await request(app).get("/api/public/collection/user_1/extras").expect(500, { error: "Internal server error" });
+  });
+
   it("exposes sync status and starts refresh/price sync with auth", async () => {
     await request(app).get("/api/sync/refresh/status").expect(401);
     await auth(request(app).get("/api/sync/refresh/status")).expect(200).expect((res) => expect(res.body.status).toMatch(/idle|running|completed|error/));

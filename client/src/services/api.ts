@@ -14,6 +14,12 @@ import type {
   UserProfileUpdate,
   UserReference,
   ProfileImageUpload,
+  InventoryPolicy,
+  InventoryExtrasResponse,
+  CardRetentionOverride,
+  ExtraForSaleListing,
+  InventoryVariant,
+  PublicExtrasForSale,
 } from "../types";
 
 const API_BASE = "/api";
@@ -92,6 +98,35 @@ export const inventory = {
   wipe: () =>
     request<{ deleted: number }>("/inventory", { method: "DELETE" }),
   stats: () => request<InventoryStats>("/inventory/stats"),
+  getPolicy: () => request<InventoryPolicy>("/inventory/policy"),
+  updatePolicy: (data: Partial<InventoryPolicy>) =>
+    request<InventoryPolicy>("/inventory/policy", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  getExtras: () => request<InventoryExtrasResponse>("/inventory/extras"),
+  getRetentionOverride: (cardId: string) => request<{ override: CardRetentionOverride | null }>(`/inventory/retention/${cardId}`),
+  updateRetentionOverride: (cardId: string, data: Partial<CardRetentionOverride>) =>
+    request<{ override: CardRetentionOverride }>(`/inventory/retention/${cardId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteRetentionOverride: (cardId: string) => request<void>(`/inventory/retention/${cardId}`, { method: "DELETE" }),
+};
+
+export const extrasForSale = {
+  list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
+  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null }) =>
+    request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused" }) =>
+    request<{ listing: ExtraForSaleListing }>(`/extras-for-sale/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: string) => request<void>(`/extras-for-sale/${id}`, { method: "DELETE" }),
 };
 
 export const sync = {
@@ -147,6 +182,7 @@ export const publicCollection = {
     const query = params ? "?" + new URLSearchParams(params).toString() : "";
     return request<PublicCollection>(`/public/collection/${userId}${query}`);
   },
+  extras: (userId: string) => request<PublicExtrasForSale>(`/public/collection/${userId}/extras`),
 };
 
 export const analysis = {
