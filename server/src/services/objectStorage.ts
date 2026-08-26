@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { mkdir, rm, writeFile } from "fs/promises";
 import path from "path";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 export const ALLOWED_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
@@ -54,12 +54,16 @@ function s3PublicUrl(bucket: string, objectKey: string): string {
   return `https://${bucket}.s3.${region}.amazonaws.com/${objectKey}`;
 }
 
+function s3Bucket(): string {
+  return process.env.S3_BUCKET || process.env.MINIO_BUCKET || "lorcana-profile-images";
+}
+
 export async function uploadProfileImage(input: UploadProfileImageInput): Promise<UploadProfileImageResult> {
   const { userId, buffer, contentType } = input;
   const objectKey = makeObjectKey(userId, contentType, buffer);
 
   if (process.env.OBJECT_STORAGE_DRIVER === "s3") {
-    const bucket = process.env.S3_BUCKET || process.env.MINIO_BUCKET || "lorcana-profile-images";
+    const bucket = s3Bucket();
     await s3Client().send(new PutObjectCommand({
       Bucket: bucket,
       Key: objectKey,
@@ -79,11 +83,18 @@ export async function uploadProfileImage(input: UploadProfileImageInput): Promis
 export async function deleteProfileImage(objectKey: string | null | undefined): Promise<void> {
   if (!objectKey) return;
   if (process.env.OBJECT_STORAGE_DRIVER === "s3") {
-    // Object lifecycle/overwrite cleanup can be wired with DeleteObject later. Avoid
-    // failing user profile saves because an old image cannot be removed.
+    try {
+      await s3Client().send(new DeleteObjectCommand({
+        Bucket: s3Bucket(),
+        Key: objectKey,
+      }));
+    } catch (error) {
+      console.warn("Profile image S3 cleanup failed:", error);
+    }
     return;
   }
-  const target = path.join(LOCAL_UPLOAD_ROOT, objectKey);
-  if (!target.startsWith(LOCAL_UPLOAD_ROOT)) return;
+  const uploadRoot = path.resolve(LOCAL_UPLOAD_ROOT);
+  const target = path.resolve(uploadRoot, objectKey);
+  if (!target.startsWith(`${uploadRoot}${path.sep}`)) return;
   await rm(target, { force: true });
 }
