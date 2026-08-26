@@ -1,0 +1,220 @@
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Card } from "../types";
+
+const apiMocks = vi.hoisted(() => ({
+  settingsGet: vi.fn(),
+  settingsUpdate: vi.fn(),
+  profileGet: vi.fn(),
+  profileUpdate: vi.fn(),
+  profileUploadPhoto: vi.fn(),
+  profileDeletePhoto: vi.fn(),
+  profileCreateReference: vi.fn(),
+  profileUpdateReference: vi.fn(),
+  profileDeleteReference: vi.fn(),
+  inventoryGetPolicy: vi.fn(),
+  inventoryUpdatePolicy: vi.fn(),
+  inventoryGetExtras: vi.fn(),
+  extrasList: vi.fn(),
+  extrasCreate: vi.fn(),
+  extrasUpdate: vi.fn(),
+  extrasRemove: vi.fn(),
+  publicGet: vi.fn(),
+  publicExtras: vi.fn(),
+  cardsGet: vi.fn(),
+}));
+
+vi.mock("../services/api", () => ({
+  settings: { get: apiMocks.settingsGet, update: apiMocks.settingsUpdate },
+  profile: {
+    get: apiMocks.profileGet,
+    update: apiMocks.profileUpdate,
+    uploadPhoto: apiMocks.profileUploadPhoto,
+    deletePhoto: apiMocks.profileDeletePhoto,
+    createReference: apiMocks.profileCreateReference,
+    updateReference: apiMocks.profileUpdateReference,
+    deleteReference: apiMocks.profileDeleteReference,
+  },
+  inventory: {
+    getPolicy: apiMocks.inventoryGetPolicy,
+    updatePolicy: apiMocks.inventoryUpdatePolicy,
+    getExtras: apiMocks.inventoryGetExtras,
+    updateRetentionOverride: vi.fn(),
+  },
+  extrasForSale: {
+    list: apiMocks.extrasList,
+    create: apiMocks.extrasCreate,
+    update: apiMocks.extrasUpdate,
+    remove: apiMocks.extrasRemove,
+  },
+  publicCollection: { get: apiMocks.publicGet, extras: apiMocks.publicExtras },
+  cards: { get: apiMocks.cardsGet },
+}));
+
+vi.mock("../components/profile/ProfileForm", () => ({
+  default: ({ onSubmit }: { onSubmit: (data: any) => void }) => <button type="button" onClick={() => onSubmit({ displayName: "jw" })}>Save profile form</button>,
+}));
+vi.mock("../components/profile/ProfileImageUploader", () => ({
+  default: () => <div>Profile image uploader</div>,
+}));
+vi.mock("../components/profile/UserReferencesEditor", () => ({
+  default: () => <div>User references editor</div>,
+}));
+vi.mock("../components/inventory/InventoryCollectionView", () => ({
+  default: ({ title }: { title: string }) => <div>{title}</div>,
+}));
+vi.mock("../components/CardDetail", () => ({
+  default: () => <div>Card detail</div>,
+}));
+
+import SettingsPage from "../pages/SettingsPage";
+import ExtrasForSalePage from "../pages/ExtrasForSalePage";
+import PublicCollectionPage from "../pages/PublicCollectionPage";
+
+function makeCard(overrides: Partial<Card> = {}): Card {
+  return {
+    id: "card_1",
+    externalId: 1,
+    tcgPlayerId: 123,
+    cardTraderUrl: null,
+    cardmarketUrl: null,
+    name: "Mickey Mouse",
+    subtitle: "Brave Little Tailor",
+    character: "Mickey Mouse",
+    types: ["Hero"],
+    cardType: "Character",
+    color: "Amber",
+    setCode: "TFC",
+    setName: "The First Chapter",
+    rarity: "Legendary",
+    inkCost: 8,
+    strength: 5,
+    willpower: 5,
+    lore: 4,
+    abilities: "Evasive",
+    cardNumber: "1/204 • EN • 1",
+    foilTypes: ["None", "Silver"],
+    imageUrl: "https://img.example/mickey.jpg",
+    prices: [],
+    ...overrides,
+  };
+}
+
+const policy = { keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true };
+const profile = {
+  displayName: "John",
+  profileImageUrl: null,
+  profileImageObjectKey: null,
+  countryOfResidence: null,
+  instagram: null,
+  instagramVisible: false,
+  telegram: null,
+  telegramVisible: false,
+  facebook: null,
+  facebookVisible: false,
+  email: null,
+  emailVisible: false,
+  phoneNumber: null,
+  phoneNumberVisible: false,
+  references: [],
+};
+
+beforeEach(() => {
+  Object.values(apiMocks).forEach((mock) => mock.mockReset());
+});
+
+describe("extras for sale pages", () => {
+  it("loads Extras for Sale settings on profile and saves policy changes", async () => {
+    apiMocks.settingsGet.mockResolvedValue({ publicEnabled: false, publicUrl: "/collection/user_1" });
+    apiMocks.profileGet.mockResolvedValue(profile);
+    apiMocks.inventoryGetPolicy.mockResolvedValue(policy);
+    apiMocks.inventoryUpdatePolicy.mockResolvedValue({ ...policy, keepNormalQuantity: 8 });
+
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Extras for Sale")).toBeInTheDocument();
+    expect(screen.getByText(/Enable Public Collection/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Keep normal"), { target: { value: "8" } });
+    await userEvent.click(screen.getByRole("button", { name: "Save extras settings" }));
+    expect(apiMocks.inventoryUpdatePolicy).toHaveBeenCalledWith(expect.objectContaining({ keepNormalQuantity: 8 }));
+    expect(await screen.findByText("Extras for Sale settings saved")).toBeInTheDocument();
+  });
+
+  it("loads owner Extras for Sale page and creates a listing from suggestions", async () => {
+    apiMocks.inventoryGetExtras.mockResolvedValue({
+      policy,
+      cards: [{
+        card: makeCard(),
+        owned: { quantity: 8, foilQuantity: 1, holofoilQuantity: 0 },
+        keep: { quantity: 4, foilQuantity: 1, holofoilQuantity: 1 },
+        extras: { quantity: 4, foilQuantity: 0, holofoilQuantity: 0 },
+        activeListings: { quantity: 0, foilQuantity: 0, holofoilQuantity: 0 },
+        availableToList: { quantity: 4, foilQuantity: 0, holofoilQuantity: 0 },
+        referencePrices: { normal: 4, foil: null, holofoil: null },
+      }],
+    });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+    apiMocks.extrasCreate.mockResolvedValue({ listing: {} });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "List 4" }));
+    expect(apiMocks.extrasCreate).toHaveBeenCalledWith({ cardId: "card_1", variant: "normal", desiredQuantity: 4, note: null });
+    expect(await screen.findByText("Extra listed for sale")).toBeInTheDocument();
+  });
+
+  it("shows public Extras for Sale tab only when listings exist and direct extras links show empty state", async () => {
+    apiMocks.publicGet.mockResolvedValue({
+      user: { id: "user_1", username: "jw" },
+      profile: { telegram: "john" },
+      cards: [],
+      stats: { totalUnique: 0, totalCards: 0, setBreakdown: [] },
+    });
+    apiMocks.publicExtras.mockResolvedValueOnce({ user: { id: "user_1", username: "jw" }, profile: {}, listings: [] });
+
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/collection/user_1?tab=extras"]}>
+        <Routes><Route path="/collection/:userId" element={<PublicCollectionPage />} /></Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("tab", { name: "Extras for Sale" })).toBeInTheDocument();
+    expect(await screen.findByText("No extras are currently listed for sale.")).toBeInTheDocument();
+    unmount();
+
+    apiMocks.publicGet.mockResolvedValue({
+      user: { id: "user_1", username: "jw" },
+      profile: { telegram: "john" },
+      cards: [],
+      stats: { totalUnique: 0, totalCards: 0, setBreakdown: [] },
+    });
+    apiMocks.publicExtras.mockResolvedValueOnce({
+      user: { id: "user_1", username: "jw" },
+      profile: { telegram: "john" },
+      listings: [{ id: "listing_1", card: makeCard(), variant: "normal", quantity: 2, referencePrice: 4, note: null }],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/collection/user_1"]}>
+        <Routes><Route path="/collection/:userId" element={<PublicCollectionPage />} /></Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Extras for Sale" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("tab", { name: "Extras for Sale" }));
+    expect(await screen.findByText("Normal × 2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Contact seller" }));
+    expect(await screen.findByRole("heading", { name: "jw" })).toBeInTheDocument();
+  });
+});

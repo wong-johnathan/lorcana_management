@@ -365,6 +365,125 @@ describe("inventory routes", () => {
     await auth(request(app).get("/api/inventory/export/decklist")).expect(200).expect("Content-Type", /text\/plain/).expect((res) => expect(res.text).toContain("6 Mickey Mouse - Brave Little Tailor"));
   });
 
+  it("gets and updates extras keep policy with safe defaults", async () => {
+    prismaMock.userInventoryPolicy.upsert
+      .mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true })
+      .mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 8, keepFoilQuantity: 2, keepHolofoilQuantity: 0, autoSuggestExtras: false });
+
+    await auth(request(app).get("/api/inventory/policy"))
+      .expect(200)
+      .expect((res) => expect(res.body).toEqual({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true }));
+
+    await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: 8, keepFoilQuantity: 2, keepHolofoilQuantity: 0, autoSuggestExtras: false }))
+      .expect(200)
+      .expect((res) => expect(res.body.keepNormalQuantity).toBe(8));
+
+    await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: -1 }))
+      .expect(400, { error: "Keep quantities must be non-negative integers" });
+  });
+
+  it("manages per-card retention overrides scoped to the owner", async () => {
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    await auth(request(app).get("/api/inventory/retention/card_1"))
+      .expect(200, { override: null });
+
+    prismaMock.card.findUnique.mockResolvedValueOnce(card());
+    prismaMock.cardRetentionOverride.upsert.mockResolvedValueOnce({
+      id: "override_1",
+      userId: "user_1",
+      cardId: "card_1",
+      keepNormalQuantity: 8,
+      keepFoilQuantity: 1,
+      keepHolofoilQuantity: 0,
+    });
+    await auth(request(app).put("/api/inventory/retention/card_1").send({ keepNormalQuantity: 8, keepFoilQuantity: 1, keepHolofoilQuantity: 0 }))
+      .expect(200)
+      .expect((res) => expect(res.body.override.keepNormalQuantity).toBe(8));
+
+    await auth(request(app).put("/api/inventory/retention/card_1").send({ keepNormalQuantity: "8" }))
+      .expect(400, { error: "Keep quantities must be non-negative integers or null" });
+
+    prismaMock.cardRetentionOverride.deleteMany.mockResolvedValueOnce({ count: 1 });
+    await auth(request(app).delete("/api/inventory/retention/card_1")).expect(204);
+  });
+
+  it("returns computed private extras with per-card overrides, listings, and reference prices", async () => {
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([
+      { id: "override_1", userId: "user_1", cardId: "card_1", keepNormalQuantity: 8, keepFoilQuantity: null, keepHolofoilQuantity: 0 },
+    ]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 1, status: "active" },
+    ]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ quantity: 10, foilQuantity: 2, holofoilQuantity: 1 }),
+    ]);
+
+    await auth(request(app).get("/api/inventory/extras"))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.policy).toEqual({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+        expect(res.body.cards).toHaveLength(1);
+        expect(res.body.cards[0]).toEqual(expect.objectContaining({
+          card: expect.objectContaining({ id: "card_1" }),
+          owned: { quantity: 10, foilQuantity: 2, holofoilQuantity: 1 },
+          keep: { quantity: 8, foilQuantity: 1, holofoilQuantity: 0 },
+          extras: { quantity: 2, foilQuantity: 1, holofoilQuantity: 1 },
+          activeListings: { quantity: 1, foilQuantity: 0, holofoilQuantity: 0 },
+          availableToList: { quantity: 1, foilQuantity: 1, holofoilQuantity: 1 },
+          referencePrices: { normal: 4, foil: 8, holofoil: 8 },
+        }));
+      });
+  });
+
+  it("covers extras policy, retention, and computed extras error/edge cases", async () => {
+    prismaMock.userInventoryPolicy.upsert.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).get("/api/inventory/policy")).expect(500, { error: "Internal server error" });
+
+    await auth(request(app).patch("/api/inventory/policy").send({ autoSuggestExtras: "yes" }))
+      .expect(400, { error: "autoSuggestExtras must be a boolean" });
+
+    prismaMock.userInventoryPolicy.upsert.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).patch("/api/inventory/policy").send({ keepFoilQuantity: 2 }))
+      .expect(500, { error: "Internal server error" });
+
+    prismaMock.cardRetentionOverride.findUnique.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).get("/api/inventory/retention/card_1")).expect(500, { error: "Internal server error" });
+
+    prismaMock.card.findUnique.mockResolvedValueOnce(null);
+    await auth(request(app).put("/api/inventory/retention/missing").send({ keepNormalQuantity: null }))
+      .expect(404, { error: "Card not found" });
+
+    prismaMock.card.findUnique.mockResolvedValueOnce(card());
+    prismaMock.cardRetentionOverride.upsert.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).put("/api/inventory/retention/card_1").send({ keepNormalQuantity: 1 }))
+      .expect(500, { error: "Internal server error" });
+
+    prismaMock.cardRetentionOverride.deleteMany.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).delete("/api/inventory/retention/card_1")).expect(500, { error: "Internal server error" });
+
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).get("/api/inventory/extras")).expect(500, { error: "Internal server error" });
+
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_foil", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, status: "active" },
+      { id: "listing_holo", userId: "user_1", cardId: "card_1", variant: "holofoil", desiredQuantity: 1, status: "active" },
+    ]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ quantity: 4, foilQuantity: 1, holofoilQuantity: 1 }),
+    ]);
+    await auth(request(app).get("/api/inventory/extras"))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.cards[0].extras).toEqual({ quantity: 0, foilQuantity: 0, holofoilQuantity: 0 });
+        expect(res.body.cards[0].activeListings).toEqual({ quantity: 0, foilQuantity: 1, holofoilQuantity: 1 });
+        expect(res.body.cards[0].availableToList).toEqual({ quantity: 0, foilQuantity: 0, holofoilQuantity: 0 });
+      });
+  });
+
   it("returns 500 for inventory route persistence failures", async () => {
     prismaMock.inventoryEntry.findMany.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).get("/api/inventory")).expect(500, { error: "Internal server error" });
@@ -458,6 +577,67 @@ describe("settings, public collection, and sync routes", () => {
     expect(res.body.cards.map((c: any) => c.card.id)).toEqual(["a", "b", "z"]);
     expect(res.body.stats.missingPriceCount).toBe(3);
     expect(res.body.stats.totalValue).toBe(3);
+  });
+
+  it("returns public extras for sale only when collection is public and listing remains extra", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: false });
+    await request(app).get("/api/public/collection/user_1/extras").expect(404, { error: "Collection not found" });
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: "user_1",
+      username: "jw",
+      publicEnabled: true,
+      profile: { telegram: "john", telegramVisible: true, email: "private@example.com", emailVisible: false },
+      references: [{ id: "ref_1", name: "Alice", description: "Trade ref", contactInfo: "@alice", visible: true }],
+    });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([{ id: "override_1", userId: "user_1", cardId: "card_1", keepNormalQuantity: 0, keepFoilQuantity: null, keepHolofoilQuantity: null }]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ quantity: 2, foilQuantity: 1, holofoilQuantity: 0 }),
+    ]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 5, note: "Meet near MRT", status: "active", card: card() },
+      { id: "listing_2", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, note: null, status: "active", card: card() },
+    ]);
+
+    await request(app).get("/api/public/collection/user_1/extras")
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.user).toEqual({ id: "user_1", username: "jw" });
+        expect(res.body.profile).toEqual({ telegram: "john", references: [{ id: "ref_1", name: "Alice", description: "Trade ref", contactInfo: "@alice" }] });
+        expect(res.body.listings).toHaveLength(1);
+        expect(res.body.listings[0]).toEqual(expect.objectContaining({
+          id: "listing_1",
+          variant: "normal",
+          quantity: 2,
+          referencePrice: 4,
+          note: "Meet near MRT",
+        }));
+      });
+  });
+
+  it("hides public extras with invalid variants/no current extras and returns persistence errors", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: "user_1",
+      username: "jw",
+      publicEnabled: true,
+      profile: null,
+      references: [],
+    });
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_bad", userId: "user_1", cardId: "card_1", variant: "misprint", desiredQuantity: 1, note: null, status: "active", card: card() },
+      { id: "listing_empty", userId: "user_1", cardId: "card_2", variant: "holofoil", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_2", prices: [{ variant: "Holofoil", marketPrice: 10 }] }) },
+    ]);
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([]);
+
+    await request(app).get("/api/public/collection/user_1/extras")
+      .expect(200)
+      .expect((res) => expect(res.body.listings).toEqual([]));
+
+    prismaMock.user.findUnique.mockRejectedValueOnce(new Error("db down"));
+    await request(app).get("/api/public/collection/user_1/extras").expect(500, { error: "Internal server error" });
   });
 
   it("exposes sync status and starts refresh/price sync with auth", async () => {

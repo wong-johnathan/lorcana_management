@@ -1,6 +1,15 @@
 import { Router, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../middleware/auth.js";
+import {
+  DEFAULT_INVENTORY_POLICY,
+  calculateExtras,
+  calculateVariantExtra,
+  referencePriceForVariant,
+  resolveKeepCounts,
+  type InventoryPolicyLike,
+  type RetentionOverrideLike,
+} from "../services/extrasForSale.js";
 
 const prisma = new PrismaClient();
 export const inventoryRouter = Router();
@@ -92,7 +101,232 @@ export function compareInventoryEntryByCardIndex(
   return a.card.name.localeCompare(b.card.name);
 }
 
+function serializePolicy(policy: InventoryPolicyLike) {
+  return {
+    keepNormalQuantity: policy.keepNormalQuantity,
+    keepFoilQuantity: policy.keepFoilQuantity,
+    keepHolofoilQuantity: policy.keepHolofoilQuantity,
+    autoSuggestExtras: policy.autoSuggestExtras ?? true,
+  };
+}
+
+async function getOrCreateInventoryPolicy(userId: string) {
+  return prisma.userInventoryPolicy.upsert({
+    where: { userId },
+    create: { userId, ...DEFAULT_INVENTORY_POLICY },
+    update: {},
+  });
+}
+
+function parseKeepQuantity(value: unknown, allowNull = false): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null && allowNull) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(allowNull ? "Keep quantities must be non-negative integers or null" : "Keep quantities must be non-negative integers");
+  }
+  return value;
+}
+
+function serializeRetentionOverride(override: RetentionOverrideLike & { cardId?: string }) {
+  return {
+    cardId: override.cardId,
+    keepNormalQuantity: override.keepNormalQuantity ?? null,
+    keepFoilQuantity: override.keepFoilQuantity ?? null,
+    keepHolofoilQuantity: override.keepHolofoilQuantity ?? null,
+  };
+}
+
+function emptyCounts() {
+  return { quantity: 0, foilQuantity: 0, holofoilQuantity: 0 };
+}
+
+function addListedQuantity(counts: ReturnType<typeof emptyCounts>, variant: string, quantity: number) {
+  if (variant === "normal") counts.quantity += quantity;
+  if (variant === "foil") counts.foilQuantity += quantity;
+  if (variant === "holofoil") counts.holofoilQuantity += quantity;
+}
+
 inventoryRouter.use(authenticateToken);
+
+inventoryRouter.get("/policy", async (req: AuthRequest, res: Response) => {
+  try {
+    const policy = await getOrCreateInventoryPolicy(req.user!.userId);
+    res.json(serializePolicy(policy));
+  } catch (error) {
+    console.error("Inventory policy get error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.patch("/policy", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    let keepNormalQuantity: number | undefined;
+    let keepFoilQuantity: number | undefined;
+    let keepHolofoilQuantity: number | undefined;
+
+    try {
+      keepNormalQuantity = parseKeepQuantity(req.body.keepNormalQuantity) as number | undefined;
+      keepFoilQuantity = parseKeepQuantity(req.body.keepFoilQuantity) as number | undefined;
+      keepHolofoilQuantity = parseKeepQuantity(req.body.keepHolofoilQuantity) as number | undefined;
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid keep quantity" });
+      return;
+    }
+
+    if (req.body.autoSuggestExtras !== undefined && typeof req.body.autoSuggestExtras !== "boolean") {
+      res.status(400).json({ error: "autoSuggestExtras must be a boolean" });
+      return;
+    }
+
+    const data = {
+      ...(keepNormalQuantity !== undefined && { keepNormalQuantity }),
+      ...(keepFoilQuantity !== undefined && { keepFoilQuantity }),
+      ...(keepHolofoilQuantity !== undefined && { keepHolofoilQuantity }),
+      ...(req.body.autoSuggestExtras !== undefined && { autoSuggestExtras: req.body.autoSuggestExtras }),
+    };
+
+    const policy = await prisma.userInventoryPolicy.upsert({
+      where: { userId },
+      create: { userId, ...DEFAULT_INVENTORY_POLICY, ...data },
+      update: data,
+    });
+
+    res.json(serializePolicy(policy));
+  } catch (error) {
+    console.error("Inventory policy update error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const policy = await getOrCreateInventoryPolicy(userId);
+    const [overrides, listings, entries] = await Promise.all([
+      prisma.cardRetentionOverride.findMany({ where: { userId } }),
+      prisma.extraForSaleListing.findMany({ where: { userId, status: "active" } }),
+      prisma.inventoryEntry.findMany({
+        where: { userId },
+        include: { card: { include: { prices: true } } },
+      }),
+    ]);
+
+    const overrideByCardId = new Map(overrides.map((override) => [override.cardId, override]));
+    const listedByCardId = new Map<string, ReturnType<typeof emptyCounts>>();
+    for (const listing of listings) {
+      const counts = listedByCardId.get(listing.cardId) ?? emptyCounts();
+      addListedQuantity(counts, listing.variant, listing.desiredQuantity);
+      listedByCardId.set(listing.cardId, counts);
+    }
+
+    const cards = entries
+      .map((entry) => {
+        const owned = {
+          quantity: entry.quantity,
+          foilQuantity: entry.foilQuantity,
+          holofoilQuantity: entry.holofoilQuantity,
+        };
+        const keep = resolveKeepCounts(policy, overrideByCardId.get(entry.cardId));
+        const extras = calculateExtras(owned, keep);
+        const activeListings = listedByCardId.get(entry.cardId) ?? emptyCounts();
+        const availableToList = {
+          quantity: calculateVariantExtra(extras.quantity, activeListings.quantity),
+          foilQuantity: calculateVariantExtra(extras.foilQuantity, activeListings.foilQuantity),
+          holofoilQuantity: calculateVariantExtra(extras.holofoilQuantity, activeListings.holofoilQuantity),
+        };
+        return {
+          card: entry.card,
+          owned,
+          keep,
+          extras,
+          activeListings,
+          availableToList,
+          referencePrices: {
+            normal: referencePriceForVariant(entry.card.prices, "normal"),
+            foil: referencePriceForVariant(entry.card.prices, "foil"),
+            holofoil: referencePriceForVariant(entry.card.prices, "holofoil"),
+          },
+        };
+      })
+      .filter((item) => (
+        item.extras.quantity + item.extras.foilQuantity + item.extras.holofoilQuantity > 0
+        || item.activeListings.quantity + item.activeListings.foilQuantity + item.activeListings.holofoilQuantity > 0
+      ));
+
+    res.json({ policy: serializePolicy(policy), cards });
+  } catch (error) {
+    console.error("Inventory extras error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.get("/retention/:cardId", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { cardId } = req.params as { cardId: string };
+    const override = await prisma.cardRetentionOverride.findUnique({
+      where: { userId_cardId: { userId, cardId } },
+    });
+    res.json({ override: override ? serializeRetentionOverride(override) : null });
+  } catch (error) {
+    console.error("Retention override get error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.put("/retention/:cardId", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { cardId } = req.params as { cardId: string };
+    let keepNormalQuantity: number | null | undefined;
+    let keepFoilQuantity: number | null | undefined;
+    let keepHolofoilQuantity: number | null | undefined;
+
+    try {
+      keepNormalQuantity = parseKeepQuantity(req.body.keepNormalQuantity, true);
+      keepFoilQuantity = parseKeepQuantity(req.body.keepFoilQuantity, true);
+      keepHolofoilQuantity = parseKeepQuantity(req.body.keepHolofoilQuantity, true);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof Error ? err.message : "Invalid keep quantity" });
+      return;
+    }
+
+    const card = await prisma.card.findUnique({ where: { id: cardId } });
+    if (!card) {
+      res.status(404).json({ error: "Card not found" });
+      return;
+    }
+
+    const data = {
+      ...(keepNormalQuantity !== undefined && { keepNormalQuantity }),
+      ...(keepFoilQuantity !== undefined && { keepFoilQuantity }),
+      ...(keepHolofoilQuantity !== undefined && { keepHolofoilQuantity }),
+    };
+
+    const override = await prisma.cardRetentionOverride.upsert({
+      where: { userId_cardId: { userId, cardId } },
+      create: { userId, cardId, ...data },
+      update: data,
+    });
+    res.json({ override: serializeRetentionOverride(override) });
+  } catch (error) {
+    console.error("Retention override update error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.delete("/retention/:cardId", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { cardId } = req.params as { cardId: string };
+    await prisma.cardRetentionOverride.deleteMany({ where: { userId, cardId } });
+    res.status(204).send();
+  } catch (error) {
+    console.error("Retention override delete error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 inventoryRouter.get("/", async (req: AuthRequest, res: Response) => {
   try {
