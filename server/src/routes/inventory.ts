@@ -72,6 +72,26 @@ export function validateRequestedCounts(card: CardFinishInfo, counts: InventoryC
   return null;
 }
 
+export function compareNullableNumber(a: number | null | undefined, b: number | null | undefined): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a - b;
+}
+
+export function compareInventoryEntryByCardIndex(
+  a: { card: { setNumber?: number | null; collectorNumber?: number | null; cardNumber: string; name: string } },
+  b: { card: { setNumber?: number | null; collectorNumber?: number | null; cardNumber: string; name: string } }
+): number {
+  const setCompare = compareNullableNumber(a.card.setNumber, b.card.setNumber);
+  if (setCompare !== 0) return setCompare;
+  const collectorCompare = compareNullableNumber(a.card.collectorNumber, b.card.collectorNumber);
+  if (collectorCompare !== 0) return collectorCompare;
+  const cardNumberCompare = a.card.cardNumber.localeCompare(b.card.cardNumber);
+  if (cardNumberCompare !== 0) return cardNumberCompare;
+  return a.card.name.localeCompare(b.card.name);
+}
+
 inventoryRouter.use(authenticateToken);
 
 inventoryRouter.get("/", async (req: AuthRequest, res: Response) => {
@@ -103,8 +123,9 @@ inventoryRouter.get("/", async (req: AuthRequest, res: Response) => {
     const entries = await prisma.inventoryEntry.findMany({
       where,
       include: { card: { include: { prices: true } } },
-      orderBy: { card: { name: "asc" } },
     });
+
+    entries.sort(compareInventoryEntryByCardIndex);
 
     res.json(entries);
   } catch (error) {

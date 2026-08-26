@@ -213,7 +213,7 @@ describe("presentational components", () => {
     const onUpdateEntry = vi.fn();
     const onRemoveEntry = vi.fn();
     const onSelectCard = vi.fn();
-    const entry = makeInventoryEntry();
+    const entry = makeInventoryEntry({ holofoilQuantity: 1 });
     const { rerender } = render(
       <InventoryCollectionView
         title="My Collection"
@@ -271,14 +271,22 @@ describe("presentational components", () => {
     expect(onExpandedIdChange).toHaveBeenCalledWith(null);
     await userEvent.click(screen.getByRole("button", { name: "Grid" }));
 
-    const plusButtons = screen.getAllByRole("button", { name: "+" });
-    const minusButtons = screen.getAllByRole("button", { name: "-" });
-    await userEvent.click(minusButtons[0]);
-    await userEvent.click(plusButtons[0]);
-    await userEvent.click(minusButtons[1]);
-    await userEvent.click(plusButtons[1]);
-    await userEvent.click(minusButtons[2]);
-    await userEvent.click(plusButtons[2]);
+    const removeNormal = screen.getByRole("button", { name: /remove normal card/i });
+    const addNormal = screen.getByRole("button", { name: /add normal card/i });
+    const removeFoil = screen.getByRole("button", { name: /remove foil card/i });
+    const addFoil = screen.getByRole("button", { name: /add foil card/i });
+    const removeHolofoil = screen.getByRole("button", { name: /remove holofoil card/i });
+    const addHolofoil = screen.getByRole("button", { name: /add holofoil card/i });
+    expect(screen.getByText("Index")).toBeInTheDocument();
+    expect(screen.getByText("1/204")).toBeInTheDocument();
+    expect(screen.queryByText("Hero")).not.toBeInTheDocument();
+    expect(screen.queryByText("STR")).not.toBeInTheDocument();
+    await userEvent.click(removeNormal);
+    await userEvent.click(addNormal);
+    await userEvent.click(removeFoil);
+    await userEvent.click(addFoil);
+    await userEvent.click(removeHolofoil);
+    await userEvent.click(addHolofoil);
     await userEvent.click(screen.getByRole("button", { name: "Remove from collection" }));
 
     expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { quantity: 0 });
@@ -286,7 +294,7 @@ describe("presentational components", () => {
     expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { foilQuantity: 1 });
     expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { foilQuantity: 3 });
     expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { holofoilQuantity: 0 });
-    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { holofoilQuantity: 1 });
+    expect(onUpdateEntry).toHaveBeenCalledWith("entry_1", { holofoilQuantity: 2 });
     expect(onRemoveEntry).toHaveBeenCalledWith("entry_1");
   });
 
@@ -309,6 +317,9 @@ describe("presentational components", () => {
     expect(screen.getAllByText("Mickey Mouse")[0]).toBeInTheDocument();
     expect(screen.getByText("6x")).toBeInTheDocument();
     expect(screen.getByText("$4.00")).toBeInTheDocument();
+    expect(screen.getByText("Index")).toBeInTheDocument();
+    expect(screen.getByText("1/204")).toBeInTheDocument();
+    expect(screen.queryByText("8 ink")).not.toBeInTheDocument();
   });
 
   it("renders context-specific price labels and quantity steppers without triggering card selection", async () => {
@@ -379,7 +390,17 @@ describe("presentational components", () => {
     });
     render(<CardGrid cards={[fallbackCard]} onSelect={onSelect} />);
     expect(screen.getByText("$9.00")).toBeInTheDocument();
-    expect(screen.queryByText(/x$/)).not.toBeInTheDocument();
+    expect(screen.queryByText("6x")).not.toBeInTheDocument();
+
+    render(
+      <CardGrid
+        cards={[makeCard({ id: "empty_price", cardNumber: "", prices: [] })]}
+        onSelect={onSelect}
+        priceContext={{ variant: "Normal", priceField: "marketPrice" }}
+      />
+    );
+    expect(screen.getByText("Price Normal")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
 
     render(<CardPriceTable prices={[
       { variant: "Enchanted", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4, updatedAt: "" },

@@ -23,6 +23,7 @@ import { analyzeCardMarket } from "../src/services/analysis.js";
 import { fetchAndSaveRemote, seedFromLocal, upsertCards } from "../src/services/cardSync.js";
 import { fetchPriceGroups, syncGroupPrices } from "../src/services/priceSync.js";
 import { resetSyncStatuses } from "../src/routes/sync.js";
+import { compareInventoryEntryByCardIndex, compareNullableNumber } from "../src/routes/inventory.js";
 
 const app = createApp();
 const token = signToken({ userId: "user_1", username: "jw1005" });
@@ -283,11 +284,32 @@ describe("inventory routes", () => {
     await request(app).get("/api/inventory").expect(401, { error: "Authentication required" });
   });
 
-  it("lists filtered inventory entries", async () => {
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([entry()]);
+  it("sorts inventory comparator fallback cases", () => {
+    expect(compareNullableNumber(null, null)).toBe(0);
+    expect(compareNullableNumber(null, 1)).toBe(1);
+    expect(compareNullableNumber(1, null)).toBe(-1);
+    expect(compareNullableNumber(1, 2)).toBe(-1);
+
+    const first = entry({ card: card({ id: "first", setNumber: 1, collectorNumber: 1, cardNumber: "1/204", name: "Alpha" }) });
+    const second = entry({ card: card({ id: "second", setNumber: 1, collectorNumber: 1, cardNumber: "2/204", name: "Beta" }) });
+    const alpha = entry({ card: card({ id: "alpha", setNumber: 1, collectorNumber: 1, cardNumber: "1/204", name: "Alpha" }) });
+    const beta = entry({ card: card({ id: "beta", setNumber: 1, collectorNumber: 1, cardNumber: "1/204", name: "Beta" }) });
+
+    expect(compareInventoryEntryByCardIndex(first, second)).toBeLessThan(0);
+    expect(compareInventoryEntryByCardIndex(alpha, beta)).toBeLessThan(0);
+  });
+
+  it("lists filtered inventory entries sorted by set and collector index", async () => {
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ id: "entry_b", card: card({ id: "b", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Beta" }) }),
+      entry({ id: "entry_a", card: card({ id: "a", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Alpha" }) }),
+    ]);
     const res = await auth(request(app).get("/api/inventory").query({ search: "Mickey", color: "Amber", set: "The First Chapter", rarity: "Legendary", type: "Hero", character: "Mickey" })).expect(200);
-    expect(res.body).toHaveLength(1);
-    expect(prismaMock.inventoryEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ userId: "user_1", card: expect.any(Object) }) }));
+    expect(res.body.map((item: any) => item.card.id)).toEqual(["a", "b"]);
+    expect(prismaMock.inventoryEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ userId: "user_1", card: expect.any(Object) }),
+      include: { card: { include: { prices: true } } },
+    }));
   });
 
   it("adds inventory with validation and variant availability checks", async () => {
