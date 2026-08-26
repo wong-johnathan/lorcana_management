@@ -56,7 +56,7 @@ function priceContextLabel(context: CardGridPriceContext): string {
 }
 
 export function cardIndexLabel(card: Pick<Card, "cardNumber">): string {
-  return card.cardNumber.split("•")[0]?.trim() || card.cardNumber || "—";
+  return card.cardNumber.trim() || "—";
 }
 
 export function QuantityRow({
@@ -192,9 +192,8 @@ export default function CardGrid({
                     </p>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] uppercase tracking-wide text-gray-500">Index</span>
-                  <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                <div className="mt-1">
+                  <span className="inline-flex max-w-full rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 truncate">
                     {cardIndexLabel(card)}
                   </span>
                 </div>

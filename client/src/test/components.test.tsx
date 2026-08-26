@@ -277,8 +277,8 @@ describe("presentational components", () => {
     const addFoil = screen.getByRole("button", { name: /add foil card/i });
     const removeHolofoil = screen.getByRole("button", { name: /remove holofoil card/i });
     const addHolofoil = screen.getByRole("button", { name: /add holofoil card/i });
-    expect(screen.getByText("Index")).toBeInTheDocument();
-    expect(screen.getByText("1/204")).toBeInTheDocument();
+    expect(screen.queryByText("Index")).not.toBeInTheDocument();
+    expect(screen.getByText("1/204 • EN • 1")).toBeInTheDocument();
     expect(screen.queryByText("Hero")).not.toBeInTheDocument();
     expect(screen.queryByText("STR")).not.toBeInTheDocument();
     await userEvent.click(removeNormal);
@@ -317,8 +317,8 @@ describe("presentational components", () => {
     expect(screen.getAllByText("Mickey Mouse")[0]).toBeInTheDocument();
     expect(screen.getByText("6x")).toBeInTheDocument();
     expect(screen.getByText("$4.00")).toBeInTheDocument();
-    expect(screen.getByText("Index")).toBeInTheDocument();
-    expect(screen.getByText("1/204")).toBeInTheDocument();
+    expect(screen.queryByText("Index")).not.toBeInTheDocument();
+    expect(screen.getByText("1/204 • EN • 1")).toBeInTheDocument();
     expect(screen.queryByText("8 ink")).not.toBeInTheDocument();
   });
 
