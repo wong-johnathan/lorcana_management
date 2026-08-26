@@ -173,6 +173,52 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
   }
 });
 
+extrasForSaleRouter.post("/list-all", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const [policy, overrides, entries, existingListings] = await Promise.all([
+      getOrCreateInventoryPolicy(userId),
+      prisma.cardRetentionOverride.findMany({ where: { userId } }),
+      prisma.inventoryEntry.findMany({ where: { userId } }),
+      prisma.extraForSaleListing.findMany({ where: { userId } }),
+    ]);
+
+    const overrideByCardId = new Map(overrides.map((override) => [override.cardId, override]));
+    const listedKeys = new Set(existingListings.map((listing) => `${listing.cardId}:${listing.variant}`));
+
+    const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
+    let created = 0;
+    let skipped = 0;
+
+    for (const entry of entries) {
+      const keep = resolveKeepCounts(policy, overrideByCardId.get(entry.cardId));
+      const extras = calculateExtras(
+        { quantity: entry.quantity, foilQuantity: entry.foilQuantity, holofoilQuantity: entry.holofoilQuantity },
+        keep
+      );
+      for (const variant of variants) {
+        const extraQuantity = getVariantCount(extras, variant);
+        if (extraQuantity <= 0) continue;
+        const key = `${entry.cardId}:${variant}`;
+        if (listedKeys.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        await prisma.extraForSaleListing.create({
+          data: { userId, cardId: entry.cardId, variant, desiredQuantity: extraQuantity, status: "active" },
+        });
+        listedKeys.add(key);
+        created += 1;
+      }
+    }
+
+    res.json({ created, skipped });
+  } catch (error) {
+    console.error("Extras for sale list-all error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
