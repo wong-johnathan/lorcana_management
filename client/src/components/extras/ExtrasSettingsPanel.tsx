@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { InventoryPolicy } from "../../types";
 
@@ -19,8 +19,14 @@ export default function ExtrasSettingsPanel({
 }: ExtrasSettingsPanelProps) {
   const [form, setForm] = useState<InventoryPolicy>(policy);
   const [error, setError] = useState<string | null>(null);
+  const lastPolicyRef = useRef(policy);
 
-  useEffect(() => setForm(policy), [policy]);
+  useEffect(() => {
+    if (lastPolicyRef.current !== policy) {
+      lastPolicyRef.current = policy;
+      setForm(policy);
+    }
+  }, [policy]);
 
   const setNumber = (key: keyof Pick<InventoryPolicy, "keepNormalQuantity" | "keepFoilQuantity" | "keepHolofoilQuantity">, value: string) => {
     const parsed = Number(value);
