@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Card } from "../../types";
-import CardGrid from "../CardGrid";
+import CardGrid, { QuantityRow, cardIndexLabel } from "../CardGrid";
 import FilterBar from "../FilterBar";
 import {
   availableInventoryVariants,
@@ -213,45 +213,36 @@ export default function InventoryCollectionView({
 
                 {isExpanded && (
                   <div className="border-t border-gray-800 p-3 space-y-3">
-                    <div className="flex flex-wrap gap-1">
-                      {card.types.map((type) => (
-                        <span key={type} className="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded">
-                          {type}
-                        </span>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-sm text-center">
-                      <div><span className="text-gray-500 text-xs block">Ink</span>{card.inkCost}</div>
-                      <div><span className="text-gray-500 text-xs block">STR</span>{card.strength}</div>
-                      <div><span className="text-gray-500 text-xs block">WIL</span>{card.willpower}</div>
+                    <div className="flex items-center justify-between rounded-md bg-gray-950/60 border border-gray-800 px-3 py-2">
+                      <span className="text-xs uppercase tracking-wide text-gray-500">Index</span>
+                      <span className="text-sm font-semibold text-amber-300">{cardIndexLabel(card)}</span>
                     </div>
 
                     {canEditRows && entry.id && (
-                      <div className="flex flex-wrap items-center gap-3">
+                      <div className="max-w-sm space-y-1 rounded-md border border-gray-800 bg-black/20 p-2">
                         {showNormal && (
-                          <QuantityControls
+                          <QuantityRow
                             label="Normal"
-                            value={entry.quantity}
-                            canIncrease={variants.includes("normal")}
+                            count={entry.quantity}
+                            disableIncrease={!variants.includes("normal")}
                             onDecrease={() => onUpdateEntry?.(entry.id!, { quantity: Math.max(0, entry.quantity - 1) })}
                             onIncrease={() => onUpdateEntry?.(entry.id!, { quantity: entry.quantity + 1 })}
                           />
                         )}
                         {showFoil && (
-                          <QuantityControls
+                          <QuantityRow
                             label="Foil"
-                            value={entry.foilQuantity}
-                            canIncrease={variants.includes("foil")}
+                            count={entry.foilQuantity}
+                            disableIncrease={!variants.includes("foil")}
                             onDecrease={() => onUpdateEntry?.(entry.id!, { foilQuantity: Math.max(0, entry.foilQuantity - 1) })}
                             onIncrease={() => onUpdateEntry?.(entry.id!, { foilQuantity: entry.foilQuantity + 1 })}
                           />
                         )}
                         {showHolofoil && (
-                          <QuantityControls
+                          <QuantityRow
                             label="Holofoil"
-                            value={entry.holofoilQuantity}
-                            canIncrease={variants.includes("holofoil")}
+                            count={entry.holofoilQuantity}
+                            disableIncrease={!variants.includes("holofoil")}
                             onDecrease={() => onUpdateEntry?.(entry.id!, { holofoilQuantity: Math.max(0, entry.holofoilQuantity - 1) })}
                             onIncrease={() => onUpdateEntry?.(entry.id!, { holofoilQuantity: entry.holofoilQuantity + 1 })}
                           />
@@ -285,43 +276,5 @@ export default function InventoryCollectionView({
         />
       )}
     </>
-  );
-}
-
-function QuantityControls({
-  label,
-  value,
-  canIncrease,
-  onDecrease,
-  onIncrease,
-}: {
-  label: string;
-  value: number;
-  canIncrease: boolean;
-  onDecrease: () => void;
-  onIncrease: () => void;
-}) {
-  return (
-    <div className="flex-1 min-w-24">
-      <label className="text-xs text-gray-500">{label}</label>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onDecrease}
-          className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700"
-        >
-          -
-        </button>
-        <span className="w-8 text-center font-medium">{value}</span>
-        <button
-          type="button"
-          onClick={onIncrease}
-          disabled={!canIncrease}
-          className="w-8 h-8 bg-gray-800 rounded flex items-center justify-center hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          +
-        </button>
-      </div>
-    </div>
   );
 }

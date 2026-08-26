@@ -55,22 +55,28 @@ function priceContextLabel(context: CardGridPriceContext): string {
   return `${status} ${variant}`;
 }
 
-function QuantityRow({
+export function cardIndexLabel(card: Pick<Card, "cardNumber">): string {
+  return card.cardNumber.split("•")[0]?.trim() || card.cardNumber || "—";
+}
+
+export function QuantityRow({
   label,
   count,
   onDecrease,
   onIncrease,
   disabled,
+  disableIncrease,
 }: {
   label: string;
   count: number;
   onDecrease: () => void;
   onIncrease: () => void;
   disabled?: boolean;
+  disableIncrease?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-gray-400">{label}</span>
+      <span className="text-gray-400">{label}:</span>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
@@ -85,7 +91,7 @@ function QuantityRow({
         <button
           type="button"
           onClick={onIncrease}
-          disabled={disabled}
+          disabled={disabled || disableIncrease}
           className="h-6 w-6 rounded bg-amber-600 text-black font-bold hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40"
           aria-label={`Add ${label.toLowerCase()} card`}
         >
@@ -177,21 +183,21 @@ export default function CardGrid({
                 )}
               </div>
 
-              <div className="p-2">
-                <p className="text-xs font-semibold truncate">{card.name}</p>
-                {card.subtitle && (
-                  <p className="text-xs text-gray-400 truncate">
-                    {card.subtitle}
-                  </p>
-                )}
-                <div className="flex items-center gap-1 mt-1">
-                  <span className="text-xs text-gray-500">{card.rarity}</span>
-                  <span className="text-xs text-gray-600">·</span>
-                  <span className="text-xs text-gray-500">{card.inkCost} ink</span>
+              <div className="p-2 space-y-1.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold truncate">{card.name}</p>
+                  {card.subtitle && (
+                    <p className="text-xs text-gray-400 truncate">
+                      {card.subtitle}
+                    </p>
+                  )}
                 </div>
-                <p className="text-[10px] text-gray-600 truncate mt-0.5">
-                  {card.setName} (set {card.setCode})
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] uppercase tracking-wide text-gray-500">Index</span>
+                  <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                    {cardIndexLabel(card)}
+                  </span>
+                </div>
               </div>
             </button>
 
