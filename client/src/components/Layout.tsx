@@ -27,7 +27,6 @@ export default function Layout() {
         { to: "/inventory", label: "Inventory", icon: NAV_ICONS.inventory },
         { to: "/database", label: "Database", icon: NAV_ICONS.database },
         { to: "/master-set", label: "Master Set", icon: NAV_ICONS.masterSet },
-        { to: "/settings", label: "Settings", icon: NAV_ICONS.settings },
       ]
     : [
         { to: "/database", label: "Database", icon: NAV_ICONS.database },
@@ -70,7 +69,9 @@ export default function Layout() {
           {navLinks}
           {user && (
             <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-700">
-              <span className="text-sm text-gray-400">{user.username}</span>
+              <Link to="/profile" className="text-sm text-gray-400 hover:text-amber-300 transition-colors">
+                {user.username}
+              </Link>
               <button
                 onClick={logout}
                 className="text-sm text-gray-400 hover:text-white transition-colors"
@@ -84,7 +85,9 @@ export default function Layout() {
         {/* Mobile: just show user/logout */}
         {user && (
           <div className="flex md:hidden items-center gap-3">
-            <span className="text-sm text-gray-400">{user.username}</span>
+            <Link to="/profile" className="text-sm text-gray-400 hover:text-amber-300 transition-colors">
+              {user.username}
+            </Link>
             <button
               onClick={logout}
               className="text-sm text-gray-400 hover:text-white transition-colors"

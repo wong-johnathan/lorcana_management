@@ -30,7 +30,8 @@ export default function App() {
         {user ? (
           <>
             <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/profile" element={<SettingsPage />} />
+            <Route path="/settings" element={<Navigate to="/profile" replace />} />
           </>
         ) : (
           <Route path="/login" element={<LoginPage />} />
