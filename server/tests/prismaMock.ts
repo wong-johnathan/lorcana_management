@@ -30,6 +30,9 @@ export const prismaMock = {
   },
   extraForSaleListing: {
     findMany: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
   },
   card: {
     findMany: vi.fn(),
