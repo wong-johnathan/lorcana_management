@@ -117,6 +117,23 @@ export default function ExtrasForSalePage() {
     }
   };
 
+  const listAll = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await extrasApi.listAll();
+      const summary = `Listed ${result.created} extra${result.created === 1 ? "" : "s"} for sale`;
+      setSuccess(result.skipped ? `${summary} (${result.skipped} already listed)` : summary);
+      setTab("listings");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Failed to list all extras");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const tabButton = (value: ExtrasTab, label: string) => (
     <button
       type="button"
@@ -133,9 +150,19 @@ export default function ExtrasForSalePage() {
 
   return (
     <div className="mx-auto max-w-6xl p-4 space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold text-gray-100">Extras for Sale</h2>
-        <p className="mt-1 text-sm text-gray-400">Suggested Extras stay private. Only explicit listings can appear publicly.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-100">Extras for Sale</h2>
+          <p className="mt-1 text-sm text-gray-400">Suggested Extras stay private. Only explicit listings can appear publicly.</p>
+        </div>
+        <button
+          type="button"
+          onClick={listAll}
+          disabled={saving}
+          className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
+        >
+          {saving ? "Listing..." : "List all extras"}
+        </button>
       </div>
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
       {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}

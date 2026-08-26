@@ -116,6 +116,7 @@ export const inventory = {
 
 export const extrasForSale = {
   list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
+  listAll: () => request<{ created: number; skipped: number }>("/extras-for-sale/list-all", { method: "POST" }),
   create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null }) =>
     request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
       method: "POST",

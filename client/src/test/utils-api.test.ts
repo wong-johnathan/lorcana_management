@@ -99,6 +99,7 @@ describe("API client wrapper", () => {
       inventory.updateRetentionOverride("card_1", { keepNormalQuantity: 8 }),
       inventory.deleteRetentionOverride("card_1"),
       extrasForSale.list(),
+      extrasForSale.listAll(),
       extrasForSale.create({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: null }),
       extrasForSale.update("listing_1", { status: "paused" }),
       extrasForSale.remove("listing_1"),
@@ -138,5 +139,6 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/cards?search=Mickey", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1?rarity=Common", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1/extras", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale/list-all", expect.objectContaining({ method: "POST" }));
   });
 });

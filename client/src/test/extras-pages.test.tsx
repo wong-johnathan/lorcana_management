@@ -18,6 +18,7 @@ const apiMocks = vi.hoisted(() => ({
   inventoryUpdatePolicy: vi.fn(),
   inventoryGetExtras: vi.fn(),
   extrasList: vi.fn(),
+  extrasListAll: vi.fn(),
   extrasCreate: vi.fn(),
   extrasUpdate: vi.fn(),
   extrasRemove: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock("../services/api", () => ({
   },
   extrasForSale: {
     list: apiMocks.extrasList,
+    listAll: apiMocks.extrasListAll,
     create: apiMocks.extrasCreate,
     update: apiMocks.extrasUpdate,
     remove: apiMocks.extrasRemove,
@@ -172,6 +174,40 @@ describe("extras for sale pages", () => {
     await userEvent.click(await screen.findByRole("button", { name: "List 4" }));
     expect(apiMocks.extrasCreate).toHaveBeenCalledWith({ cardId: "card_1", variant: "normal", desiredQuantity: 4, note: null });
     expect(await screen.findByText("Extra listed for sale")).toBeInTheDocument();
+  });
+
+  it("lists all extras in bulk and lands on the listings tab", async () => {
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+    apiMocks.extrasListAll.mockResolvedValue({ created: 3, skipped: 1 });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "List all extras" }));
+    expect(apiMocks.extrasListAll).toHaveBeenCalled();
+    expect(await screen.findByText("Listed 3 extras for sale (1 already listed)")).toBeInTheDocument();
+    expect(await screen.findByText("No Extras for Sale listings yet. List cards from Suggested Extras.")).toBeInTheDocument();
+  });
+
+  it("surfaces list-all failures", async () => {
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+    apiMocks.extrasListAll.mockRejectedValue(new Error("boom"));
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "List all extras" }));
+    expect(await screen.findByText("boom")).toBeInTheDocument();
   });
 
   it("shows public Extras for Sale tab only when listings exist and direct extras links show empty state", async () => {
