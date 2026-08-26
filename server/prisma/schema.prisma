@@ -34,9 +34,11 @@ model Card {
   foilTypes       String[] @default([])
   imageUrl        String   @default("")
 
-  inventoryEntries InventoryEntry[]
-  analysis         CardAnalysis?
-  prices           CardPrice[]
+  inventoryEntries     InventoryEntry[]
+  analysis             CardAnalysis?
+  prices               CardPrice[]
+  retentionOverrides   CardRetentionOverride[]
+  extraForSaleListings ExtraForSaleListing[]
 
   @@index([name])
   @@index([color])
@@ -55,9 +57,62 @@ model User {
   publicEnabled Boolean  @default(false)
   createdAt     DateTime @default(now())
 
-  inventoryEntries InventoryEntry[]
-  profile          UserProfile?
-  references       UserReference[]
+  inventoryEntries       InventoryEntry[]
+  profile                UserProfile?
+  references             UserReference[]
+  inventoryPolicy        UserInventoryPolicy?
+  cardRetentionOverrides CardRetentionOverride[]
+  extraForSaleListings   ExtraForSaleListing[]
+}
+
+model UserInventoryPolicy {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keepNormalQuantity   Int      @default(4)
+  keepFoilQuantity     Int      @default(1)
+  keepHolofoilQuantity Int      @default(1)
+  autoSuggestExtras    Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model CardRetentionOverride {
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId               String
+  card                 Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  keepNormalQuantity   Int?
+  keepFoilQuantity     Int?
+  keepHolofoilQuantity Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([userId, cardId])
+  @@index([userId])
+  @@index([cardId])
+}
+
+model ExtraForSaleListing {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId          String
+  card            Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  variant         String
+  desiredQuantity Int
+  note            String?
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, cardId, variant])
+  @@index([userId])
+  @@index([cardId])
+  @@index([status])
 }
 
 model UserProfile {
