@@ -213,8 +213,7 @@ export default function InventoryCollectionView({
 
                 {isExpanded && (
                   <div className="border-t border-gray-800 p-3 space-y-3">
-                    <div className="flex items-center justify-between rounded-md bg-gray-950/60 border border-gray-800 px-3 py-2">
-                      <span className="text-xs uppercase tracking-wide text-gray-500">Index</span>
+                    <div className="rounded-md bg-gray-950/60 border border-gray-800 px-3 py-2">
                       <span className="text-sm font-semibold text-amber-300">{cardIndexLabel(card)}</span>
                     </div>
 
