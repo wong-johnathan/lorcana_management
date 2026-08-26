@@ -108,14 +108,20 @@ describe("presentational components", () => {
     expect(parseInventoryTab("bad-tab")).toBe("collection");
     expect(parseInventoryTab("stats")).toBe("stats");
 
-    render(<InventoryTabs activeTab="collection" onTabChange={onTabChange} />);
+    const { rerender } = render(<InventoryTabs activeTab="collection" onTabChange={onTabChange} />);
     expect(screen.getByRole("tab", { name: "Collection" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Stats" })).toHaveAttribute("aria-selected", "false");
 
     await userEvent.click(screen.getByRole("tab", { name: "Stats" }));
     expect(onTabChange).toHaveBeenCalledWith("stats");
 
-    render(<InventoryTabs activeTab="stats" onTabChange={onTabChange} collectionLabel="Cards" statsLabel="Numbers" />);
+    expect(parseInventoryTab("profile")).toBe("profile");
+    rerender(<InventoryTabs activeTab="profile" onTabChange={onTabChange} showProfile />);
+    expect(screen.getByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
+    await userEvent.click(screen.getByRole("tab", { name: "Collection" }));
+    expect(onTabChange).toHaveBeenCalledWith("collection");
+
+    rerender(<InventoryTabs activeTab="stats" onTabChange={onTabChange} collectionLabel="Cards" statsLabel="Numbers" />);
     await userEvent.click(screen.getByRole("tab", { name: "Cards" }));
     expect(onTabChange).toHaveBeenCalledWith("collection");
   });

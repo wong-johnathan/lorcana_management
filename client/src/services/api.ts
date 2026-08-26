@@ -10,6 +10,10 @@ import type {
   CardAnalysis,
   MasterSetEstimate,
   SyncStatus,
+  UserProfile,
+  UserProfileUpdate,
+  UserReference,
+  ProfileImageUpload,
 } from "../types";
 
 const API_BASE = "/api";
@@ -110,6 +114,32 @@ export const settings = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+};
+
+export const profile = {
+  get: () => request<UserProfile>("/profile/me"),
+  update: (data: UserProfileUpdate) =>
+    request<UserProfile>("/profile/me", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  uploadPhoto: (data: ProfileImageUpload) =>
+    request<UserProfile>("/profile/me/photo", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  deletePhoto: () => request<void>("/profile/me/photo", { method: "DELETE" }),
+  createReference: (data: Omit<UserReference, "id">) =>
+    request<UserReference>("/profile/me/references", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateReference: (id: string, data: Partial<Omit<UserReference, "id">>) =>
+    request<UserReference>(`/profile/me/references/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  deleteReference: (id: string) => request<void>(`/profile/me/references/${id}`, { method: "DELETE" }),
 };
 
 export const publicCollection = {

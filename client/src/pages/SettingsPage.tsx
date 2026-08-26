@@ -1,31 +1,127 @@
-import { useState, useEffect } from "react";
-import { settings as settingsApi } from "../services/api";
-import type { UserSettings } from "../types";
+import { useEffect, useState } from "react";
+import { profile as profileApi, settings as settingsApi } from "../services/api";
+import type { ProfileImageUpload, UserProfile, UserProfileUpdate, UserReference, UserSettings } from "../types";
+import ProfileForm from "../components/profile/ProfileForm";
+import ProfileImageUploader from "../components/profile/ProfileImageUploader";
+import UserReferencesEditor from "../components/profile/UserReferencesEditor";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
-    settingsApi
-      .get()
-      .then(setSettings)
-      .catch((err) => console.error("Failed to load settings:", err))
+    Promise.all([settingsApi.get(), profileApi.get()])
+      .then(([nextSettings, nextProfile]) => {
+        setSettings(nextSettings);
+        setProfile(nextProfile);
+      })
+      .catch((err) => setError(err?.message || "Failed to load settings"))
       .finally(() => setLoading(false));
   }, []);
 
   const handleToggle = async () => {
     if (!settings) return;
     setSaving(true);
+    setError(null);
     try {
-      const next = await settingsApi.update({
-        publicEnabled: !settings.publicEnabled,
-      });
+      const next = await settingsApi.update({ publicEnabled: !settings.publicEnabled });
       setSettings(next);
-    } catch (err) {
-      console.error("Failed to update settings:", err);
+    } catch (err: any) {
+      setError(err?.message || "Failed to update settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleProfileSave = async (data: UserProfileUpdate) => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const next = await profileApi.update(data);
+      setProfile(next);
+      setSuccess("Profile saved");
+    } catch (err: any) {
+      setError(err?.message || "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePhotoUpload = async (payload: ProfileImageUpload) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const next = await profileApi.uploadPhoto(payload);
+      setProfile(next);
+      setSuccess("Profile picture saved");
+    } catch (err: any) {
+      setError(err?.message || "Failed to upload profile picture");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePhotoDelete = async () => {
+    setUploading(true);
+    setError(null);
+    try {
+      await profileApi.deletePhoto();
+      setProfile((current) => current ? { ...current, profileImageUrl: null, profileImageObjectKey: null } : current);
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete profile picture");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const refreshReference = (reference: UserReference) => {
+    setProfile((current) => current ? {
+      ...current,
+      references: current.references.some((item) => item.id === reference.id)
+        ? current.references.map((item) => item.id === reference.id ? reference : item)
+        : [...current.references, reference],
+    } : current);
+  };
+
+  const handleReferenceCreate = async (data: Omit<UserReference, "id">) => {
+    setSaving(true);
+    setError(null);
+    try {
+      refreshReference(await profileApi.createReference(data));
+    } catch (err: any) {
+      setError(err?.message || "Failed to add reference");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReferenceUpdate = async (id: string, data: Partial<Omit<UserReference, "id">>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      refreshReference(await profileApi.updateReference(id, data));
+    } catch (err: any) {
+      setError(err?.message || "Failed to update reference");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReferenceDelete = async (id: string) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await profileApi.deleteReference(id);
+      setProfile((current) => current ? { ...current, references: current.references.filter((reference) => reference.id !== id) } : current);
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete reference");
     } finally {
       setSaving(false);
     }
@@ -39,7 +135,6 @@ export default function SettingsPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
       const input = document.createElement("input");
       input.value = url;
       document.body.appendChild(input);
@@ -59,59 +154,65 @@ export default function SettingsPage() {
     );
   }
 
-  if (!settings) {
+  if (!settings || !profile) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-red-400">Failed to load settings</div>
+        <div className="text-red-400">{error || "Failed to load settings"}</div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto p-4 space-y-6">
+    <div className="max-w-3xl mx-auto p-4 space-y-6">
       <h2 className="text-lg font-semibold">Settings</h2>
+      {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
+      {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
 
       <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-medium">Public Collection</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              Share a read-only view of your collection with anyone
-            </p>
+            <p className="text-sm text-gray-400 mt-1">Share a read-only view of your collection with anyone</p>
           </div>
           <button
             onClick={handleToggle}
             disabled={saving}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-900 ${
-              settings.publicEnabled ? "bg-amber-500" : "bg-gray-700"
-            }`}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-900 ${settings.publicEnabled ? "bg-amber-500" : "bg-gray-700"}`}
             role="switch"
             aria-checked={settings.publicEnabled}
           >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                settings.publicEnabled ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${settings.publicEnabled ? "translate-x-6" : "translate-x-1"}`} />
           </button>
         </div>
 
         {settings.publicEnabled && (
           <div className="bg-gray-800 rounded-lg p-3 flex items-center gap-3">
-            <input
-              type="text"
-              readOnly
-              value={`${window.location.origin}${settings.publicUrl}`}
-              className="flex-1 bg-transparent text-sm text-gray-300 outline-none truncate"
-            />
-            <button
-              onClick={handleCopy}
-              className="text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap"
-            >
+            <input type="text" readOnly value={`${window.location.origin}${settings.publicUrl}`} className="flex-1 bg-transparent text-sm text-gray-300 outline-none truncate" />
+            <button onClick={handleCopy} className="text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap">
               {copied ? "Copied!" : "Copy link"}
             </button>
           </div>
         )}
+      </div>
+
+      <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">
+        <div>
+          <h3 className="font-medium">Profile picture</h3>
+          <p className="mt-1 text-sm text-gray-400">Crop, zoom, rotate, and preview before saving. Edited images are uploaded through the object storage layer.</p>
+        </div>
+        <ProfileImageUploader profileImageUrl={profile.profileImageUrl} uploading={uploading} onUpload={handlePhotoUpload} onDelete={handlePhotoDelete} />
+      </div>
+
+      <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">
+        <div>
+          <h3 className="font-medium">Public profile information</h3>
+          <p className="mt-1 text-sm text-gray-400">All fields are optional. Private fields never appear on shared collection links.</p>
+        </div>
+        <ProfileForm profile={profile} saving={saving} onSubmit={handleProfileSave} />
+      </div>
+
+      <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+        <UserReferencesEditor references={profile.references} saving={saving} onCreate={handleReferenceCreate} onUpdate={handleReferenceUpdate} onDelete={handleReferenceDelete} />
       </div>
     </div>
   );

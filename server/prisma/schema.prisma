@@ -56,6 +56,46 @@ model User {
   createdAt     DateTime @default(now())
 
   inventoryEntries InventoryEntry[]
+  profile          UserProfile?
+  references       UserReference[]
+}
+
+model UserProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName           String?
+  profileImageUrl       String?
+  profileImageObjectKey String?
+  countryOfResidence    String?
+  instagram             String?
+  instagramVisible      Boolean  @default(false)
+  telegram              String?
+  telegramVisible       Boolean  @default(false)
+  facebook              String?
+  facebookVisible       Boolean  @default(false)
+  email                 String?
+  emailVisible          Boolean  @default(false)
+  phoneNumber           String?
+  phoneNumberVisible    Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model UserReference {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  contactInfo String?
+  visible     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model InventoryEntry {
