@@ -71,6 +71,25 @@ export default function InventoryPage() {
     localStorage.setItem("inventoryViewMode", viewMode);
   }, [viewMode]);
 
+  const refreshStats = useCallback(async () => {
+    try {
+      setStats(await inventoryApi.stats());
+    } catch (err) {
+      console.error("Failed to refresh inventory stats:", err);
+    }
+  }, []);
+
+  const replaceEntry = useCallback((updatedEntry: InventoryEntry) => {
+    setEntries((currentEntries) =>
+      currentEntries.map((entry) => (entry.id === updatedEntry.id ? updatedEntry : entry))
+    );
+  }, []);
+
+  const removeEntryFromState = useCallback((id: string) => {
+    setEntries((currentEntries) => currentEntries.filter((entry) => entry.id !== id));
+    setExpandedId((currentExpandedId) => (currentExpandedId === id ? null : currentExpandedId));
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -97,8 +116,9 @@ export default function InventoryPage() {
     data: { quantity?: number; foilQuantity?: number; holofoilQuantity?: number }
   ) => {
     try {
-      await inventoryApi.update(id, data);
-      await load();
+      const updatedEntry = await inventoryApi.update(id, data);
+      replaceEntry(updatedEntry);
+      void refreshStats();
     } catch (err) {
       console.error("Failed to update:", err);
     }
@@ -128,10 +148,12 @@ export default function InventoryPage() {
     try {
       if (totalInventoryCount(next) === 0) {
         await inventoryApi.remove(entry.entryId);
+        removeEntryFromState(entry.entryId);
       } else {
-        await inventoryApi.update(entry.entryId, next);
+        const updatedEntry = await inventoryApi.update(entry.entryId, next);
+        replaceEntry(updatedEntry);
       }
-      await load();
+      void refreshStats();
     } catch (err) {
       console.error("Failed to update grid quantity:", err);
     } finally {
@@ -146,7 +168,8 @@ export default function InventoryPage() {
   const handleRemove = async (id: string) => {
     try {
       await inventoryApi.remove(id);
-      await load();
+      removeEntryFromState(id);
+      void refreshStats();
     } catch (err) {
       console.error("Failed to remove:", err);
     }
@@ -171,7 +194,21 @@ export default function InventoryPage() {
     try {
       await inventoryApi.wipe();
       setWipeConfirmOpen(false);
-      await load();
+      setEntries([]);
+      setExpandedId(null);
+      setStats((currentStats) =>
+        currentStats
+          ? {
+              ...currentStats,
+              totalUnique: 0,
+              totalCards: 0,
+              totalValue: 0,
+              missingPriceCount: 0,
+              setBreakdown: currentStats.setBreakdown.map((set) => ({ ...set, owned: 0 })),
+            }
+          : currentStats
+      );
+      void refreshStats();
     } catch (err) {
       console.error("Failed to wipe inventory:", err);
     }
