@@ -48,6 +48,24 @@ const inventoryEntry = {
 const validClientToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJleHAiOjQxMDI0NDQ4MDB9.signature";
 
 async function mockApi(page: Page) {
+  let savedProfile: any = {
+    displayName: null,
+    profileImageUrl: null,
+    profileImageObjectKey: null,
+    countryOfResidence: null,
+    instagram: null,
+    instagramVisible: false,
+    telegram: null,
+    telegramVisible: false,
+    facebook: null,
+    facebookVisible: false,
+    email: null,
+    emailVisible: false,
+    phoneNumber: null,
+    phoneNumberVisible: false,
+    references: [] as Array<{ id: string; name: string; description: string | null; contactInfo: string | null; visible: boolean }>,
+  };
+
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -115,12 +133,43 @@ async function mockApi(page: Page) {
       return route.fulfill({ json: [inventoryEntry] });
     }
     if (path === "/api/settings/profile") {
-      return route.fulfill({ json: { publicEnabled: true, publicUrl: "http://127.0.0.1:5173/collection/user_1" } });
+      return route.fulfill({ json: { publicEnabled: true, publicUrl: "/collection/user_1" } });
+    }
+    if (path === "/api/profile/me") {
+      if (request.method() === "PUT") {
+        savedProfile = { ...savedProfile, ...(await request.postDataJSON()) };
+      }
+      return route.fulfill({ json: savedProfile });
+    }
+    if (path === "/api/profile/me/photo") {
+      savedProfile = {
+        ...savedProfile,
+        profileImageUrl: "/api/profile-images/profile-images/user_1/avatar.png",
+        profileImageObjectKey: "profile-images/user_1/avatar.png",
+      };
+      return route.fulfill({ json: savedProfile });
+    }
+    if (path === "/api/profile/me/references") {
+      const body = await request.postDataJSON();
+      const reference = { id: "ref_1", name: body.name, description: body.description, contactInfo: body.contactInfo, visible: body.visible };
+      savedProfile = { ...savedProfile, references: [...savedProfile.references, reference] };
+      return route.fulfill({ status: 201, json: reference });
     }
     if (path === "/api/public/collection/user_1") {
       return route.fulfill({
         json: {
           user: { id: "user_1", username: "jw" },
+          profile: {
+            displayName: savedProfile.displayName || undefined,
+            profileImageUrl: savedProfile.profileImageUrl || undefined,
+            countryOfResidence: savedProfile.countryOfResidence || undefined,
+            instagram: savedProfile.instagramVisible ? savedProfile.instagram : undefined,
+            telegram: savedProfile.telegramVisible ? savedProfile.telegram : undefined,
+            facebook: savedProfile.facebookVisible ? savedProfile.facebook : undefined,
+            email: savedProfile.emailVisible ? savedProfile.email : undefined,
+            phoneNumber: savedProfile.phoneNumberVisible ? savedProfile.phoneNumber : undefined,
+            references: savedProfile.references.filter((reference: any) => reference.visible),
+          },
           cards: [{ card, quantity: 1, foilQuantity: 0, holofoilQuantity: 0 }],
           stats: {
             totalUnique: 1,
@@ -169,4 +218,42 @@ test("authenticated user logs in, sees inventory, and public collection stays re
   await page.goto("/collection/user_1");
   await expect(page.getByText("Mickey Mouse").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /add normal card/i })).toHaveCount(0);
+});
+
+test("user edits public profile and shared collection profile tab only shows visible fields", async ({ page }) => {
+  await page.goto("/login");
+  await page.locator('input[type="text"]').fill("jw");
+  await page.locator('input[type="password"]').fill("secret1");
+  await page.getByRole("button", { name: "Sign In" }).click();
+
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByLabel("Upload profile picture").setInputFiles("e2e/fixtures/avatar.png");
+  await expect(page.getByText("Edit profile picture")).toBeVisible();
+  await page.getByLabel("Rotate right").click();
+  await page.getByRole("button", { name: "Save picture" }).click();
+
+  await page.getByLabel("Country of residence").fill("Singapore");
+  await page.getByRole("textbox", { name: "Instagram", exact: true }).fill("john.cards");
+  await page.getByRole("textbox", { name: "Telegram", exact: true }).fill("johntelegram");
+  await page.getByRole("textbox", { name: "Email", exact: true }).fill("john@example.com");
+  await page.getByRole("textbox", { name: "HP number", exact: true }).fill("+659****9999");
+  await page.getByLabel("Show Instagram publicly").check();
+  await page.getByLabel("Show Telegram publicly").check();
+  await page.getByRole("button", { name: "Save profile" }).click();
+
+  await page.getByLabel("Reference name").fill("Alice");
+  await page.getByLabel("Relationship / description").fill("Trade reference");
+  await page.getByLabel("Contact method or note").fill("@alice");
+  await page.getByLabel("Show this reference publicly").check();
+  await page.getByRole("button", { name: "Add reference" }).click();
+
+  await page.goto("/collection/user_1?tab=profile");
+  await expect(page.getByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Singapore")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Instagram" })).toHaveAttribute("href", "https://instagram.com/john.cards");
+  await expect(page.getByRole("link", { name: "Telegram" })).toHaveAttribute("href", "https://t.me/johntelegram");
+  await expect(page.getByText("Alice", { exact: true })).toBeVisible();
+  await expect(page.getByText("john@example.com")).toHaveCount(0);
+  await expect(page.getByText("+6599999999")).toHaveCount(0);
 });

@@ -6,6 +6,30 @@ export const publicRouter = Router();
 
 type PublicPrice = { variant: string; marketPrice: number | null };
 
+type PublicProfileSource = {
+  displayName?: string | null;
+  profileImageUrl?: string | null;
+  countryOfResidence?: string | null;
+  instagram?: string | null;
+  instagramVisible?: boolean;
+  telegram?: string | null;
+  telegramVisible?: boolean;
+  facebook?: string | null;
+  facebookVisible?: boolean;
+  email?: string | null;
+  emailVisible?: boolean;
+  phoneNumber?: string | null;
+  phoneNumberVisible?: boolean;
+};
+
+type PublicReferenceSource = {
+  id: string;
+  name: string;
+  description?: string | null;
+  contactInfo?: string | null;
+  visible: boolean;
+};
+
 const FOIL_VARIANTS = ["Foil", "Cold Foil"];
 const HOLOFOIL_VARIANTS = ["Holofoil", "Cold Foil", "Foil"];
 
@@ -26,6 +50,39 @@ export function compareNullableNumber(a: number | null, b: number | null): numbe
   return a - b;
 }
 
+function addIfPresent(target: Record<string, unknown>, key: string, value: unknown) {
+  if (typeof value === "string" && value.trim().length > 0) target[key] = value;
+}
+
+export function buildPublicProfile(
+  profile: PublicProfileSource | null | undefined,
+  references: PublicReferenceSource[] = []
+) {
+  const payload: Record<string, unknown> = {};
+  if (profile) {
+    addIfPresent(payload, "displayName", profile.displayName);
+    addIfPresent(payload, "profileImageUrl", profile.profileImageUrl);
+    addIfPresent(payload, "countryOfResidence", profile.countryOfResidence);
+    if (profile.instagramVisible) addIfPresent(payload, "instagram", profile.instagram);
+    if (profile.telegramVisible) addIfPresent(payload, "telegram", profile.telegram);
+    if (profile.facebookVisible) addIfPresent(payload, "facebook", profile.facebook);
+    if (profile.emailVisible) addIfPresent(payload, "email", profile.email);
+    if (profile.phoneNumberVisible) addIfPresent(payload, "phoneNumber", profile.phoneNumber);
+  }
+
+  const visibleReferences = references
+    .filter((reference) => reference.visible)
+    .map((reference) => ({
+      id: reference.id,
+      name: reference.name,
+      description: reference.description,
+      contactInfo: reference.contactInfo,
+    }));
+
+  if (visibleReferences.length > 0) payload.references = visibleReferences;
+  return payload;
+}
+
 publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
   try {
     const { userId } = req.params as { userId: string };
@@ -33,7 +90,13 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, username: true, publicEnabled: true },
+      select: {
+        id: true,
+        username: true,
+        publicEnabled: true,
+        profile: true,
+        references: true,
+      },
     });
 
     if (!user || !user.publicEnabled) {
@@ -134,6 +197,7 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
 
     res.json({
       user: { id: user.id, username: user.username },
+      profile: buildPublicProfile((user as any).profile, (user as any).references),
       cards,
       stats: {
         totalUnique,

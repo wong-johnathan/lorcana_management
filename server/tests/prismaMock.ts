@@ -6,6 +6,18 @@ export const prismaMock = {
     create: vi.fn(),
     update: vi.fn(),
   },
+  userProfile: {
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+  },
+  userReference: {
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
   card: {
     findMany: vi.fn(),
     findUnique: vi.fn(),

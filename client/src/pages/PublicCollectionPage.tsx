@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { publicCollection as publicApi, cards as cardsApi } from "../services/api";
-import type { Card, InventoryStats, User } from "../types";
+import type { Card, InventoryStats, PublicUserProfile, User } from "../types";
 import CardDetail from "../components/CardDetail";
+import PublicProfilePanel from "../components/profile/PublicProfilePanel";
 import InventoryTabs from "../components/inventory/InventoryTabs";
 import CollectionStatsPanel from "../components/inventory/CollectionStatsPanel";
 import InventoryCollectionView, {
@@ -31,6 +32,7 @@ export default function PublicCollectionPage() {
   const { userId } = useParams<{ userId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [entries, setEntries] = useState<PublicEntry[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -67,6 +69,7 @@ export default function PublicCollectionPage() {
     try {
       const data = await publicApi.get(userId, filters);
       setUser(data.user);
+      setProfile(data.profile ?? null);
       setEntries(data.cards);
       setStats(data.stats);
     } catch (err: any) {
@@ -114,9 +117,11 @@ export default function PublicCollectionPage() {
 
   return (
     <div>
-      <InventoryTabs activeTab={activeTab} onTabChange={handleTabChange} />
+      <InventoryTabs activeTab={activeTab} onTabChange={handleTabChange} showProfile />
 
-      {activeTab === "stats" ? (
+      {activeTab === "profile" ? (
+        <PublicProfilePanel profile={profile} username={user?.username ?? "This collector"} />
+      ) : activeTab === "stats" ? (
         stats ? (
           <CollectionStatsPanel stats={stats} />
         ) : (

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { availableInventoryVariants, isInventoryVariantAvailable, totalInventoryCount } from "../utils/cardVariants";
 import { formatTimeAgo } from "../utils/format";
-import { auth, cards, inventory, sync, settings, publicCollection, analysis } from "../services/api";
+import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi } from "../services/api";
 
 describe("client utility helpers", () => {
   it("derives inventory variants from foilTypes and totals quantities", () => {
@@ -98,6 +98,26 @@ describe("API client wrapper", () => {
       sync.pricesStatus(),
       settings.get(),
       settings.update({ publicEnabled: true }),
+      profileApi.get(),
+      profileApi.update({
+        displayName: "John",
+        countryOfResidence: "Singapore",
+        instagram: "john",
+        instagramVisible: true,
+        telegram: null,
+        telegramVisible: false,
+        facebook: null,
+        facebookVisible: false,
+        email: null,
+        emailVisible: false,
+        phoneNumber: null,
+        phoneNumberVisible: false,
+      }),
+      profileApi.uploadPhoto({ dataUrl: "data:image/png;base64,AAAA", contentType: "image/png" }),
+      profileApi.deletePhoto(),
+      profileApi.createReference({ name: "Alice", description: null, contactInfo: null, visible: true }),
+      profileApi.updateReference("ref_1", { visible: false }),
+      profileApi.deleteReference("ref_1"),
       publicCollection.get("user_1", { rarity: "Common" }),
       analysis.get("card_1"),
       analysis.analyze("card_1"),

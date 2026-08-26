@@ -84,8 +84,61 @@ export interface UserSettings {
   publicUrl: string;
 }
 
+export interface UserReference {
+  id: string;
+  name: string;
+  description: string | null;
+  contactInfo: string | null;
+  visible: boolean;
+}
+
+export interface UserProfile {
+  displayName: string | null;
+  profileImageUrl: string | null;
+  profileImageObjectKey: string | null;
+  countryOfResidence: string | null;
+  instagram: string | null;
+  instagramVisible: boolean;
+  telegram: string | null;
+  telegramVisible: boolean;
+  facebook: string | null;
+  facebookVisible: boolean;
+  email: string | null;
+  emailVisible: boolean;
+  phoneNumber: string | null;
+  phoneNumberVisible: boolean;
+  references: UserReference[];
+}
+
+export type UserProfileUpdate = Omit<UserProfile, "profileImageUrl" | "profileImageObjectKey" | "references">;
+
+export interface ProfileImageUpload {
+  dataUrl: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+}
+
+export interface PublicReference {
+  id: string;
+  name: string;
+  description?: string | null;
+  contactInfo?: string | null;
+}
+
+export interface PublicUserProfile {
+  displayName?: string;
+  profileImageUrl?: string;
+  countryOfResidence?: string;
+  instagram?: string;
+  telegram?: string;
+  facebook?: string;
+  email?: string;
+  phoneNumber?: string;
+  references?: PublicReference[];
+}
+
 export interface PublicCollection {
   user: User;
+  profile?: PublicUserProfile;
   cards: { card: Card; quantity: number; foilQuantity: number; holofoilQuantity: number }[];
   stats: InventoryStats;
 }

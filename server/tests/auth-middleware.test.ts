@@ -27,6 +27,18 @@ describe("auth middleware", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it("rejects authorization headers that are not bearer tokens", () => {
+    const req = { headers: { authorization: "Basic credentials" } } as AuthRequest;
+    const res = mockResponse();
+    const next = vi.fn();
+
+    authenticateToken(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: "Authentication required" });
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid or expired tokens", () => {
     const req = { headers: { authorization: "Bearer not-a-token" } } as AuthRequest;
     const res = mockResponse();

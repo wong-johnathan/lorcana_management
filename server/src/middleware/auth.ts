@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
+/* v8 ignore next -- CI always sets JWT_SECRET; fallback is local/dev convenience only. */
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 
 export interface AuthPayload {
