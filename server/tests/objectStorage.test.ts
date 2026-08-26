@@ -5,6 +5,12 @@ import path from "path";
 const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn().mockResolvedValue({}) }));
 
 vi.mock("@aws-sdk/client-s3", () => ({
+  DeleteObjectCommand: class DeleteObjectCommand {
+    input: unknown;
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  },
   PutObjectCommand: class PutObjectCommand {
     input: unknown;
     constructor(input: unknown) {
@@ -25,9 +31,12 @@ import {
 afterEach(async () => {
   delete process.env.OBJECT_STORAGE_DRIVER;
   delete process.env.S3_BUCKET;
+  delete process.env.MINIO_BUCKET;
   delete process.env.S3_ENDPOINT;
   delete process.env.S3_PUBLIC_URL;
-  sendMock.mockClear();
+  sendMock.mockReset();
+  sendMock.mockResolvedValue({});
+  vi.restoreAllMocks();
   await rm(path.join(LOCAL_UPLOAD_ROOT, "profile-images"), { recursive: true, force: true });
 });
 
@@ -80,6 +89,27 @@ describe("object storage service", () => {
       ContentType: "image/webp",
     });
     await expect(deleteProfileImage(uploaded.objectKey)).resolves.toBeUndefined();
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    expect(sendMock.mock.calls[1][0].input).toMatchObject({
+      Bucket: "lorcana-profile-images",
+      Key: uploaded.objectKey,
+    });
+  });
+
+  it("best-effort deletes MinIO/S3 profile images without blocking profile updates", async () => {
+    process.env.OBJECT_STORAGE_DRIVER = "s3";
+    process.env.MINIO_BUCKET = "minio-profile-images";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    sendMock.mockRejectedValueOnce(new Error("minio unavailable"));
+
+    await expect(deleteProfileImage("profile-images/user_1/old.png")).resolves.toBeUndefined();
+
+    expect(sendMock).toHaveBeenCalledOnce();
+    expect(sendMock.mock.calls[0][0].input).toMatchObject({
+      Bucket: "minio-profile-images",
+      Key: "profile-images/user_1/old.png",
+    });
+    expect(warn).toHaveBeenCalledWith("Profile image S3 cleanup failed:", expect.any(Error));
   });
 
   it("uses jpeg extensions and derives AWS public URLs when no custom public endpoint exists", async () => {
