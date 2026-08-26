@@ -128,6 +128,9 @@ async function mockApi(page: Page) {
         },
       });
     }
+    if (path === "/api/inventory/policy") {
+      return route.fulfill({ json: { keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true } });
+    }
     if (path === "/api/inventory") {
       if (request.method() === "POST") return route.fulfill({ status: 201, json: inventoryEntry });
       return route.fulfill({ json: [inventoryEntry] });
@@ -178,6 +181,15 @@ async function mockApi(page: Page) {
             missingPriceCount: 0,
             setBreakdown: [{ setName: "The First Chapter", owned: 1, total: 1 }],
           },
+        },
+      });
+    }
+    if (path === "/api/public/collection/user_1/extras") {
+      return route.fulfill({
+        json: {
+          user: { id: "user_1", username: "jw" },
+          profile: {},
+          listings: [],
         },
       });
     }
