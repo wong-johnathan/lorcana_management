@@ -120,8 +120,8 @@ describe("Layout", () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "u", username: "jw" }, logout } as any);
     render(<MemoryRouter><Layout /></MemoryRouter>);
     expect(screen.getAllByText("Inventory")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Settings")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("jw")[0]).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "jw" })[0]).toHaveAttribute("href", "/profile");
     await userEvent.click(screen.getAllByText("Logout")[0]);
     expect(logout).toHaveBeenCalled();
   });

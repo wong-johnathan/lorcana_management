@@ -226,8 +226,9 @@ test("user edits public profile and shared collection profile tab only shows vis
   await page.locator('input[type="password"]').fill("secret1");
   await page.getByRole("button", { name: "Sign In" }).click();
 
-  await page.goto("/settings");
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("link", { name: "jw" }).first().click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByRole("heading", { name: "Profile Settings" })).toBeVisible();
   await page.getByLabel("Upload profile picture").setInputFiles("e2e/fixtures/avatar.png");
   await expect(page.getByText("Edit profile picture")).toBeVisible();
   await page.getByLabel("Rotate right").click();
