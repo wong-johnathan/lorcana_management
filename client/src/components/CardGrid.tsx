@@ -118,7 +118,7 @@ export default function CardGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 p-3">
+    <div className="grid grid-cols-2 items-stretch gap-3 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {cards.map((card) => {
         const borderClass = COLOR_CLASSES[card.color] || "border-gray-700";
         const isOwned = ownedCardIds?.has(card.id);
@@ -135,12 +135,12 @@ export default function CardGrid({
         return (
           <div
             key={card.id}
-            className={`relative rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden hover:scale-105 transition-transform text-left`}
+            className={`relative flex h-full flex-col rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden text-left transition-transform hover:scale-105`}
           >
             <button
               type="button"
               onClick={() => onSelect(card)}
-              className="block w-full text-left"
+              className="flex w-full flex-1 flex-col text-left"
             >
               <div className="relative">
                 {card.imageUrl ? (
@@ -201,7 +201,7 @@ export default function CardGrid({
             </button>
 
             {ownedQuantities && onQuantityChange && (
-              <div className="border-t border-gray-800 p-2 space-y-1 bg-black/20">
+              <div className="mt-auto space-y-1 border-t border-gray-800 bg-black/20 p-2">
                 {variants.includes("normal") && (
                   <QuantityRow
                     label="Normal"
