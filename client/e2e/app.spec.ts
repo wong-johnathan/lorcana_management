@@ -117,6 +117,51 @@ async function mockApi(page: Page) {
     if (path === "/api/cards") {
       return route.fulfill({ json: { cards: [card], pagination: { page: 1, limit: 40, total: 1, totalPages: 1 } } });
     }
+    if (path === "/api/marketplace") {
+      return route.fulfill({
+        json: {
+          results: [{
+            card,
+            variant: "normal",
+            offersCount: 1,
+            availableQuantity: 2,
+            lowestPrice: { amountMinor: 1200, currency: "SGD" },
+            approximateConvertedPrice: { amountMinor: 890, currency: "USD", rateSource: "mock", fetchedAt: new Date().toISOString() },
+            canFulfilToViewer: true,
+          }],
+          pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
+        },
+      });
+    }
+    if (path === "/api/marketplace/cards/card_1/offers") {
+      return route.fulfill({
+        json: {
+          card,
+          offers: [{
+            listingId: "listing_1",
+            seller: { id: "seller_1", username: "seller", emailVerifiedAt: new Date().toISOString() },
+            sellerVerified: true,
+            variant: "normal",
+            availableQuantity: 2,
+            pricingMode: "FIXED",
+            askingPrice: { amountMinor: 1200, currency: "SGD" },
+            approximateConvertedPrice: { amountMinor: 890, currency: "USD", rateSource: "mock", fetchedAt: new Date().toISOString() },
+            condition: "NEAR_MINT",
+            cardLanguage: "EN",
+            originCountryCode: "SG",
+            publicLocality: "Singapore",
+            fulfilment: { allowsMeetup: true, shipsDomestically: true, shipsInternationally: false, shipsWorldwide: false, destinationCountryCodes: ["SG"] },
+            reputation: { userId: "seller_1", role: "seller", ratingAverage: 4.8, reviewCount: 3, completedDeals: 5, uniqueCounterparties: 4, memberSince: "2026-01-01T00:00:00Z", emailVerified: true },
+          }],
+        },
+      });
+    }
+    if (path === "/api/marketplace/listings/listing_1/enquiries") {
+      return route.fulfill({ status: 201, json: { enquiry: { id: "enquiry_1" } } });
+    }
+    if (path === "/api/marketplace/enquiries") {
+      return route.fulfill({ json: { enquiries: [] } });
+    }
     if (path === "/api/inventory/stats") {
       return route.fulfill({
         json: {
@@ -200,6 +245,19 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
+});
+
+test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ page }) => {
+  await page.goto("/marketplace");
+  await expect(page.getByRole("heading", { name: "Marketplace" })).toBeVisible();
+  await expect(page.getByText("Mickey Mouse - Brave Little Tailor")).toBeVisible();
+  await expect(page.getByText("1 available seller • From S$12.00")).toBeVisible();
+
+  await page.getByRole("link", { name: /compare offers/i }).click();
+  await expect(page).toHaveURL(/\/marketplace\/card\/card_1$/);
+  await expect(page.getByText("Condition reported by seller; no physical photos provided.")).toBeVisible();
+  await expect(page.getByText("★ 4.8 seller rating")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Log in to send enquiry" })).toBeVisible();
 });
 
 test("anonymous user browses database, opens card detail, and runs master-set estimate", async ({ page }) => {

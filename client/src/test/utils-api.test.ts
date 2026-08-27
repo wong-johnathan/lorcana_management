@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { availableInventoryVariants, isInventoryVariantAvailable, totalInventoryCount } from "../utils/cardVariants";
 import { formatTimeAgo } from "../utils/format";
-import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi, extrasForSale } from "../services/api";
+import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi, extrasForSale, marketplace } from "../services/api";
 
 describe("client utility helpers", () => {
   it("derives inventory variants from foilTypes and totals quantities", () => {
@@ -103,6 +103,14 @@ describe("API client wrapper", () => {
       extrasForSale.create({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: null }),
       extrasForSale.update("listing_1", { status: "paused" }),
       extrasForSale.remove("listing_1"),
+      marketplace.list({ search: "Elsa", shipsTo: "SG" }),
+      marketplace.cardOffers("card_elsa", { shipsTo: "SG" }),
+      marketplace.createEnquiry("listing_1", { quantity: 1, message: "Is this available?" }),
+      marketplace.listEnquiries({ status: "PENDING_SELLER" }),
+      marketplace.getEnquiry("enquiry_1"),
+      marketplace.sendMessage("enquiry_1", "Meet up?"),
+      marketplace.createOffer("enquiry_1", { quantity: 1, unitPriceMinor: 18000, shippingPriceMinor: 0, currency: "SGD", fulfilmentMethod: "MEETUP", buyerCountryCode: "SG" }),
+      marketplace.userReputation("seller_1"),
       sync.refresh(),
       sync.refreshStatus(),
       sync.prices(),
@@ -140,5 +148,11 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1?rarity=Common", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1/extras", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale/list-all", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace?search=Elsa&shipsTo=SG", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/cards/card_elsa/offers?shipsTo=SG", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/listings/listing_1/enquiries", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries?status=PENDING_SELLER", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/messages", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/users/seller_1/reputation", expect.any(Object));
   });
 });

@@ -46,6 +46,7 @@ export interface InventoryEntry {
 export interface User {
   id: string;
   username: string;
+  emailVerifiedAt?: string | null;
 }
 
 export interface AuthResponse {
@@ -138,6 +139,16 @@ export interface ExtraForSaleListing {
   customPriceCurrency: ListingCurrency;
   note: string | null;
   status: "active" | "paused";
+  marketplaceVisible?: boolean;
+  pricingMode?: MarketplacePricingMode;
+  askingPriceMinor?: number | null;
+  currency?: ListingCurrency | null;
+  condition?: MarketplaceCondition | null;
+  cardLanguage?: string | null;
+  originCountryCode?: string | null;
+  publicLocality?: string | null;
+  fulfilment?: MarketplaceFulfilmentCoverage | null;
+  eligibility?: MarketplaceListingEligibility;
 }
 
 export interface PublicExtraForSaleListing {
@@ -220,6 +231,189 @@ export interface PublicCollection {
   profile?: PublicUserProfile;
   cards: { card: Card; quantity: number; foilQuantity: number; holofoilQuantity: number }[];
   stats: InventoryStats;
+}
+
+export type MarketplacePricingMode = "FIXED" | "ACCEPTS_OFFERS";
+export type MarketplaceCondition = "MINT" | "NEAR_MINT" | "LIGHTLY_PLAYED" | "MODERATELY_PLAYED" | "HEAVILY_PLAYED" | "DAMAGED";
+export type MarketplaceFulfilmentMethod = "MEETUP" | "DOMESTIC_SHIPPING" | "INTERNATIONAL_SHIPPING";
+export type MarketplaceEnquiryStatus =
+  | "PENDING_SELLER"
+  | "AWAITING_BUYER"
+  | "RESERVED"
+  | "AWAITING_BUYER_CONFIRMATION"
+  | "COMPLETED"
+  | "DECLINED"
+  | "WITHDRAWN"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "DISPUTED";
+
+export interface MarketplaceMoney {
+  amountMinor: number;
+  currency: ListingCurrency;
+}
+
+export interface MarketplaceApproximateMoney extends MarketplaceMoney {
+  rateSource?: string;
+  fetchedAt?: string;
+}
+
+export interface MarketplaceReputationSummary {
+  userId: string;
+  role: "buyer" | "seller";
+  ratingAverage: number | null;
+  reviewCount: number;
+  completedDeals: number;
+  uniqueCounterparties: number;
+  memberSince: string;
+  emailVerified: boolean;
+}
+
+export interface MarketplaceFulfilmentCoverage {
+  allowsMeetup: boolean;
+  shipsDomestically: boolean;
+  shipsInternationally: boolean;
+  shipsWorldwide: boolean;
+  destinationCountryCodes: string[];
+}
+
+export interface MarketplaceListingEligibility {
+  marketplaceVisible: boolean;
+  sellerEmailVerified: boolean;
+  active: boolean;
+  hasAskingPrice: boolean;
+  hasCondition: boolean;
+  hasCardLanguage: boolean;
+  hasFulfilmentCoverage: boolean;
+  availableQuantity: number;
+  eligible: boolean;
+  blockers: string[];
+}
+
+export interface MarketplaceCardResult {
+  card: Card;
+  variant: InventoryVariant;
+  offersCount: number;
+  availableQuantity: number;
+  lowestPrice: MarketplaceMoney | null;
+  approximateConvertedPrice?: MarketplaceApproximateMoney | null;
+  canFulfilToViewer: boolean;
+}
+
+export interface MarketplaceListParams {
+  search?: string;
+  set?: string;
+  rarity?: string;
+  color?: string;
+  variant?: InventoryVariant;
+  condition?: MarketplaceCondition;
+  language?: string;
+  sellerCountry?: string;
+  shipsTo?: string;
+  fulfilmentMethod?: MarketplaceFulfilmentMethod;
+  availableOnly?: string;
+  page?: string;
+  limit?: string;
+}
+
+export interface MarketplaceListResponse {
+  results: MarketplaceCardResult[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface MarketplaceCardOffer {
+  listingId: string;
+  seller: User;
+  sellerVerified: boolean;
+  variant: InventoryVariant;
+  availableQuantity: number;
+  pricingMode: MarketplacePricingMode;
+  askingPrice: MarketplaceMoney;
+  approximateConvertedPrice?: MarketplaceApproximateMoney | null;
+  condition: MarketplaceCondition;
+  cardLanguage: string;
+  originCountryCode: string;
+  publicLocality?: string | null;
+  fulfilment: MarketplaceFulfilmentCoverage;
+  reputation: MarketplaceReputationSummary;
+  eligibility?: MarketplaceListingEligibility;
+}
+
+export interface MarketplaceCardOffersResponse {
+  card: Card;
+  offers: MarketplaceCardOffer[];
+}
+
+export interface MarketplaceEnquiryOfferSummary {
+  quantity: number;
+  unitPrice: MarketplaceMoney;
+  shippingPrice?: MarketplaceMoney | null;
+  fulfilmentMethod: MarketplaceFulfilmentMethod;
+}
+
+export interface MarketplaceEnquirySummary {
+  id: string;
+  status: MarketplaceEnquiryStatus;
+  listingId: string;
+  buyer: User;
+  seller: User;
+  card: Card;
+  variant: InventoryVariant;
+  quantity: number;
+  lastActivityAt: string;
+  unreadCount: number;
+  latestOffer?: MarketplaceEnquiryOfferSummary | null;
+}
+
+export interface MarketplaceEnquiriesResponse {
+  enquiries: MarketplaceEnquirySummary[];
+}
+
+export interface MarketplaceEnquiryMessage {
+  id: string;
+  enquiryId: string;
+  sender: User;
+  message: string;
+  createdAt: string;
+}
+
+export interface MarketplaceEnquiryOffer extends MarketplaceEnquiryOfferSummary {
+  id: string;
+  enquiryId: string;
+  proposedBy: User;
+  createdAt: string;
+}
+
+export interface MarketplaceEnquiryDetail extends MarketplaceEnquirySummary {
+  messages: MarketplaceEnquiryMessage[];
+  offers: MarketplaceEnquiryOffer[];
+}
+
+export interface MarketplaceEnquiryDetailResponse {
+  enquiry: MarketplaceEnquiryDetail;
+}
+
+export interface MarketplaceCreateEnquiryPayload {
+  quantity: number;
+  message?: string;
+  unitPriceMinor?: number;
+  currency?: ListingCurrency;
+  fulfilmentMethod?: MarketplaceFulfilmentMethod;
+  buyerCountryCode?: string;
+}
+
+export interface MarketplaceCreateOfferPayload {
+  quantity: number;
+  unitPriceMinor: number;
+  shippingPriceMinor?: number;
+  currency: ListingCurrency;
+  fulfilmentMethod: MarketplaceFulfilmentMethod;
+  buyerCountryCode: string;
 }
 
 export interface PillarScore {

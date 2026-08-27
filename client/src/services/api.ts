@@ -22,6 +22,15 @@ import type {
   InventoryVariant,
   ListingCurrency,
   PublicExtrasForSale,
+  MarketplaceListParams,
+  MarketplaceListResponse,
+  MarketplaceCardOffersResponse,
+  MarketplaceCreateEnquiryPayload,
+  MarketplaceEnquiryDetailResponse,
+  MarketplaceEnquiriesResponse,
+  MarketplaceCreateOfferPayload,
+  MarketplaceEnquiryOffer,
+  MarketplaceReputationSummary,
 } from "../types";
 
 const API_BASE = "/api";
@@ -120,12 +129,12 @@ export const inventory = {
 export const extrasForSale = {
   list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
   listAll: () => request<{ created: number; skipped: number }>("/extras-for-sale/list-all", { method: "POST" }),
-  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency }) =>
+  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency; marketplaceVisible?: boolean; pricingMode?: string; askingPriceMinor?: number | null; currency?: ListingCurrency | null; condition?: string | null; cardLanguage?: string | null }) =>
     request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused"; customPrice?: number | null; customPriceCurrency?: ListingCurrency }) =>
+  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused"; customPrice?: number | null; customPriceCurrency?: ListingCurrency; marketplaceVisible?: boolean; pricingMode?: string; askingPriceMinor?: number | null; currency?: ListingCurrency | null; condition?: string | null; cardLanguage?: string | null }) =>
     request<{ listing: ExtraForSaleListing }>(`/extras-for-sale/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -187,6 +196,42 @@ export const publicCollection = {
     return request<PublicCollection>(`/public/collection/${userId}${query}`);
   },
   extras: (userId: string) => request<PublicExtrasForSale>(`/public/collection/${userId}/extras`),
+};
+
+const marketplaceQuery = (params?: Record<string, string | undefined>) => {
+  if (!params) return "";
+  const cleanParams = Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== "")
+  ) as Record<string, string>;
+  const query = new URLSearchParams(cleanParams).toString();
+  return query ? `?${query}` : "";
+};
+
+export const marketplace = {
+  list: (params?: MarketplaceListParams) =>
+    request<MarketplaceListResponse>(`/marketplace${marketplaceQuery(params as Record<string, string | undefined> | undefined)}`),
+  cardOffers: (cardId: string, params?: Pick<MarketplaceListParams, "shipsTo" | "sellerCountry" | "fulfilmentMethod">) =>
+    request<MarketplaceCardOffersResponse>(`/marketplace/cards/${cardId}/offers${marketplaceQuery(params as Record<string, string | undefined> | undefined)}`),
+  createEnquiry: (listingId: string, data: MarketplaceCreateEnquiryPayload) =>
+    request<MarketplaceEnquiryDetailResponse>(`/marketplace/listings/${listingId}/enquiries`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  listEnquiries: (params?: { status?: string }) =>
+    request<MarketplaceEnquiriesResponse>(`/marketplace/enquiries${marketplaceQuery(params)}`),
+  getEnquiry: (id: string) => request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}`),
+  sendMessage: (id: string, message: string) =>
+    request<{ message: { id: string } }>(`/marketplace/enquiries/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
+  createOffer: (id: string, data: MarketplaceCreateOfferPayload) =>
+    request<{ offer: MarketplaceEnquiryOffer }>(`/marketplace/enquiries/${id}/offers`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  userReputation: (userId: string) =>
+    request<MarketplaceReputationSummary>(`/marketplace/users/${userId}/reputation`),
 };
 
 export const analysis = {
