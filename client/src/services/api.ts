@@ -20,6 +20,7 @@ import type {
   CardRetentionOverrideListItem,
   ExtraForSaleListing,
   InventoryVariant,
+  ListingCurrency,
   PublicExtrasForSale,
 } from "../types";
 
@@ -119,12 +120,12 @@ export const inventory = {
 export const extrasForSale = {
   list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
   listAll: () => request<{ created: number; skipped: number }>("/extras-for-sale/list-all", { method: "POST" }),
-  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null }) =>
+  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency }) =>
     request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused" }) =>
+  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused"; customPrice?: number | null; customPriceCurrency?: ListingCurrency }) =>
     request<{ listing: ExtraForSaleListing }>(`/extras-for-sale/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

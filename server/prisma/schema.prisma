@@ -103,9 +103,11 @@ model ExtraForSaleListing {
   cardId          String
   card            Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
   variant         String
-  desiredQuantity Int
-  note            String?
-  status          String   @default("active")
+  desiredQuantity     Int
+  note                String?
+  customPrice         Float?
+  customPriceCurrency String  @default("SGD")
+  status              String  @default("active")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

@@ -64,6 +64,8 @@ function listing(overrides: Record<string, unknown> = {}) {
     variant: "normal",
     desiredQuantity: 2,
     note: "Contact me",
+    customPrice: null,
+    customPriceCurrency: "SGD",
     status: "active",
     card: card(),
     ...overrides,
@@ -89,7 +91,7 @@ describe("extras for sale private routes", () => {
     ]);
     prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
       listing({ id: "listing_late", cardId: "card_late", desiredQuantity: 3, card: card({ id: "card_late", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Late" }) }),
-      listing({ id: "listing_early", cardId: "card_early", desiredQuantity: 3, card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) }),
+      listing({ id: "listing_early", cardId: "card_early", desiredQuantity: 3, customPrice: 12.5, customPriceCurrency: "SGD", card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) }),
     ]);
 
     await auth(request(app).get("/api/extras-for-sale"))
@@ -102,6 +104,8 @@ describe("extras for sale private routes", () => {
           desiredQuantity: 3,
           publicQuantity: 1,
           referencePrice: 4,
+          customPrice: 12.5,
+          customPriceCurrency: "SGD",
         }));
       });
   });
@@ -222,16 +226,24 @@ describe("extras for sale private routes", () => {
     await auth(request(app).post("/api/extras-for-sale/list-all")).expect(500, { error: "Internal server error" });
   });
 
-  it("updates and removes listings scoped to the owner", async () => {
+  it("updates notes, custom prices, status, and removes listings scoped to the owner", async () => {
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 6 }));
     prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
     prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
-    prismaMock.extraForSaleListing.update.mockResolvedValueOnce(listing({ desiredQuantity: 2, note: null, status: "paused" }));
+    prismaMock.extraForSaleListing.update.mockResolvedValueOnce(listing({ desiredQuantity: 2, note: "new meetup note", customPrice: 9.5, customPriceCurrency: "SGD", status: "paused" }));
 
-    await auth(request(app).patch("/api/extras-for-sale/listing_1").send({ desiredQuantity: 2, note: null, status: "paused" }))
+    await auth(request(app).patch("/api/extras-for-sale/listing_1").send({ desiredQuantity: 2, note: " new meetup note ", customPrice: 9.5, customPriceCurrency: "SGD", status: "paused" }))
       .expect(200)
-      .expect((res) => expect(res.body.listing.status).toBe("paused"));
+      .expect((res) => {
+        expect(res.body.listing.status).toBe("paused");
+        expect(res.body.listing.note).toBe("new meetup note");
+        expect(res.body.listing.customPrice).toBe(9.5);
+        expect(res.body.listing.customPriceCurrency).toBe("SGD");
+      });
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ note: "new meetup note", customPrice: 9.5, customPriceCurrency: "SGD" }),
+    }));
 
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(null);
     await auth(request(app).patch("/api/extras-for-sale/missing").send({ desiredQuantity: 1 }))
@@ -289,6 +301,13 @@ describe("extras for sale private routes", () => {
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
     await auth(request(app).patch("/api/extras-for-sale/listing_1").send({ status: "sold" }))
       .expect(400, { error: "status must be active or paused" });
+
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
+    await auth(request(app).patch("/api/extras-for-sale/listing_1").send({ customPrice: -1 }))
+      .expect(400, { error: "customPrice must be a non-negative number" });
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
+    await auth(request(app).patch("/api/extras-for-sale/listing_1").send({ customPriceCurrency: "BTC" }))
+      .expect(400, { error: "customPriceCurrency must be one of USD, SGD, MYR, EUR, GBP, AUD, CAD, JPY" });
 
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 5 }));

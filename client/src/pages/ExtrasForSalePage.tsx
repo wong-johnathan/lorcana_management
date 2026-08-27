@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { extrasForSale as extrasApi, inventory as inventoryApi } from "../services/api";
-import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant } from "../types";
+import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant, ListingCurrency } from "../types";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
 import ManualOverridesPanel from "../components/extras/ManualOverridesPanel";
@@ -64,17 +64,32 @@ export default function ExtrasForSalePage() {
     }
   };
 
-  const createListing = async (item: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string) => {
+  const createListing = async (item: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency) => {
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      await extrasApi.create({ cardId: item.card.id, variant, desiredQuantity, note: note || null });
+      await extrasApi.create({ cardId: item.card.id, variant, desiredQuantity, note: note || null, customPrice, customPriceCurrency });
       setSuccess("Extra listed for sale");
       setTab("listings");
       await load();
     } catch (err: any) {
       setError(err?.message || "Failed to list extra");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateListing = async (id: string, data: { note: string | null; customPrice: number | null; customPriceCurrency: ListingCurrency }) => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await extrasApi.update(id, data);
+      setSuccess("Listing updated");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Failed to update listing");
     } finally {
       setSaving(false);
     }
@@ -212,7 +227,7 @@ export default function ExtrasForSalePage() {
       {tab === "suggested" ? (
         <SuggestedExtrasPanel cards={extras} autoSuggestExtras={policy.autoSuggestExtras} onList={createListing} onOverride={saveOverride} />
       ) : tab === "listings" ? (
-        <ActiveExtrasListingsPanel listings={listings} onStatusChange={updateStatus} onRemove={removeListing} />
+        <ActiveExtrasListingsPanel listings={listings} onStatusChange={updateStatus} onRemove={removeListing} onEdit={updateListing} />
       ) : tab === "overrides" ? (
         <ManualOverridesPanel overrides={overrides} policy={policy} onSave={updateOverride} onRemove={removeOverride} />
       ) : (

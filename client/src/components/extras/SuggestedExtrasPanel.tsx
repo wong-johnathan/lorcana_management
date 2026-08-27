@@ -1,21 +1,23 @@
 import { useState } from "react";
-import type { InventoryExtrasCard, InventoryVariant } from "../../types";
+import type { InventoryExtrasCard, InventoryVariant, ListingCurrency } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import RetentionOverrideDialog from "./RetentionOverrideDialog";
-import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, variantQuantity } from "./extrasUi";
+import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, LISTING_CURRENCIES, variantQuantity } from "./extrasUi";
 
 const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
 
 interface SuggestedExtrasPanelProps {
   cards: InventoryExtrasCard[];
   autoSuggestExtras: boolean;
-  onList: (card: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string) => Promise<void> | void;
+  onList: (card: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency) => Promise<void> | void;
   onOverride: (card: InventoryExtrasCard, keep: { keepNormalQuantity: number; keepFoilQuantity: number; keepHolofoilQuantity: number }) => Promise<void> | void;
 }
 
 export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList, onOverride }: SuggestedExtrasPanelProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [prices, setPrices] = useState<Record<string, string>>({});
+  const [currencies, setCurrencies] = useState<Record<string, string>>({});
   const [overrideCardId, setOverrideCardId] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExtrasFilters>(EMPTY_EXTRAS_FILTERS);
   const activeOverride = cards.find((item) => item.card.id === overrideCardId);
@@ -68,7 +70,7 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
                     <div key={variant} className="rounded border border-gray-800 bg-gray-950 p-3 text-sm">
                       <div className="font-medium text-gray-200">{VARIANT_LABELS[variant]}</div>
                       <div className="mt-1 text-gray-400">Owned {variantQuantity(item.owned, variant)} · Keep {variantQuantity(item.keep, variant)} · Extra {variantQuantity(item.extras, variant)}</div>
-                      <div className="mt-1 text-gray-400">Reference price: {formatReferencePrice(item.referencePrices[variant])}</div>
+                      <div className="mt-1 text-gray-400">TCG reference (USD): {formatReferencePrice(item.referencePrices[variant])}</div>
                       <label className="mt-2 block text-gray-300">
                         Qty
                         <input
@@ -89,9 +91,33 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
                           placeholder="Optional"
                         />
                       </label>
+                      <label className="mt-2 block text-gray-300">
+                        Custom price
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={prices[key] ?? ""}
+                          onChange={(event) => setPrices((current) => ({ ...current, [key]: event.target.value }))}
+                          className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-2 py-1"
+                          placeholder="Optional"
+                        />
+                      </label>
+                      <label className="mt-2 block text-gray-300">
+                        Currency
+                        <select
+                          value={currencies[key] ?? "SGD"}
+                          onChange={(event) => setCurrencies((current) => ({ ...current, [key]: event.target.value }))}
+                          className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-2 py-1"
+                        >
+                          {LISTING_CURRENCIES.map((currency) => (
+                            <option key={currency} value={currency}>{currency}</option>
+                          ))}
+                        </select>
+                      </label>
                       <button
                         type="button"
-                        onClick={() => onList(item, variant, Math.min(Math.max(1, desired), available), notes[key] ?? "")}
+                        onClick={() => onList(item, variant, Math.min(Math.max(1, desired), available), notes[key] ?? "", prices[key] ? Number(prices[key]) : null, (currencies[key] ?? "SGD") as ListingCurrency)}
                         className="mt-3 w-full rounded bg-amber-500 px-3 py-2 font-semibold text-gray-950 hover:bg-amber-400"
                       >
                         List {Math.min(Math.max(1, desired), available)}

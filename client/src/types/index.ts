@@ -80,6 +80,7 @@ export interface InventoryStats {
 }
 
 export type InventoryVariant = "normal" | "foil" | "holofoil";
+export type ListingCurrency = "USD" | "SGD" | "MYR" | "EUR" | "GBP" | "AUD" | "CAD" | "JPY";
 
 export interface InventoryPolicy {
   keepNormalQuantity: number;
@@ -132,6 +133,9 @@ export interface ExtraForSaleListing {
   desiredQuantity: number;
   publicQuantity: number;
   referencePrice: number | null;
+  referencePriceCurrency: "USD";
+  customPrice: number | null;
+  customPriceCurrency: ListingCurrency;
   note: string | null;
   status: "active" | "paused";
 }
@@ -142,6 +146,9 @@ export interface PublicExtraForSaleListing {
   variant: InventoryVariant;
   quantity: number;
   referencePrice: number | null;
+  referencePriceCurrency: "USD";
+  customPrice: number | null;
+  customPriceCurrency: ListingCurrency;
   note: string | null;
 }
 

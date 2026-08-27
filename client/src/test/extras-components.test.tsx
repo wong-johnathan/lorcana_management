@@ -64,6 +64,9 @@ const listing: ExtraForSaleListing = {
   desiredQuantity: 5,
   publicQuantity: 3,
   referencePrice: 4,
+  referencePriceCurrency: "USD",
+  customPrice: 18,
+  customPriceCurrency: "SGD",
   note: "Meet near MRT",
   status: "active",
 };
@@ -96,7 +99,7 @@ describe("extras for sale components", () => {
     await userEvent.type(screen.getAllByLabelText("Qty")[0], "2");
     await userEvent.type(screen.getAllByLabelText("Note")[0], "cash only");
     await userEvent.click(screen.getByRole("button", { name: "List 2" }));
-    expect(onList).toHaveBeenCalledWith(extrasCard, "normal", 2, "cash only");
+    expect(onList).toHaveBeenCalledWith(extrasCard, "normal", 2, "cash only", null, "SGD");
 
     await userEvent.click(screen.getByRole("button", { name: "Set keep override" }));
     await userEvent.clear(screen.getByLabelText("Keep normal"));
@@ -113,14 +116,24 @@ describe("extras for sale components", () => {
     expect(screen.getByText(/No suggested extras/i)).toBeInTheDocument();
   });
 
-  it("renders active listings with capped public quantity and owner actions", async () => {
+  it("renders active listings with capped public quantity and owner edit actions", async () => {
     const onStatusChange = vi.fn();
     const onRemove = vi.fn();
-    render(<ActiveExtrasListingsPanel listings={[listing]} onStatusChange={onStatusChange} onRemove={onRemove} />);
+    const onEdit = vi.fn();
+    render(<ActiveExtrasListingsPanel listings={[listing]} onStatusChange={onStatusChange} onRemove={onRemove} onEdit={onEdit} />);
 
     expect(screen.getByText(/Desired qty:/i)).toBeInTheDocument();
     expect(screen.getByText(/Currently public:/i)).toBeInTheDocument();
-    expect(screen.getByText(/Reference price:/i)).toBeInTheDocument();
+    expect(screen.getByText("TCG reference (USD): $4.00")).toBeInTheDocument();
+    expect(screen.getByText("Asking price: SGD 18.00")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.clear(screen.getByLabelText("Listing note"));
+    await userEvent.type(screen.getByLabelText("Listing note"), "updated meetup");
+    await userEvent.clear(screen.getByLabelText("Custom price"));
+    await userEvent.type(screen.getByLabelText("Custom price"), "20");
+    await userEvent.selectOptions(screen.getByLabelText("Currency"), "MYR");
+    await userEvent.click(screen.getByRole("button", { name: "Save listing" }));
+    expect(onEdit).toHaveBeenCalledWith("listing_1", { note: "updated meetup", customPrice: 20, customPriceCurrency: "MYR" });
     await userEvent.click(screen.getByRole("button", { name: "Pause" }));
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(onStatusChange).toHaveBeenCalledWith("listing_1", "paused");
@@ -130,7 +143,7 @@ describe("extras for sale components", () => {
   it("renders empty and paused listing branches", async () => {
     const onStatusChange = vi.fn();
     const onRemove = vi.fn();
-    const { rerender } = render(<ActiveExtrasListingsPanel listings={[]} onStatusChange={onStatusChange} onRemove={onRemove} />);
+    const { rerender } = render(<ActiveExtrasListingsPanel listings={[]} onStatusChange={onStatusChange} onRemove={onRemove} onEdit={vi.fn()} />);
     expect(screen.getByText(/No Extras for Sale listings yet/i)).toBeInTheDocument();
 
     rerender(<ActiveExtrasListingsPanel listings={[{
@@ -138,9 +151,12 @@ describe("extras for sale components", () => {
       status: "paused",
       publicQuantity: 0,
       referencePrice: null,
+      referencePriceCurrency: "USD",
+      customPrice: null,
+      customPriceCurrency: "SGD",
       note: null,
       card: makeCard({ subtitle: "" }),
-    }]} onStatusChange={onStatusChange} onRemove={onRemove} />);
+    }]} onStatusChange={onStatusChange} onRemove={onRemove} onEdit={vi.fn()} />);
     expect(screen.getByText("Hidden: no current extra inventory")).toBeInTheDocument();
     expect(screen.queryByText(/Note:/i)).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Activate" }));
@@ -155,11 +171,15 @@ describe("extras for sale components", () => {
       variant: "foil",
       quantity: 1,
       referencePrice: 8,
+      referencePriceCurrency: "USD",
+      customPrice: 16,
+      customPriceCurrency: "SGD",
       note: null,
     };
     const { rerender } = render(<PublicExtrasForSalePanel listings={[publicListing]} profile={{ telegram: "john" }} username="jw" onContactClick={onContactClick} />);
     expect(screen.getByText("Foil × 1")).toBeInTheDocument();
-    expect(screen.getByText("Reference price: $8.00")).toBeInTheDocument();
+    expect(screen.getByText("Asking price: SGD 16.00")).toBeInTheDocument();
+    expect(screen.getByText("TCG reference (USD): $8.00")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Contact seller" }));
     expect(onContactClick).toHaveBeenCalled();
 
@@ -175,11 +195,14 @@ describe("extras for sale components", () => {
       variant: "holofoil",
       quantity: 2,
       referencePrice: null,
+      referencePriceCurrency: "USD",
+      customPrice: null,
+      customPriceCurrency: "SGD",
       note: "cash only",
     }]} profile={{}} username="jw" onContactClick={onContactClick} />);
 
     expect(screen.getByText("Holofoil × 2")).toBeInTheDocument();
-    expect(screen.getByText("Reference price: —")).toBeInTheDocument();
+    expect(screen.getByText("TCG reference (USD): —")).toBeInTheDocument();
     expect(screen.getByText("Note: cash only")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "View profile" }));
     expect(onContactClick).toHaveBeenCalled();
@@ -193,6 +216,9 @@ describe("extras for sale components", () => {
       variant: "foil",
       quantity: 1,
       referencePrice: 8,
+      referencePriceCurrency: "USD",
+      customPrice: null,
+      customPriceCurrency: "SGD",
       note: null,
       ...overrides,
     });
@@ -256,6 +282,9 @@ describe("extras for sale components", () => {
       variant: "foil",
       quantity: 1,
       referencePrice: 8,
+      referencePriceCurrency: "USD",
+      customPrice: null,
+      customPriceCurrency: "SGD",
       note: null,
       ...overrides,
     });
@@ -373,7 +402,7 @@ describe("extras for sale components", () => {
       listing,
       { ...listing, id: "listing_2", card: makeCard({ id: "card_2", name: "Elsa", subtitle: "Snow Queen" }) },
     ];
-    render(<ActiveExtrasListingsPanel listings={listings} onStatusChange={vi.fn()} onRemove={vi.fn()} />);
+    render(<ActiveExtrasListingsPanel listings={listings} onStatusChange={vi.fn()} onRemove={vi.fn()} onEdit={vi.fn()} />);
 
     expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
     expect(screen.getByText("Elsa")).toBeInTheDocument();

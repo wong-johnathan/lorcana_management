@@ -62,6 +62,15 @@ export function formatReferencePrice(value: number | null | undefined): string {
   return value == null ? "—" : `$${value.toFixed(2)}`;
 }
 
+export const LISTING_CURRENCIES = ["USD", "SGD", "MYR", "EUR", "GBP", "AUD", "CAD", "JPY"] as const;
+export type ListingCurrency = (typeof LISTING_CURRENCIES)[number];
+
+export function formatCustomPrice(value: number | null | undefined, currency: string): string {
+  if (value == null) return "—";
+  if (currency === "USD") return `$${value.toFixed(2)}`;
+  return `${currency} ${value.toFixed(2)}`;
+}
+
 export function variantQuantity<T extends { quantity: number; foilQuantity: number; holofoilQuantity: number }>(counts: T, variant: InventoryVariant): number {
   if (variant === "normal") return counts.quantity;
   if (variant === "foil") return counts.foilQuantity;

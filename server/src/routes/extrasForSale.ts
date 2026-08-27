@@ -19,6 +19,30 @@ const prisma = new PrismaClient();
 export const extrasForSaleRouter = Router();
 
 const LISTING_STATUSES = new Set(["active", "paused"]);
+const CUSTOM_PRICE_CURRENCIES = ["USD", "SGD", "MYR", "EUR", "GBP", "AUD", "CAD", "JPY"] as const;
+const DEFAULT_CUSTOM_PRICE_CURRENCY = "SGD";
+const REFERENCE_PRICE_CURRENCY = "USD";
+
+function parseCustomPrice(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error("customPrice must be a non-negative number");
+  }
+  return Number(value.toFixed(2));
+}
+
+function parseCustomPriceCurrency(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !(CUSTOM_PRICE_CURRENCIES as readonly string[]).includes(value)) {
+    throw new Error(`customPriceCurrency must be one of ${CUSTOM_PRICE_CURRENCIES.join(", ")}`);
+  }
+  return value;
+}
+
+function normalizeNote(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
 function parseVariant(value: unknown): InventoryVariant {
   if (value === "normal" || value === "foil" || value === "holofoil") return value;
@@ -59,6 +83,9 @@ function listingResponse(
     desiredQuantity: listing.desiredQuantity,
     publicQuantity,
     referencePrice,
+    referencePriceCurrency: REFERENCE_PRICE_CURRENCY,
+    customPrice: listing.customPrice ?? null,
+    customPriceCurrency: listing.customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
     note: listing.note ?? null,
     status: listing.status,
   };
@@ -126,9 +153,13 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
 
     let variant: InventoryVariant;
     let desiredQuantity: number;
+    let customPrice: number | null | undefined;
+    let customPriceCurrency: string | undefined;
     try {
       variant = parseVariant(req.body.variant);
       desiredQuantity = parseDesiredQuantity(req.body.desiredQuantity);
+      customPrice = parseCustomPrice(req.body.customPrice);
+      customPriceCurrency = parseCustomPriceCurrency(req.body.customPriceCurrency);
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
       return;
@@ -164,7 +195,9 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
         where: { id: existingListing.id },
         data: {
           desiredQuantity: nextDesiredQuantity,
-          note: typeof note === "string" && note.trim() ? note.trim() : null,
+          note: normalizeNote(note),
+          ...(customPrice !== undefined && { customPrice }),
+          customPriceCurrency: customPriceCurrency ?? existingListing.customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
           status: "active",
         },
         include: { card: { include: { prices: true } } },
@@ -175,7 +208,9 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
           cardId,
           variant,
           desiredQuantity,
-          note: typeof note === "string" && note.trim() ? note.trim() : null,
+          note: normalizeNote(note),
+          customPrice: customPrice ?? null,
+          customPriceCurrency: customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
           status: "active",
         },
         include: { card: { include: { prices: true } } },
@@ -249,6 +284,8 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
     }
 
     let desiredQuantity: number | undefined;
+    let customPrice: number | null | undefined;
+    let customPriceCurrency: string | undefined;
     if (req.body.desiredQuantity !== undefined) {
       try {
         desiredQuantity = parseDesiredQuantity(req.body.desiredQuantity);
@@ -256,6 +293,13 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
         res.status(400).json({ error: (err as Error).message });
         return;
       }
+    }
+    try {
+      customPrice = parseCustomPrice(req.body.customPrice);
+      customPriceCurrency = parseCustomPriceCurrency(req.body.customPriceCurrency);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+      return;
     }
 
     if (req.body.status !== undefined && (typeof req.body.status !== "string" || !LISTING_STATUSES.has(req.body.status))) {
@@ -279,7 +323,9 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       where: { id },
       data: {
         ...(desiredQuantity !== undefined && { desiredQuantity }),
-        ...(req.body.note !== undefined && { note: typeof req.body.note === "string" && req.body.note.trim() ? req.body.note.trim() : null }),
+        ...(req.body.note !== undefined && { note: normalizeNote(req.body.note) }),
+        ...(customPrice !== undefined && { customPrice }),
+        ...(customPriceCurrency !== undefined && { customPriceCurrency }),
         ...(req.body.status !== undefined && { status: req.body.status }),
       },
       include: { card: { include: { prices: true } } },
