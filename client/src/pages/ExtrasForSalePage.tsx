@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { extrasForSale as extrasApi, inventory as inventoryApi } from "../services/api";
-import type { ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant } from "../types";
+import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant } from "../types";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
+import ManualOverridesPanel from "../components/extras/ManualOverridesPanel";
 import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
 
 const defaultPolicy: InventoryPolicy = {
@@ -12,13 +13,14 @@ const defaultPolicy: InventoryPolicy = {
   autoSuggestExtras: true,
 };
 
-type ExtrasTab = "suggested" | "listings" | "settings";
+type ExtrasTab = "suggested" | "listings" | "overrides" | "settings";
 
 export default function ExtrasForSalePage() {
   const [tab, setTab] = useState<ExtrasTab>("suggested");
   const [policy, setPolicy] = useState<InventoryPolicy>(defaultPolicy);
   const [extras, setExtras] = useState<InventoryExtrasCard[]>([]);
   const [listings, setListings] = useState<ExtraForSaleListing[]>([]);
+  const [overrides, setOverrides] = useState<CardRetentionOverrideListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,13 +29,15 @@ export default function ExtrasForSalePage() {
   const load = async () => {
     setError(null);
     try {
-      const [extrasData, listingsData] = await Promise.all([
+      const [extrasData, listingsData, overridesData] = await Promise.all([
         inventoryApi.getExtras(),
         extrasApi.list(),
+        inventoryApi.listRetentionOverrides(),
       ]);
       setPolicy(extrasData.policy);
       setExtras(extrasData.cards);
       setListings(listingsData.listings);
+      setOverrides(overridesData.overrides);
     } catch (err: any) {
       setError(err?.message || "Failed to load Extras for Sale");
     } finally {
@@ -86,6 +90,36 @@ export default function ExtrasForSalePage() {
       await load();
     } catch (err: any) {
       setError(err?.message || "Failed to save keep override");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateOverride = async (cardId: string, keep: { keepNormalQuantity: number; keepFoilQuantity: number; keepHolofoilQuantity: number }) => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await inventoryApi.updateRetentionOverride(cardId, keep);
+      setSuccess("Keep override saved");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Failed to save keep override");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeOverride = async (cardId: string) => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await inventoryApi.deleteRetentionOverride(cardId);
+      setSuccess("Keep override removed");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Failed to remove keep override");
     } finally {
       setSaving(false);
     }
@@ -171,6 +205,7 @@ export default function ExtrasForSalePage() {
       <div className="border-b border-gray-800">
         {tabButton("suggested", "Suggested Extras")}
         {tabButton("listings", "Extras for Sale")}
+        {tabButton("overrides", "Manual Overrides")}
         {tabButton("settings", "Settings")}
       </div>
 
@@ -178,6 +213,8 @@ export default function ExtrasForSalePage() {
         <SuggestedExtrasPanel cards={extras} autoSuggestExtras={policy.autoSuggestExtras} onList={createListing} onOverride={saveOverride} />
       ) : tab === "listings" ? (
         <ActiveExtrasListingsPanel listings={listings} onStatusChange={updateStatus} onRemove={removeListing} />
+      ) : tab === "overrides" ? (
+        <ManualOverridesPanel overrides={overrides} policy={policy} onSave={updateOverride} onRemove={removeOverride} />
       ) : (
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
           <ExtrasSettingsPanel policy={policy} saving={saving} onSave={savePolicy} />

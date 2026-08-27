@@ -5,9 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
+import ManualOverridesPanel from "../components/extras/ManualOverridesPanel";
 import PublicExtrasForSalePanel from "../components/extras/PublicExtrasForSalePanel";
 import { cardMatchesFilters, cardMatchesQuery, deriveExtrasFilterOptions, formatReferencePrice, variantQuantity } from "../components/extras/extrasUi";
-import type { Card, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, PublicExtraForSaleListing } from "../types";
+import type { Card, CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, PublicExtraForSaleListing } from "../types";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
@@ -291,6 +292,43 @@ describe("extras for sale components", () => {
 
     // clear again
     await userEvent.click(screen.getByRole("button", { name: /Clear/ }));
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+  });
+
+  it("renders manual overrides with keep values and default fallbacks", () => {
+    const overrides: CardRetentionOverrideListItem[] = [
+      { cardId: "card_1", card: makeCard(), keepNormalQuantity: 8, keepFoilQuantity: null, keepHolofoilQuantity: 0 },
+    ];
+    render(<ManualOverridesPanel overrides={overrides} policy={policy} onSave={vi.fn()} onRemove={vi.fn()} />);
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(screen.getByText("8")).toBeInTheDocument();
+    expect(screen.getByText("default (1)")).toBeInTheDocument();
+    expect(screen.getByText("0")).toBeInTheDocument();
+  });
+
+  it("edits and removes overrides", async () => {
+    const onSave = vi.fn();
+    const onRemove = vi.fn();
+    const overrides: CardRetentionOverrideListItem[] = [
+      { cardId: "card_1", card: makeCard(), keepNormalQuantity: 8, keepFoilQuantity: 1, keepHolofoilQuantity: 0 },
+    ];
+    render(<ManualOverridesPanel overrides={overrides} policy={policy} onSave={onSave} onRemove={onRemove} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await userEvent.clear(screen.getByLabelText("Keep normal"));
+    await userEvent.type(screen.getByLabelText("Keep normal"), "6");
+    await userEvent.click(screen.getByRole("button", { name: "Save override" }));
+    expect(onSave).toHaveBeenCalledWith("card_1", expect.objectContaining({ keepNormalQuantity: 6 }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(onRemove).toHaveBeenCalledWith("card_1");
+  });
+
+  it("renders empty and no-match override states", () => {
+    const { rerender } = render(<ManualOverridesPanel overrides={[]} policy={policy} onSave={vi.fn()} onRemove={vi.fn()} />);
+    expect(screen.getByText(/No manual keep overrides yet/i)).toBeInTheDocument();
+
+    rerender(<ManualOverridesPanel overrides={[{ cardId: "card_1", card: makeCard(), keepNormalQuantity: 8, keepFoilQuantity: 1, keepHolofoilQuantity: 0 }]} policy={policy} onSave={vi.fn()} onRemove={vi.fn()} />);
     expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
   });
 

@@ -17,6 +17,9 @@ const apiMocks = vi.hoisted(() => ({
   inventoryGetPolicy: vi.fn(),
   inventoryUpdatePolicy: vi.fn(),
   inventoryGetExtras: vi.fn(),
+  inventoryListRetentionOverrides: vi.fn(),
+  inventoryUpdateRetentionOverride: vi.fn(),
+  inventoryDeleteRetentionOverride: vi.fn(),
   extrasList: vi.fn(),
   extrasListAll: vi.fn(),
   extrasCreate: vi.fn(),
@@ -42,7 +45,9 @@ vi.mock("../services/api", () => ({
     getPolicy: apiMocks.inventoryGetPolicy,
     updatePolicy: apiMocks.inventoryUpdatePolicy,
     getExtras: apiMocks.inventoryGetExtras,
-    updateRetentionOverride: vi.fn(),
+    listRetentionOverrides: apiMocks.inventoryListRetentionOverrides,
+    updateRetentionOverride: apiMocks.inventoryUpdateRetentionOverride,
+    deleteRetentionOverride: apiMocks.inventoryDeleteRetentionOverride,
   },
   extrasForSale: {
     list: apiMocks.extrasList,
@@ -125,6 +130,7 @@ const profile = {
 
 beforeEach(() => {
   Object.values(apiMocks).forEach((mock) => mock.mockReset());
+  apiMocks.inventoryListRetentionOverrides.mockResolvedValue({ overrides: [] });
 });
 
 describe("extras for sale pages", () => {
@@ -208,6 +214,28 @@ describe("extras for sale pages", () => {
     expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "List all extras" }));
     expect(await screen.findByText("boom")).toBeInTheDocument();
+  });
+
+  it("shows manual overrides and removes one from the overrides tab", async () => {
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+    apiMocks.inventoryListRetentionOverrides.mockResolvedValue({
+      overrides: [{ cardId: "card_1", card: makeCard(), keepNormalQuantity: 8, keepFoilQuantity: 1, keepHolofoilQuantity: 0 }],
+    });
+    apiMocks.inventoryDeleteRetentionOverride.mockResolvedValue(undefined);
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Manual Overrides" }));
+    expect(await screen.findByText("Mickey Mouse")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(apiMocks.inventoryDeleteRetentionOverride).toHaveBeenCalledWith("card_1");
   });
 
   it("shows public Extras for Sale tab only when listings exist and direct extras links show empty state", async () => {

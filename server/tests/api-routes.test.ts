@@ -407,6 +407,27 @@ describe("inventory routes", () => {
     await auth(request(app).delete("/api/inventory/retention/card_1")).expect(204);
   });
 
+  it("lists per-card retention overrides with card details", async () => {
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([
+      { id: "ro_1", userId: "user_1", cardId: "card_1", card: card(), keepNormalQuantity: 8, keepFoilQuantity: null, keepHolofoilQuantity: 0 },
+    ]);
+    await auth(request(app).get("/api/inventory/retention"))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.overrides).toHaveLength(1);
+        expect(res.body.overrides[0].cardId).toBe("card_1");
+        expect(res.body.overrides[0].card.name).toBe("Mickey Mouse");
+        expect(res.body.overrides[0].keepNormalQuantity).toBe(8);
+        expect(res.body.overrides[0].keepFoilQuantity).toBeNull();
+        expect(res.body.overrides[0].keepHolofoilQuantity).toBe(0);
+      });
+  });
+
+  it("returns 500 when listing retention overrides fails", async () => {
+    prismaMock.cardRetentionOverride.findMany.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).get("/api/inventory/retention")).expect(500, { error: "Internal server error" });
+  });
+
   it("returns computed private extras with per-card overrides, listings, and reference prices", async () => {
     prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
     prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([
