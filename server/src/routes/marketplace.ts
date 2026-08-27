@@ -51,7 +51,21 @@ function sellerPayload(user: any) {
     id: user.id,
     username: user.username,
     emailVerified: Boolean(user.emailVerifiedAt),
+    emailVerifiedAt: user.emailVerifiedAt ?? null,
     memberSince: user.createdAt ?? null,
+  };
+}
+
+function minimalReputation(user: any) {
+  return {
+    userId: user.id,
+    role: "seller",
+    ratingAverage: null,
+    reviewCount: 0,
+    completedDeals: 0,
+    uniqueCounterparties: 0,
+    memberSince: user.createdAt ?? new Date(0).toISOString(),
+    emailVerified: Boolean(user.emailVerifiedAt),
   };
 }
 
@@ -65,14 +79,19 @@ function canFulfilTo(listing: any, destinationCountry?: string | null): boolean 
 }
 
 function serializeOffer(listing: any, availableQuantity: number) {
+  const destinationCountries = destinationCountryCodes(listing);
+  const currency = listing.currency ?? listing.customPriceCurrency ?? "SGD";
+  const amountMinor = listing.askingPriceMinor ?? Math.round((listing.customPrice ?? 0) * 100);
   return {
     listingId: listing.id,
     cardId: listing.cardId,
     variant: listing.variant,
     availableQuantity,
     pricingMode: listing.pricingMode ?? "FIXED",
-    askingPriceMinor: listing.askingPriceMinor,
-    currency: listing.currency,
+    askingPriceMinor: amountMinor,
+    currency,
+    askingPrice: { amountMinor, currency },
+    approximateConvertedPrice: null,
     condition: listing.condition,
     cardLanguage: listing.cardLanguage,
     originCountryCode: listing.originCountryCode,
@@ -81,8 +100,17 @@ function serializeOffer(listing: any, availableQuantity: number) {
     shipsDomestically: listing.shipsDomestically ?? false,
     shipsInternationally: listing.shipsInternationally ?? false,
     shipsWorldwide: listing.shipsWorldwide ?? false,
-    destinationCountries: destinationCountryCodes(listing),
+    destinationCountries,
+    fulfilment: {
+      allowsMeetup: listing.allowsMeetup ?? false,
+      shipsDomestically: listing.shipsDomestically ?? false,
+      shipsInternationally: listing.shipsInternationally ?? false,
+      shipsWorldwide: listing.shipsWorldwide ?? false,
+      destinationCountryCodes: destinationCountries,
+    },
     seller: sellerPayload(listing.user),
+    sellerVerified: Boolean(listing.user?.emailVerifiedAt),
+    reputation: minimalReputation(listing.user),
     note: listing.note ?? null,
     conditionDisclaimer: "Condition reported by seller; no physical photos provided.",
   };
@@ -145,6 +173,9 @@ function marketplaceListingWhere(query: Record<string, unknown>, cardId?: string
   if (typeof query.condition === "string") where.condition = { in: query.condition.split(",").map((item) => item.toUpperCase()) };
   if (typeof query.language === "string") where.cardLanguage = query.language.toUpperCase();
   if (typeof query.sellerCountry === "string") where.originCountryCode = query.sellerCountry.toUpperCase();
+  if (query.fulfilmentMethod === "MEETUP") where.allowsMeetup = true;
+  if (query.fulfilmentMethod === "DOMESTIC_SHIPPING") where.shipsDomestically = true;
+  if (query.fulfilmentMethod === "INTERNATIONAL_SHIPPING") where.shipsInternationally = true;
   return where;
 }
 
@@ -180,20 +211,27 @@ marketplaceRouter.get("/", async (req, res: Response) => {
 
     for (const offer of offers) {
       const key = `${offer.listing.cardId}:${offer.listing.variant}`;
+      const amountMinor = offer.listing.askingPriceMinor ?? Math.round((offer.listing.customPrice ?? 0) * 100);
       const existing = grouped.get(key) ?? {
         cardId: offer.listing.cardId,
         card: offer.listing.card,
         variant: offer.listing.variant,
         availableQuantity: 0,
         sellerCount: 0,
-        fromPriceMinor: offer.listing.askingPriceMinor ?? 0,
+        offersCount: 0,
+        fromPriceMinor: amountMinor,
         currency: offer.listing.currency,
+        lowestPrice: { amountMinor, currency: offer.listing.currency },
+        approximateConvertedPrice: null,
+        canFulfilToViewer: true,
         offers: [],
       };
       existing.availableQuantity += offer.availableQuantity;
       existing.sellerCount += 1;
-      if (offer.listing.currency === existing.currency && (offer.listing.askingPriceMinor ?? 0) < existing.fromPriceMinor) {
-        existing.fromPriceMinor = offer.listing.askingPriceMinor ?? 0;
+      existing.offersCount += 1;
+      if (offer.listing.currency === existing.currency && amountMinor < existing.fromPriceMinor) {
+        existing.fromPriceMinor = amountMinor;
+        existing.lowestPrice = { amountMinor, currency: offer.listing.currency };
       }
       existing.offers.push(serializeOffer(offer.listing, offer.availableQuantity));
       grouped.set(key, existing);

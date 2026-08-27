@@ -46,7 +46,7 @@ Backend foundation:
 - Shared marketplace availability and eligibility helpers.
 - Enquiry/reservation transition guards.
 - Marketplace publication fields on `ExtraForSaleListing` while preserving existing Extras for Sale/public collection behaviour.
-- Initial public marketplace browse, card-offer, and listing-bound enquiry routes.
+- Initial public marketplace browse, card-offer, and listing-bound enquiry routes with frontend-compatible result/offer payload shapes.
 
 Frontend discovery:
 - Public `/marketplace` page.

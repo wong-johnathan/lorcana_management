@@ -129,12 +129,20 @@ describe("marketplace public routes", () => {
           cardId: "card_1",
           variant: "holofoil",
           availableQuantity: 2,
+          sellerCount: 1,
+          offersCount: 1,
           fromPriceMinor: 18000,
           currency: "SGD",
+          lowestPrice: { amountMinor: 18000, currency: "SGD" },
+          canFulfilToViewer: true,
         }));
         expect(res.body.results[0].offers[0]).toEqual(expect.objectContaining({
           listingId: "listing_1",
-          seller: expect.objectContaining({ id: "seller_1", username: "seller", emailVerified: true }),
+          seller: expect.objectContaining({ id: "seller_1", username: "seller", emailVerified: true, emailVerifiedAt: expect.any(String) }),
+          sellerVerified: true,
+          askingPrice: { amountMinor: 18000, currency: "SGD" },
+          fulfilment: expect.objectContaining({ destinationCountryCodes: ["MY"] }),
+          reputation: expect.objectContaining({ role: "seller", completedDeals: 0 }),
           condition: "NEAR_MINT",
           destinationCountries: ["MY"],
         }));
