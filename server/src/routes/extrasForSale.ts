@@ -13,6 +13,7 @@ import {
   type InventoryVariant,
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
+import { compareCardContainerByIndex } from "../utils/cardSort.js";
 
 const prisma = new PrismaClient();
 export const extrasForSaleRouter = Router();
@@ -105,7 +106,7 @@ extrasForSaleRouter.get("/", async (req: AuthRequest, res: Response) => {
         publicQuantity,
         referencePriceForVariant(listing.card.prices, variant)
       );
-    });
+    }).sort(compareCardContainerByIndex);
 
     res.json({ listings: responseListings });
   } catch (error) {

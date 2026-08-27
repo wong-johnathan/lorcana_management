@@ -9,6 +9,10 @@ import {
   type InventoryPolicyLike,
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
+import {
+  compareCardContainerByIndex,
+  compareNullableNumber as compareNullableNumberByIndex,
+} from "../utils/cardSort.js";
 
 const prisma = new PrismaClient();
 export const inventoryRouter = Router();
@@ -80,25 +84,8 @@ export function validateRequestedCounts(card: CardFinishInfo, counts: InventoryC
   return null;
 }
 
-export function compareNullableNumber(a: number | null | undefined, b: number | null | undefined): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return 1;
-  if (b == null) return -1;
-  return a - b;
-}
-
-export function compareInventoryEntryByCardIndex(
-  a: { card: { setNumber?: number | null; collectorNumber?: number | null; cardNumber: string; name: string } },
-  b: { card: { setNumber?: number | null; collectorNumber?: number | null; cardNumber: string; name: string } }
-): number {
-  const setCompare = compareNullableNumber(a.card.setNumber, b.card.setNumber);
-  if (setCompare !== 0) return setCompare;
-  const collectorCompare = compareNullableNumber(a.card.collectorNumber, b.card.collectorNumber);
-  if (collectorCompare !== 0) return collectorCompare;
-  const cardNumberCompare = a.card.cardNumber.localeCompare(b.card.cardNumber);
-  if (cardNumberCompare !== 0) return cardNumberCompare;
-  return a.card.name.localeCompare(b.card.name);
-}
+export const compareNullableNumber = compareNullableNumberByIndex;
+export const compareInventoryEntryByCardIndex = compareCardContainerByIndex;
 
 function serializePolicy(policy: InventoryPolicyLike) {
   return {
@@ -301,7 +288,8 @@ inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
       })
       .filter((item) => (
         item.availableToList.quantity + item.availableToList.foilQuantity + item.availableToList.holofoilQuantity > 0
-      ));
+      ))
+      .sort(compareCardContainerByIndex);
 
     res.json({ policy: serializePolicy(policy), cards });
   } catch (error) {
