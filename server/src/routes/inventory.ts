@@ -4,7 +4,6 @@ import { authenticateToken, AuthRequest } from "../middleware/auth.js";
 import {
   DEFAULT_INVENTORY_POLICY,
   calculateExtras,
-  calculateVariantExtra,
   referencePriceForVariant,
   resolveKeepCounts,
   type InventoryPolicyLike,
@@ -140,10 +139,54 @@ function emptyCounts() {
   return { quantity: 0, foilQuantity: 0, holofoilQuantity: 0 };
 }
 
-function addListedQuantity(counts: ReturnType<typeof emptyCounts>, variant: string, quantity: number) {
-  if (variant === "normal") counts.quantity += quantity;
-  if (variant === "foil") counts.foilQuantity += quantity;
-  if (variant === "holofoil") counts.holofoilQuantity += quantity;
+function parseInventoryVariant(value: string): InventoryVariant | null {
+  if (value === "normal" || value === "foil" || value === "holofoil") return value;
+  return null;
+}
+
+function getVariantCount(counts: ReturnType<typeof emptyCounts>, variant: InventoryVariant): number {
+  if (variant === "normal") return counts.quantity;
+  if (variant === "foil") return counts.foilQuantity;
+  return counts.holofoilQuantity;
+}
+
+function countsFromEntry(entry: { quantity: number; foilQuantity: number; holofoilQuantity: number } | null | undefined) {
+  if (!entry) return emptyCounts();
+  return {
+    quantity: entry.quantity,
+    foilQuantity: entry.foilQuantity,
+    holofoilQuantity: entry.holofoilQuantity,
+  };
+}
+
+async function growActiveListingsForNewExtras(
+  userId: string,
+  cardId: string,
+  previousEntry: { quantity: number; foilQuantity: number; holofoilQuantity: number } | null | undefined,
+  nextEntry: { quantity: number; foilQuantity: number; holofoilQuantity: number }
+) {
+  const activeListings = await prisma.extraForSaleListing.findMany({ where: { userId, cardId, status: "active" } }) ?? [];
+  if (activeListings.length === 0) return;
+
+  const [policy, override] = await Promise.all([
+    getOrCreateInventoryPolicy(userId),
+    prisma.cardRetentionOverride.findUnique({ where: { userId_cardId: { userId, cardId } } }),
+  ]);
+  const keep = resolveKeepCounts(policy, override);
+  const previousExtras = calculateExtras(countsFromEntry(previousEntry), keep);
+  const nextExtras = calculateExtras(countsFromEntry(nextEntry), keep);
+
+  const updates = activeListings.flatMap((listing) => {
+    const variant = parseInventoryVariant(listing.variant);
+    if (!variant) return [];
+    const delta = getVariantCount(nextExtras, variant) - getVariantCount(previousExtras, variant);
+    if (delta <= 0) return [];
+    return prisma.extraForSaleListing.update({
+      where: { id: listing.id },
+      data: { desiredQuantity: { increment: delta } },
+    });
+  });
+  await Promise.all(updates);
 }
 
 inventoryRouter.use(authenticateToken);
@@ -213,11 +256,13 @@ inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
     ]);
 
     const overrideByCardId = new Map(overrides.map((override) => [override.cardId, override]));
-    const listedByCardId = new Map<string, ReturnType<typeof emptyCounts>>();
+    const listedVariantsByCardId = new Map<string, Set<InventoryVariant>>();
     for (const listing of listings) {
-      const counts = listedByCardId.get(listing.cardId) ?? emptyCounts();
-      addListedQuantity(counts, listing.variant, listing.desiredQuantity);
-      listedByCardId.set(listing.cardId, counts);
+      const variant = parseInventoryVariant(listing.variant);
+      if (!variant) continue;
+      const variants = listedVariantsByCardId.get(listing.cardId) ?? new Set<InventoryVariant>();
+      variants.add(variant);
+      listedVariantsByCardId.set(listing.cardId, variants);
     }
 
     const cards = entries
@@ -229,11 +274,16 @@ inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
         };
         const keep = resolveKeepCounts(policy, overrideByCardId.get(entry.cardId));
         const extras = calculateExtras(owned, keep);
-        const activeListings = listedByCardId.get(entry.cardId) ?? emptyCounts();
+        const listedVariants = listedVariantsByCardId.get(entry.cardId) ?? new Set<InventoryVariant>();
+        const activeListings = {
+          quantity: listedVariants.has("normal") ? extras.quantity : 0,
+          foilQuantity: listedVariants.has("foil") ? extras.foilQuantity : 0,
+          holofoilQuantity: listedVariants.has("holofoil") ? extras.holofoilQuantity : 0,
+        };
         const availableToList = {
-          quantity: calculateVariantExtra(extras.quantity, activeListings.quantity),
-          foilQuantity: calculateVariantExtra(extras.foilQuantity, activeListings.foilQuantity),
-          holofoilQuantity: calculateVariantExtra(extras.holofoilQuantity, activeListings.holofoilQuantity),
+          quantity: listedVariants.has("normal") ? 0 : extras.quantity,
+          foilQuantity: listedVariants.has("foil") ? 0 : extras.foilQuantity,
+          holofoilQuantity: listedVariants.has("holofoil") ? 0 : extras.holofoilQuantity,
         };
         return {
           card: entry.card,
@@ -250,8 +300,7 @@ inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
         };
       })
       .filter((item) => (
-        item.extras.quantity + item.extras.foilQuantity + item.extras.holofoilQuantity > 0
-        || item.activeListings.quantity + item.activeListings.foilQuantity + item.activeListings.holofoilQuantity > 0
+        item.availableToList.quantity + item.availableToList.foilQuantity + item.availableToList.holofoilQuantity > 0
       ));
 
     res.json({ policy: serializePolicy(policy), cards });
@@ -565,6 +614,7 @@ inventoryRouter.post("/", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    const existingEntry = await prisma.inventoryEntry.findFirst({ where: { userId, cardId } });
     const entry = await prisma.inventoryEntry.upsert({
       where: { userId_cardId: { userId, cardId } },
       create: { userId, cardId, quantity, foilQuantity, holofoilQuantity },
@@ -575,6 +625,8 @@ inventoryRouter.post("/", async (req: AuthRequest, res: Response) => {
       },
       include: { card: { include: { prices: true } } },
     });
+
+    await growActiveListingsForNewExtras(userId, cardId, existingEntry, entry);
 
     res.status(201).json(entry);
   } catch (error) {
@@ -626,6 +678,8 @@ inventoryRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       },
       include: { card: { include: { prices: true } } },
     });
+
+    await growActiveListingsForNewExtras(userId, existing.cardId, existing, entry);
 
     res.json(entry);
   } catch (error) {

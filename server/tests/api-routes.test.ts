@@ -325,6 +325,54 @@ describe("inventory routes", () => {
     await auth(request(app).post("/api/inventory").send({ cardId: "card_1", quantity: 1, foilQuantity: 2, holofoilQuantity: 3 })).expect(201).expect((res) => expect(res.body.id).toBe("entry_1"));
   });
 
+  it("grows active extras listing quantities when newly added inventory becomes extra", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce(card());
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 6, foilQuantity: 1, holofoilQuantity: 1 }));
+    prismaMock.inventoryEntry.upsert.mockResolvedValueOnce(entry({ quantity: 7, foilQuantity: 1, holofoilQuantity: 1 }));
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 2, status: "active" },
+    ]);
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.extraForSaleListing.update.mockResolvedValueOnce({});
+
+    await auth(request(app).post("/api/inventory").send({ cardId: "card_1", quantity: 1, foilQuantity: 0, holofoilQuantity: 0 }))
+      .expect(201)
+      .expect((res) => expect(res.body.quantity).toBe(7));
+
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledWith({
+      where: { id: "listing_1" },
+      data: { desiredQuantity: { increment: 1 } },
+    });
+  });
+
+  it("grows foil and holofoil listings on inventory updates and ignores invalid listing variants", async () => {
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 4, foilQuantity: 1, holofoilQuantity: 1 }));
+    prismaMock.inventoryEntry.update.mockResolvedValueOnce(entry({ quantity: 4, foilQuantity: 2, holofoilQuantity: 2 }));
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "foil_listing", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, status: "active" },
+      { id: "holo_listing", userId: "user_1", cardId: "card_1", variant: "holofoil", desiredQuantity: 1, status: "active" },
+      { id: "bad_listing", userId: "user_1", cardId: "card_1", variant: "misprint", desiredQuantity: 1, status: "active" },
+    ]);
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.extraForSaleListing.update.mockResolvedValue({});
+
+    await auth(request(app).patch("/api/inventory/entry_1").send({ foilQuantity: 2, holofoilQuantity: 2 }))
+      .expect(200)
+      .expect((res) => expect(res.body.foilQuantity).toBe(2));
+
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledTimes(2);
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "foil_listing" },
+      data: { desiredQuantity: { increment: 1 } },
+    });
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenNthCalledWith(2, {
+      where: { id: "holo_listing" },
+      data: { desiredQuantity: { increment: 1 } },
+    });
+  });
+
   it("updates and deletes inventory entries with ownership checks", async () => {
     await auth(request(app).patch("/api/inventory/entry_1").send({ quantity: "1" })).expect(400, { error: "Quantities must be non-negative integers" });
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(null);
@@ -450,11 +498,26 @@ describe("inventory routes", () => {
           owned: { quantity: 10, foilQuantity: 2, holofoilQuantity: 1 },
           keep: { quantity: 8, foilQuantity: 1, holofoilQuantity: 0 },
           extras: { quantity: 2, foilQuantity: 1, holofoilQuantity: 1 },
-          activeListings: { quantity: 1, foilQuantity: 0, holofoilQuantity: 0 },
-          availableToList: { quantity: 1, foilQuantity: 1, holofoilQuantity: 1 },
+          activeListings: { quantity: 2, foilQuantity: 0, holofoilQuantity: 0 },
+          availableToList: { quantity: 0, foilQuantity: 1, holofoilQuantity: 1 },
           referencePrices: { normal: 4, foil: 8, holofoil: 8 },
         }));
       });
+  });
+
+  it("does not suggest cards when every extra variant is already listed", async () => {
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 2, status: "active" },
+    ]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ quantity: 7, foilQuantity: 1, holofoilQuantity: 1 }),
+    ]);
+
+    await auth(request(app).get("/api/inventory/extras"))
+      .expect(200)
+      .expect((res) => expect(res.body.cards).toEqual([]));
   });
 
   it("covers extras policy, retention, and computed extras error/edge cases", async () => {
@@ -498,11 +561,7 @@ describe("inventory routes", () => {
     ]);
     await auth(request(app).get("/api/inventory/extras"))
       .expect(200)
-      .expect((res) => {
-        expect(res.body.cards[0].extras).toEqual({ quantity: 0, foilQuantity: 0, holofoilQuantity: 0 });
-        expect(res.body.cards[0].activeListings).toEqual({ quantity: 0, foilQuantity: 1, holofoilQuantity: 1 });
-        expect(res.body.cards[0].availableToList).toEqual({ quantity: 0, foilQuantity: 0, holofoilQuantity: 0 });
-      });
+      .expect((res) => expect(res.body.cards).toEqual([]));
   });
 
   it("returns 500 for inventory route persistence failures", async () => {
