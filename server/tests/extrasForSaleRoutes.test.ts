@@ -105,6 +105,7 @@ describe("extras for sale private routes", () => {
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 5 }));
     prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
     prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(null);
 
     await auth(request(app).post("/api/extras-for-sale").send({ cardId: "card_1", variant: "normal", desiredQuantity: 2 }))
       .expect(400, { error: "Quantity exceeds current extra inventory" });
@@ -113,11 +114,56 @@ describe("extras for sale private routes", () => {
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 5 }));
     prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
     prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(null);
     prismaMock.extraForSaleListing.create.mockResolvedValueOnce(listing({ desiredQuantity: 1 }));
 
     await auth(request(app).post("/api/extras-for-sale").send({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: "Contact me" }))
       .expect(201)
       .expect((res) => expect(res.body.listing.publicQuantity).toBe(1));
+  });
+
+  it("reactivates an existing paused listing instead of creating a duplicate", async () => {
+    const pausedListing = listing({ desiredQuantity: 1, status: "paused", note: "old note" });
+    prismaMock.card.findUnique.mockResolvedValueOnce(card());
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 6 }));
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(pausedListing);
+    prismaMock.extraForSaleListing.update.mockResolvedValueOnce(listing({ desiredQuantity: 2, note: "fresh note", status: "active" }));
+
+    await auth(request(app).post("/api/extras-for-sale").send({ cardId: "card_1", variant: "normal", desiredQuantity: 2, note: "fresh note" }))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.listing.status).toBe("active");
+        expect(res.body.listing.desiredQuantity).toBe(2);
+        expect(res.body.listing.publicQuantity).toBe(2);
+      });
+
+    expect(prismaMock.extraForSaleListing.create).not.toHaveBeenCalled();
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "listing_1" },
+      data: expect.objectContaining({ desiredQuantity: 2, note: "fresh note", status: "active" }),
+    }));
+  });
+
+  it("adds newly listed quantity to an already-active listing", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce(card());
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 7 }));
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing({ desiredQuantity: 1, status: "active" }));
+    prismaMock.extraForSaleListing.update.mockResolvedValueOnce(listing({ desiredQuantity: 3, note: null, status: "active" }));
+
+    await auth(request(app).post("/api/extras-for-sale").send({ cardId: "card_1", variant: "normal", desiredQuantity: 2 }))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.listing.desiredQuantity).toBe(3);
+        expect(res.body.listing.publicQuantity).toBe(3);
+      });
+
+    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ desiredQuantity: 3, status: "active" }),
+    }));
   });
 
   it("list-all creates listings for unlisted extras and skips existing variants", async () => {

@@ -143,30 +143,45 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    const [entry, policy, override] = await Promise.all([
+    const [entry, policy, override, existingListing] = await Promise.all([
       prisma.inventoryEntry.findFirst({ where: { userId, cardId } }),
       getOrCreateInventoryPolicy(userId),
       prisma.cardRetentionOverride.findUnique({ where: { userId_cardId: { userId, cardId } } }),
+      prisma.extraForSaleListing.findFirst({ where: { userId, cardId, variant } }),
     ]);
     const extraQuantity = currentExtraForVariant(entry, policy, override, variant);
-    if (desiredQuantity > extraQuantity) {
+    const nextDesiredQuantity = existingListing?.status === "active"
+      ? existingListing.desiredQuantity + desiredQuantity
+      : desiredQuantity;
+    if (nextDesiredQuantity > extraQuantity) {
       res.status(400).json({ error: "Quantity exceeds current extra inventory" });
       return;
     }
 
-    const listing = await prisma.extraForSaleListing.create({
-      data: {
-        userId,
-        cardId,
-        variant,
-        desiredQuantity,
-        note: typeof note === "string" && note.trim() ? note.trim() : null,
-        status: "active",
-      },
-      include: { card: { include: { prices: true } } },
-    });
+    const listing = existingListing
+      ? await prisma.extraForSaleListing.update({
+        where: { id: existingListing.id },
+        data: {
+          desiredQuantity: nextDesiredQuantity,
+          note: typeof note === "string" && note.trim() ? note.trim() : null,
+          status: "active",
+        },
+        include: { card: { include: { prices: true } } },
+      })
+      : await prisma.extraForSaleListing.create({
+        data: {
+          userId,
+          cardId,
+          variant,
+          desiredQuantity,
+          note: typeof note === "string" && note.trim() ? note.trim() : null,
+          status: "active",
+        },
+        include: { card: { include: { prices: true } } },
+      });
 
-    res.status(201).json({ listing: listingResponse(listing, publicQuantityForListing(desiredQuantity, extraQuantity), referencePriceForVariant(card.prices, variant)) });
+    const responseStatus = existingListing ? 200 : 201;
+    res.status(responseStatus).json({ listing: listingResponse(listing, publicQuantityForListing(nextDesiredQuantity, extraQuantity), referencePriceForVariant(card.prices, variant)) });
   } catch (error) {
     console.error("Extras for sale create error:", error);
     res.status(500).json({ error: "Internal server error" });
