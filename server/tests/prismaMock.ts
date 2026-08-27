@@ -60,6 +60,40 @@ export const prismaMock = {
     delete: vi.fn(),
     deleteMany: vi.fn(),
   },
+  marketplaceTransaction: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  marketplaceReservation: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  marketplaceReview: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+  },
+  marketplaceReviewTag: {
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
+  marketplaceReport: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  userBlock: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    delete: vi.fn(),
+  },
 };
 
 vi.mock("@prisma/client", () => ({
