@@ -47,6 +47,8 @@ type PublicReferenceSource = {
 
 const FOIL_VARIANTS = ["Foil", "Cold Foil"];
 const HOLOFOIL_VARIANTS = ["Holofoil", "Cold Foil", "Foil"];
+const DEFAULT_CUSTOM_PRICE_CURRENCY = "SGD";
+const REFERENCE_PRICE_CURRENCY = "USD";
 
 export function marketPriceForVariant(
   prices: PublicPrice[],
@@ -165,6 +167,9 @@ publicRouter.get("/collection/:userId/extras", async (req: Request, res: Respons
           variant,
           quantity,
           referencePrice: referencePriceForVariant(listing.card.prices, variant),
+          referencePriceCurrency: REFERENCE_PRICE_CURRENCY,
+          customPrice: listing.customPrice ?? null,
+          customPriceCurrency: listing.customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
           note: listing.note ?? null,
         };
       })

@@ -177,9 +177,49 @@ describe("extras for sale pages", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Custom price"), "12");
+    await userEvent.selectOptions(screen.getByLabelText("Currency"), "SGD");
     await userEvent.click(await screen.findByRole("button", { name: "List 4" }));
-    expect(apiMocks.extrasCreate).toHaveBeenCalledWith({ cardId: "card_1", variant: "normal", desiredQuantity: 4, note: null });
+    expect(apiMocks.extrasCreate).toHaveBeenCalledWith({ cardId: "card_1", variant: "normal", desiredQuantity: 4, note: null, customPrice: 12, customPriceCurrency: "SGD" });
     expect(await screen.findByText("Extra listed for sale")).toBeInTheDocument();
+  });
+
+  it("updates listing notes and custom prices from the owner listings tab", async () => {
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList
+      .mockResolvedValueOnce({ listings: [{
+        id: "listing_1",
+        cardId: "card_1",
+        card: makeCard(),
+        variant: "normal",
+        desiredQuantity: 2,
+        publicQuantity: 2,
+        referencePrice: 4,
+        referencePriceCurrency: "USD",
+        customPrice: null,
+        customPriceCurrency: "SGD",
+        note: null,
+        status: "active",
+      }] })
+      .mockResolvedValue({ listings: [] });
+    apiMocks.extrasUpdate.mockResolvedValue({ listing: {} });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Extras for Sale" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await userEvent.type(screen.getByLabelText("Listing note"), "cash only");
+    await userEvent.type(screen.getByLabelText("Custom price"), "15");
+    await userEvent.selectOptions(screen.getByLabelText("Currency"), "SGD");
+    await userEvent.click(screen.getByRole("button", { name: "Save listing" }));
+
+    expect(apiMocks.extrasUpdate).toHaveBeenCalledWith("listing_1", { note: "cash only", customPrice: 15, customPriceCurrency: "SGD" });
+    expect(await screen.findByText("Listing updated")).toBeInTheDocument();
   });
 
   it("lists all extras in bulk and lands on the listings tab", async () => {

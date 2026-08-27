@@ -690,7 +690,7 @@ describe("settings, public collection, and sync routes", () => {
       entry({ quantity: 2, foilQuantity: 1, holofoilQuantity: 0 }),
     ]);
     prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 5, note: "Meet near MRT", status: "active", card: card() },
+      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 5, note: "Meet near MRT", customPrice: 18, customPriceCurrency: "SGD", status: "active", card: card() },
       { id: "listing_2", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, note: null, status: "active", card: card() },
     ]);
 
@@ -705,6 +705,9 @@ describe("settings, public collection, and sync routes", () => {
           variant: "normal",
           quantity: 2,
           referencePrice: 4,
+          referencePriceCurrency: "USD",
+          customPrice: 18,
+          customPriceCurrency: "SGD",
           note: "Meet near MRT",
         }));
       });

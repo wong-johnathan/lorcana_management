@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PublicExtraForSaleListing, PublicUserProfile } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
-import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
+import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, formatCustomPrice } from "./extrasUi";
 
 interface PublicExtrasForSalePanelProps {
   listings: PublicExtraForSaleListing[];
@@ -33,7 +33,7 @@ export default function PublicExtrasForSalePanel({ listings, profile, username, 
     <div className="mx-auto max-w-5xl p-4 space-y-4">
       <div>
         <h2 className="text-xl font-semibold text-gray-100">Extras for Sale</h2>
-        <p className="mt-1 text-sm text-gray-400">Contact {username} using their public profile fields. Prices shown are reference prices only.</p>
+        <p className="mt-1 text-sm text-gray-400">Contact {username} using their public profile fields. Asking prices are set by the seller; TCG reference prices are in USD.</p>
       </div>
       <ExtrasFilterBar filters={filters} onChange={setFilters} options={filterOptions} searchPlaceholder="Search listings..." />
       {filteredListings.length === 0 ? (
@@ -52,7 +52,8 @@ export default function PublicExtrasForSalePanel({ listings, profile, username, 
                   <p className="mt-1 text-xs text-gray-500">{listing.card.cardNumber}</p>
                   <div className="mt-3 space-y-1 text-sm text-gray-300">
                     <div>{VARIANT_LABELS[listing.variant]} × {listing.quantity}</div>
-                    <div>Reference price: {formatReferencePrice(listing.referencePrice)}</div>
+                    {listing.customPrice != null && <div>Asking price: {formatCustomPrice(listing.customPrice, listing.customPriceCurrency ?? "SGD")}</div>}
+                    <div>TCG reference (USD): {formatReferencePrice(listing.referencePrice)}</div>
                     {listing.note && <div>Note: {listing.note}</div>}
                   </div>
                   <button
