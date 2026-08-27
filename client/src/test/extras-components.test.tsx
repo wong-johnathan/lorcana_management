@@ -184,6 +184,35 @@ describe("extras for sale components", () => {
     expect(onContactClick).toHaveBeenCalled();
   });
 
+  it("filters public extras listings by search query", async () => {
+    const onContactClick = vi.fn();
+    const mk = (overrides: Partial<PublicExtraForSaleListing> = {}): PublicExtraForSaleListing => ({
+      id: "public_1",
+      card: makeCard(),
+      variant: "foil",
+      quantity: 1,
+      referencePrice: 8,
+      note: null,
+      ...overrides,
+    });
+    const listings = [
+      mk(),
+      mk({ id: "public_2", card: makeCard({ id: "card_2", name: "Elsa", subtitle: "Snow Queen", cardNumber: "2/204 • EN • 2" }) }),
+    ];
+    render(<PublicExtrasForSalePanel listings={listings} profile={{ telegram: "john" }} username="jw" onContactClick={onContactClick} />);
+
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole("searchbox"), "elsa");
+    expect(screen.queryByText("Mickey Mouse")).not.toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByRole("searchbox"));
+    await userEvent.type(screen.getByRole("searchbox"), "zzz");
+    expect(screen.getByText(/No listings match/i)).toBeInTheDocument();
+  });
+
   it("formats extras helper values", () => {
     expect(formatReferencePrice(null)).toBe("—");
     expect(formatReferencePrice(1.5)).toBe("$1.50");
