@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { ExtraForSaleListing } from "../../types";
-import { VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
+import ExtrasSearchInput from "./ExtrasSearchInput";
+import { cardMatchesQuery, VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
 
 interface ActiveExtrasListingsPanelProps {
   listings: ExtraForSaleListing[];
@@ -8,6 +10,9 @@ interface ActiveExtrasListingsPanelProps {
 }
 
 export default function ActiveExtrasListingsPanel({ listings, onStatusChange, onRemove }: ActiveExtrasListingsPanelProps) {
+  const [query, setQuery] = useState("");
+  const filteredListings = listings.filter((listing) => cardMatchesQuery(listing.card, query));
+
   if (listings.length === 0) {
     return (
       <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
@@ -18,7 +23,12 @@ export default function ActiveExtrasListingsPanel({ listings, onStatusChange, on
 
   return (
     <div className="space-y-3">
-      {listings.map((listing) => (
+      <ExtrasSearchInput value={query} onChange={setQuery} placeholder="Search listings..." />
+      {filteredListings.length === 0 ? (
+        <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
+          No listings match &ldquo;{query}&rdquo;.
+        </div>
+      ) : filteredListings.map((listing) => (
         <div key={listing.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
           <div className="flex gap-4">
             <img src={listing.card.imageUrl} alt={listing.card.name} className="h-24 w-16 rounded object-cover" />

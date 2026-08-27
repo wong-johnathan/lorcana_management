@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { InventoryExtrasCard, InventoryVariant } from "../../types";
-import { VARIANT_LABELS, formatReferencePrice, variantQuantity } from "./extrasUi";
+import ExtrasSearchInput from "./ExtrasSearchInput";
+import { cardMatchesQuery, VARIANT_LABELS, formatReferencePrice, variantQuantity } from "./extrasUi";
 
 const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
 
@@ -15,7 +16,9 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [overrideCardId, setOverrideCardId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const activeOverride = cards.find((item) => item.card.id === overrideCardId);
+  const filteredCards = cards.filter((item) => cardMatchesQuery(item.card, query));
 
   if (!autoSuggestExtras) {
     return (
@@ -31,7 +34,14 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
           No suggested extras based on your current keep rules.
         </div>
-      ) : cards.map((item) => (
+      ) : (
+        <>
+          <ExtrasSearchInput value={query} onChange={setQuery} placeholder="Search suggested extras..." />
+          {filteredCards.length === 0 ? (
+            <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
+              No suggested extras match &ldquo;{query}&rdquo;.
+            </div>
+          ) : filteredCards.map((item) => (
         <div key={item.card.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
           <div className="flex gap-4">
             <img src={item.card.imageUrl} alt={item.card.name} className="h-28 w-20 rounded object-cover" />
@@ -90,8 +100,10 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
               </div>
             </div>
           </div>
-        </div>
-      ))}
+          </div>
+          ))}
+        </>
+      )}
 
       {activeOverride && (
         <RetentionOverrideDialog

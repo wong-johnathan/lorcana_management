@@ -6,7 +6,7 @@ import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
 import PublicExtrasForSalePanel from "../components/extras/PublicExtrasForSalePanel";
-import { formatReferencePrice, variantQuantity } from "../components/extras/extrasUi";
+import { cardMatchesQuery, formatReferencePrice, variantQuantity } from "../components/extras/extrasUi";
 import type { Card, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, PublicExtraForSaleListing } from "../types";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
@@ -188,5 +188,54 @@ describe("extras for sale components", () => {
     expect(formatReferencePrice(null)).toBe("—");
     expect(formatReferencePrice(1.5)).toBe("$1.50");
     expect(variantQuantity({ quantity: 1, foilQuantity: 2, holofoilQuantity: 3 }, "holofoil")).toBe(3);
+  });
+
+  it("matches cards by name, subtitle, and card number", () => {
+    const card = makeCard();
+    expect(cardMatchesQuery(card, "")).toBe(true);
+    expect(cardMatchesQuery(card, "  ")).toBe(true);
+    expect(cardMatchesQuery(card, "mickey")).toBe(true);
+    expect(cardMatchesQuery(card, "TAILOR")).toBe(true);
+    expect(cardMatchesQuery(card, "1/204")).toBe(true);
+    expect(cardMatchesQuery(card, "elsa")).toBe(false);
+    expect(cardMatchesQuery(makeCard({ subtitle: "" }), "tailor")).toBe(false);
+  });
+
+  it("filters suggested extras by search query and shows no-match state", async () => {
+    const cards: InventoryExtrasCard[] = [
+      extrasCard,
+      { ...extrasCard, card: makeCard({ id: "card_2", name: "Elsa", subtitle: "Snow Queen", cardNumber: "2/204 • EN • 2" }) },
+    ];
+    render(<SuggestedExtrasPanel cards={cards} autoSuggestExtras onList={vi.fn()} onOverride={vi.fn()} />);
+
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole("searchbox"), "elsa");
+    expect(screen.queryByText("Mickey Mouse")).not.toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByRole("searchbox"));
+    await userEvent.type(screen.getByRole("searchbox"), "zzz");
+    expect(screen.getByText(/No suggested extras match/i)).toBeInTheDocument();
+  });
+
+  it("filters active listings by search query and shows no-match state", async () => {
+    const listings: ExtraForSaleListing[] = [
+      listing,
+      { ...listing, id: "listing_2", card: makeCard({ id: "card_2", name: "Elsa", subtitle: "Snow Queen" }) },
+    ];
+    render(<ActiveExtrasListingsPanel listings={listings} onStatusChange={vi.fn()} onRemove={vi.fn()} />);
+
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByRole("searchbox"), "snow queen");
+    expect(screen.queryByText("Mickey Mouse")).not.toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByRole("searchbox"));
+    await userEvent.type(screen.getByRole("searchbox"), "nope");
+    expect(screen.getByText(/No listings match/i)).toBeInTheDocument();
   });
 });
