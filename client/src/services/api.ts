@@ -17,6 +17,7 @@ import type {
   InventoryPolicy,
   InventoryExtrasResponse,
   CardRetentionOverride,
+  CardRetentionOverrideListItem,
   ExtraForSaleListing,
   InventoryVariant,
   PublicExtrasForSale,
@@ -105,6 +106,7 @@ export const inventory = {
       body: JSON.stringify(data),
     }),
   getExtras: () => request<InventoryExtrasResponse>("/inventory/extras"),
+  listRetentionOverrides: () => request<{ overrides: CardRetentionOverrideListItem[] }>("/inventory/retention"),
   getRetentionOverride: (cardId: string) => request<{ override: CardRetentionOverride | null }>(`/inventory/retention/${cardId}`),
   updateRetentionOverride: (cardId: string, data: Partial<CardRetentionOverride>) =>
     request<{ override: CardRetentionOverride }>(`/inventory/retention/${cardId}`, {

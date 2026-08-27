@@ -261,6 +261,29 @@ inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
   }
 });
 
+inventoryRouter.get("/retention", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const overrides = await prisma.cardRetentionOverride.findMany({
+      where: { userId },
+      include: { card: true },
+      orderBy: { card: { name: "asc" } },
+    });
+    res.json({
+      overrides: overrides.map((override) => ({
+        cardId: override.cardId,
+        card: override.card,
+        keepNormalQuantity: override.keepNormalQuantity ?? null,
+        keepFoilQuantity: override.keepFoilQuantity ?? null,
+        keepHolofoilQuantity: override.keepHolofoilQuantity ?? null,
+      })),
+    });
+  } catch (error) {
+    console.error("Retention override list error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 inventoryRouter.get("/retention/:cardId", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;

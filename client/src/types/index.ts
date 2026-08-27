@@ -95,6 +95,14 @@ export interface CardRetentionOverride {
   keepHolofoilQuantity: number | null;
 }
 
+export interface CardRetentionOverrideListItem {
+  cardId: string;
+  card: Card;
+  keepNormalQuantity: number | null;
+  keepFoilQuantity: number | null;
+  keepHolofoilQuantity: number | null;
+}
+
 export interface InventoryCountSet {
   quantity: number;
   foilQuantity: number;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { InventoryExtrasCard, InventoryVariant } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
+import RetentionOverrideDialog from "./RetentionOverrideDialog";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, variantQuantity } from "./extrasUi";
 
 const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
@@ -108,7 +109,8 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
 
       {activeOverride && (
         <RetentionOverrideDialog
-          card={activeOverride}
+          cardName={activeOverride.card.name}
+          initial={{ keepNormalQuantity: activeOverride.keep.quantity, keepFoilQuantity: activeOverride.keep.foilQuantity, keepHolofoilQuantity: activeOverride.keep.holofoilQuantity }}
           onClose={() => setOverrideCardId(null)}
           onSave={async (keep) => {
             await onOverride(activeOverride, keep);
@@ -116,52 +118,6 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
           }}
         />
       )}
-    </div>
-  );
-}
-
-function RetentionOverrideDialog({
-  card,
-  onClose,
-  onSave,
-}: {
-  card: InventoryExtrasCard;
-  onClose: () => void;
-  onSave: (keep: { keepNormalQuantity: number; keepFoilQuantity: number; keepHolofoilQuantity: number }) => Promise<void> | void;
-}) {
-  const [keep, setKeep] = useState({
-    keepNormalQuantity: card.keep.quantity,
-    keepFoilQuantity: card.keep.foilQuantity,
-    keepHolofoilQuantity: card.keep.holofoilQuantity,
-  });
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="w-full max-w-md rounded-lg border border-gray-800 bg-gray-900 p-4 shadow-xl">
-        <h3 className="text-lg font-semibold">Keep override: {card.card.name}</h3>
-        <p className="mt-1 text-sm text-gray-400">Set zero if you do not want to keep this card before listing extras.</p>
-        <div className="mt-4 grid gap-3">
-          {[
-            ["keepNormalQuantity", "Keep normal"],
-            ["keepFoilQuantity", "Keep foil"],
-            ["keepHolofoilQuantity", "Keep holofoil"],
-          ].map(([key, label]) => (
-            <label key={key} className="text-sm text-gray-300">
-              {label}
-              <input
-                type="number"
-                min={0}
-                value={keep[key as keyof typeof keep]}
-                onChange={(event) => setKeep((current) => ({ ...current, [key]: Math.max(0, Math.floor(Number(event.target.value) || 0)) }))}
-                className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2"
-              />
-            </label>
-          ))}
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800">Cancel</button>
-          <button type="button" onClick={() => onSave(keep)} className="rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400">Save override</button>
-        </div>
-      </div>
     </div>
   );
 }
