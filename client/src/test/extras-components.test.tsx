@@ -6,7 +6,7 @@ import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
 import PublicExtrasForSalePanel from "../components/extras/PublicExtrasForSalePanel";
-import { cardMatchesQuery, formatReferencePrice, variantQuantity } from "../components/extras/extrasUi";
+import { cardMatchesFilters, cardMatchesQuery, deriveExtrasFilterOptions, formatReferencePrice, variantQuantity } from "../components/extras/extrasUi";
 import type { Card, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, PublicExtraForSaleListing } from "../types";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
@@ -211,6 +211,87 @@ describe("extras for sale components", () => {
     await userEvent.clear(screen.getByRole("searchbox"));
     await userEvent.type(screen.getByRole("searchbox"), "zzz");
     expect(screen.getByText(/No listings match/i)).toBeInTheDocument();
+  });
+
+  it("matches cards by set, rarity, and color filters", () => {
+    const card = makeCard(); // The First Chapter, Legendary, Amber
+    const noFilters = { query: "", sets: [], rarities: [], colors: [] };
+    expect(cardMatchesFilters(card, { ...noFilters, sets: ["The First Chapter"] })).toBe(true);
+    expect(cardMatchesFilters(card, { ...noFilters, sets: ["Rise of the Floodborn"] })).toBe(false);
+    expect(cardMatchesFilters(card, { ...noFilters, rarities: ["Legendary"] })).toBe(true);
+    expect(cardMatchesFilters(card, { ...noFilters, rarities: ["Common"] })).toBe(false);
+    expect(cardMatchesFilters(card, { ...noFilters, colors: ["Amber"] })).toBe(true);
+    expect(cardMatchesFilters(card, { ...noFilters, colors: ["Ruby"] })).toBe(false);
+    expect(cardMatchesFilters(card, { query: "mickey", sets: ["The First Chapter"], rarities: ["Legendary"], colors: ["Amber"] })).toBe(true);
+    expect(cardMatchesFilters(card, { query: "elsa", sets: ["The First Chapter"], rarities: [], colors: [] })).toBe(false);
+  });
+
+  it("derives deduped, sorted filter options from cards", () => {
+    const opts = deriveExtrasFilterOptions([
+      makeCard({ setName: "B", rarity: "Rare", color: "Ruby" }),
+      makeCard({ setName: "A", rarity: "Common", color: "Amber" }),
+      makeCard({ setName: "B", rarity: "Rare", color: "Ruby" }),
+    ]);
+    expect(opts.sets).toEqual(["A", "B"]);
+    expect(opts.colors).toEqual(["Amber", "Ruby"]);
+    expect(opts.rarities).toEqual(["Common", "Rare"]);
+
+    // unknown rarities fall back to alphabetical; known rarities keep canonical order
+    expect(deriveExtrasFilterOptions([
+      makeCard({ rarity: "Promo" }),
+      makeCard({ rarity: "Common" }),
+    ]).rarities).toEqual(["Common", "Promo"]);
+    expect(deriveExtrasFilterOptions([
+      makeCard({ rarity: "Zeta" }),
+      makeCard({ rarity: "Alpha" }),
+    ]).rarities).toEqual(["Alpha", "Zeta"]);
+  });
+
+  it("filters public extras by set, rarity, and color and clears filters", async () => {
+    const onContactClick = vi.fn();
+    const mk = (overrides: Partial<PublicExtraForSaleListing> = {}): PublicExtraForSaleListing => ({
+      id: "public_1",
+      card: makeCard(),
+      variant: "foil",
+      quantity: 1,
+      referencePrice: 8,
+      note: null,
+      ...overrides,
+    });
+    const listings = [
+      mk(), // Mickey: The First Chapter, Legendary, Amber
+      mk({ id: "public_2", card: makeCard({ id: "card_2", name: "Elsa", subtitle: "Snow Queen", setName: "Rise of the Floodborn", rarity: "Super Rare", color: "Amethyst" }) }),
+    ];
+    render(<PublicExtrasForSalePanel listings={listings} profile={{ telegram: "john" }} username="jw" onContactClick={onContactClick} />);
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    // filter by set
+    await userEvent.click(screen.getByRole("button", { name: "All Sets" }));
+    await userEvent.click(screen.getByLabelText("Rise of the Floodborn"));
+    expect(screen.queryByText("Mickey Mouse")).not.toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    // clear resets
+    await userEvent.click(screen.getByRole("button", { name: /Clear/ }));
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    // filter by color
+    await userEvent.click(screen.getByRole("button", { name: "All Colors" }));
+    await userEvent.click(screen.getByLabelText("Amethyst"));
+    expect(screen.queryByText("Mickey Mouse")).not.toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    // filter by rarity (adds to color, so Elsa still hidden? Elsa is Super Rare)
+    await userEvent.click(screen.getByRole("button", { name: "All Rarities" }));
+    await userEvent.click(screen.getByLabelText("Super Rare"));
+    expect(screen.queryByText("Mickey Mouse")).not.toBeInTheDocument();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+
+    // clear again
+    await userEvent.click(screen.getByRole("button", { name: /Clear/ }));
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
   });
 
   it("formats extras helper values", () => {

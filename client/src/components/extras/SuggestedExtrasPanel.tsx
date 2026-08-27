@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { InventoryExtrasCard, InventoryVariant } from "../../types";
-import ExtrasSearchInput from "./ExtrasSearchInput";
-import { cardMatchesQuery, VARIANT_LABELS, formatReferencePrice, variantQuantity } from "./extrasUi";
+import ExtrasFilterBar from "./ExtrasFilterBar";
+import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, variantQuantity } from "./extrasUi";
 
 const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
 
@@ -16,9 +16,10 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [overrideCardId, setOverrideCardId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<ExtrasFilters>(EMPTY_EXTRAS_FILTERS);
   const activeOverride = cards.find((item) => item.card.id === overrideCardId);
-  const filteredCards = cards.filter((item) => cardMatchesQuery(item.card, query));
+  const filteredCards = cards.filter((item) => cardMatchesFilters(item.card, filters));
+  const filterOptions = deriveExtrasFilterOptions(cards.map((item) => item.card));
 
   if (!autoSuggestExtras) {
     return (
@@ -36,10 +37,10 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
         </div>
       ) : (
         <>
-          <ExtrasSearchInput value={query} onChange={setQuery} placeholder="Search suggested extras..." />
+          <ExtrasFilterBar filters={filters} onChange={setFilters} options={filterOptions} searchPlaceholder="Search suggested extras..." />
           {filteredCards.length === 0 ? (
             <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
-              No suggested extras match &ldquo;{query}&rdquo;.
+              No suggested extras match your search or filters.
             </div>
           ) : filteredCards.map((item) => (
         <div key={item.card.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
