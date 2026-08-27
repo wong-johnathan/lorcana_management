@@ -35,6 +35,39 @@ export const prismaMock = {
     create: vi.fn(),
     update: vi.fn(),
   },
+  marketplaceEnquiry: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+  },
+  enquiryMessage: {
+    create: vi.fn(),
+  },
+  enquiryOffer: {
+    create: vi.fn(),
+  },
+  marketplaceReservation: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+  },
+  notification: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+    update: vi.fn(),
+  },
+  fxRate: {
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
+  },
+  emailVerificationToken: {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+  },
+  passwordResetToken: {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+  },
   card: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
