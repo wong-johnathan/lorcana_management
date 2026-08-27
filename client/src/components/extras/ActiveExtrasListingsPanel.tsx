@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ExtraForSaleListing } from "../../types";
-import ExtrasSearchInput from "./ExtrasSearchInput";
-import { cardMatchesQuery, VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
+import ExtrasFilterBar from "./ExtrasFilterBar";
+import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
 
 interface ActiveExtrasListingsPanelProps {
   listings: ExtraForSaleListing[];
@@ -10,8 +10,9 @@ interface ActiveExtrasListingsPanelProps {
 }
 
 export default function ActiveExtrasListingsPanel({ listings, onStatusChange, onRemove }: ActiveExtrasListingsPanelProps) {
-  const [query, setQuery] = useState("");
-  const filteredListings = listings.filter((listing) => cardMatchesQuery(listing.card, query));
+  const [filters, setFilters] = useState<ExtrasFilters>(EMPTY_EXTRAS_FILTERS);
+  const filteredListings = listings.filter((listing) => cardMatchesFilters(listing.card, filters));
+  const filterOptions = deriveExtrasFilterOptions(listings.map((listing) => listing.card));
 
   if (listings.length === 0) {
     return (
@@ -23,10 +24,10 @@ export default function ActiveExtrasListingsPanel({ listings, onStatusChange, on
 
   return (
     <div className="space-y-3">
-      <ExtrasSearchInput value={query} onChange={setQuery} placeholder="Search listings..." />
+      <ExtrasFilterBar filters={filters} onChange={setFilters} options={filterOptions} searchPlaceholder="Search listings..." />
       {filteredListings.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
-          No listings match &ldquo;{query}&rdquo;.
+          No listings match your search or filters.
         </div>
       ) : filteredListings.map((listing) => (
         <div key={listing.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">

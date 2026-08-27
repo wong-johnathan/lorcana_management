@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PublicExtraForSaleListing, PublicUserProfile } from "../../types";
-import ExtrasSearchInput from "./ExtrasSearchInput";
-import { cardMatchesQuery, VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
+import ExtrasFilterBar from "./ExtrasFilterBar";
+import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice } from "./extrasUi";
 
 interface PublicExtrasForSalePanelProps {
   listings: PublicExtraForSaleListing[];
@@ -16,8 +16,9 @@ function hasContact(profile: PublicUserProfile | null): boolean {
 }
 
 export default function PublicExtrasForSalePanel({ listings, profile, username, onContactClick }: PublicExtrasForSalePanelProps) {
-  const [query, setQuery] = useState("");
-  const filteredListings = listings.filter((listing) => cardMatchesQuery(listing.card, query));
+  const [filters, setFilters] = useState<ExtrasFilters>(EMPTY_EXTRAS_FILTERS);
+  const filteredListings = listings.filter((listing) => cardMatchesFilters(listing.card, filters));
+  const filterOptions = deriveExtrasFilterOptions(listings.map((listing) => listing.card));
 
   if (listings.length === 0) {
     return (
@@ -34,10 +35,10 @@ export default function PublicExtrasForSalePanel({ listings, profile, username, 
         <h2 className="text-xl font-semibold text-gray-100">Extras for Sale</h2>
         <p className="mt-1 text-sm text-gray-400">Contact {username} using their public profile fields. Prices shown are reference prices only.</p>
       </div>
-      <ExtrasSearchInput value={query} onChange={setQuery} placeholder="Search listings..." />
+      <ExtrasFilterBar filters={filters} onChange={setFilters} options={filterOptions} searchPlaceholder="Search listings..." />
       {filteredListings.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-6 text-center text-gray-400">
-          No listings match &ldquo;{query}&rdquo;.
+          No listings match your search or filters.
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
