@@ -11,6 +11,10 @@ import {
   type InventoryVariant,
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
+import {
+  compareCardContainerByIndex,
+  compareNullableNumber as compareNullableNumberByIndex,
+} from "../utils/cardSort.js";
 
 const prisma = new PrismaClient();
 export const publicRouter = Router();
@@ -54,12 +58,7 @@ export function marketPriceForVariant(
   return price?.marketPrice ?? null;
 }
 
-export function compareNullableNumber(a: number | null, b: number | null): number {
-  if (a == null && b == null) return 0;
-  if (a == null) return 1;
-  if (b == null) return -1;
-  return a - b;
-}
+export const compareNullableNumber = compareNullableNumberByIndex;
 
 function addIfPresent(target: Record<string, unknown>, key: string, value: unknown) {
   if (typeof value === "string" && value.trim().length > 0) target[key] = value;
@@ -169,7 +168,8 @@ publicRouter.get("/collection/:userId/extras", async (req: Request, res: Respons
           note: listing.note ?? null,
         };
       })
-      .filter(Boolean);
+      .filter((listing): listing is NonNullable<typeof listing> => Boolean(listing))
+      .sort(compareCardContainerByIndex);
 
     res.json({
       user: { id: user.id, username: user.username },
@@ -229,15 +229,7 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
       include: { card: { include: { prices: true } } },
     });
 
-    entries.sort((a, b) => {
-      const setCompare = compareNullableNumber(a.card.setNumber, b.card.setNumber);
-      if (setCompare !== 0) return setCompare;
-      const collectorCompare = compareNullableNumber(a.card.collectorNumber, b.card.collectorNumber);
-      if (collectorCompare !== 0) return collectorCompare;
-      const cardNumberCompare = a.card.cardNumber.localeCompare(b.card.cardNumber);
-      if (cardNumberCompare !== 0) return cardNumberCompare;
-      return a.card.name.localeCompare(b.card.name);
-    });
+    entries.sort(compareCardContainerByIndex);
 
     const statsEntries = await prisma.inventoryEntry.findMany({
       where: { userId },

@@ -520,6 +520,20 @@ describe("inventory routes", () => {
       .expect((res) => expect(res.body.cards).toEqual([]));
   });
 
+  it("sorts suggested extras by card index", async () => {
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ id: "entry_late", cardId: "card_late", quantity: 5, card: card({ id: "card_late", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Late" }) }),
+      entry({ id: "entry_early", cardId: "card_early", quantity: 5, card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) }),
+    ]);
+
+    await auth(request(app).get("/api/inventory/extras"))
+      .expect(200)
+      .expect((res) => expect(res.body.cards.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_early", "card_late"]));
+  });
+
   it("covers extras policy, retention, and computed extras error/edge cases", async () => {
     prismaMock.userInventoryPolicy.upsert.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).get("/api/inventory/policy")).expect(500, { error: "Internal server error" });
@@ -694,6 +708,24 @@ describe("settings, public collection, and sync routes", () => {
           note: "Meet near MRT",
         }));
       });
+  });
+
+  it("sorts public extras for sale by card index", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: true, profile: null, references: [] });
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      { id: "listing_late", userId: "user_1", cardId: "card_late", variant: "normal", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_late", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Late" }) },
+      { id: "listing_early", userId: "user_1", cardId: "card_early", variant: "normal", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) },
+    ]);
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ id: "entry_late", cardId: "card_late", quantity: 5 }),
+      entry({ id: "entry_early", cardId: "card_early", quantity: 5 }),
+    ]);
+
+    await request(app).get("/api/public/collection/user_1/extras")
+      .expect(200)
+      .expect((res) => expect(res.body.listings.map((item: { id: string }) => item.id)).toEqual(["listing_early", "listing_late"]));
   });
 
   it("hides public extras with invalid variants/no current extras and returns persistence errors", async () => {

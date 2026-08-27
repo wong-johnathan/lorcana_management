@@ -80,18 +80,24 @@ describe("extras for sale private routes", () => {
     await request(app).get("/api/extras-for-sale").expect(401, { error: "Authentication required" });
   });
 
-  it("lists owner listings with public quantity capped by current extras", async () => {
+  it("lists owner listings sorted by card index with public quantity capped by current extras", async () => {
     prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
     prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([entry({ quantity: 5 })]);
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([listing({ desiredQuantity: 3 })]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ id: "entry_late", cardId: "card_late", quantity: 5 }),
+      entry({ id: "entry_early", cardId: "card_early", quantity: 5 }),
+    ]);
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      listing({ id: "listing_late", cardId: "card_late", desiredQuantity: 3, card: card({ id: "card_late", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Late" }) }),
+      listing({ id: "listing_early", cardId: "card_early", desiredQuantity: 3, card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) }),
+    ]);
 
     await auth(request(app).get("/api/extras-for-sale"))
       .expect(200)
       .expect((res) => {
-        expect(res.body.listings).toHaveLength(1);
+        expect(res.body.listings.map((item: { id: string }) => item.id)).toEqual(["listing_early", "listing_late"]);
         expect(res.body.listings[0]).toEqual(expect.objectContaining({
-          id: "listing_1",
+          id: "listing_early",
           variant: "normal",
           desiredQuantity: 3,
           publicQuantity: 1,
