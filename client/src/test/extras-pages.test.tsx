@@ -222,6 +222,78 @@ describe("extras for sale pages", () => {
     expect(await screen.findByText("Listing updated")).toBeInTheDocument();
   });
 
+  it("publishes an owner listing to the global marketplace", async () => {
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList
+      .mockResolvedValueOnce({ listings: [{
+        id: "listing_1",
+        cardId: "card_1",
+        card: makeCard(),
+        variant: "normal",
+        desiredQuantity: 2,
+        publicQuantity: 2,
+        referencePrice: 4,
+        referencePriceCurrency: "USD",
+        customPrice: null,
+        customPriceCurrency: "SGD",
+        note: null,
+        marketplaceVisible: false,
+        pricingMode: "FIXED",
+        askingPriceMinor: null,
+        currency: null,
+        condition: null,
+        cardLanguage: null,
+        originCountryCode: null,
+        publicLocality: null,
+        allowsMeetup: false,
+        shipsDomestically: false,
+        shipsInternationally: false,
+        shipsWorldwide: false,
+        destinationCountries: [],
+        status: "active",
+      }] })
+      .mockResolvedValue({ listings: [] });
+    apiMocks.extrasUpdate.mockResolvedValue({ listing: {} });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Extras for Sale" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    await userEvent.click(screen.getByLabelText("Publish to marketplace"));
+    await userEvent.type(screen.getByLabelText("Marketplace price"), "25");
+    await userEvent.selectOptions(screen.getByLabelText("Marketplace currency"), "SGD");
+    await userEvent.selectOptions(screen.getByLabelText("Condition"), "NEAR_MINT");
+    await userEvent.clear(screen.getByLabelText("Card language"));
+    await userEvent.type(screen.getByLabelText("Card language"), "EN");
+    await userEvent.clear(screen.getByLabelText("Seller country"));
+    await userEvent.type(screen.getByLabelText("Seller country"), "SG");
+    await userEvent.type(screen.getByLabelText("Public locality"), "Punggol");
+    await userEvent.click(screen.getByLabelText("Meetup"));
+    await userEvent.click(screen.getByLabelText("Domestic shipping"));
+    await userEvent.click(screen.getByRole("button", { name: "Save listing" }));
+
+    expect(apiMocks.extrasUpdate).toHaveBeenCalledWith("listing_1", expect.objectContaining({
+      marketplaceVisible: true,
+      pricingMode: "FIXED",
+      askingPriceMinor: 2500,
+      currency: "SGD",
+      condition: "NEAR_MINT",
+      cardLanguage: "EN",
+      originCountryCode: "SG",
+      publicLocality: "Punggol",
+      allowsMeetup: true,
+      shipsDomestically: true,
+      shipsInternationally: false,
+      shipsWorldwide: false,
+      destinationCountries: [],
+    }));
+  });
+
   it("lists all extras in bulk and lands on the listings tab", async () => {
     apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
     apiMocks.extrasList.mockResolvedValue({ listings: [] });

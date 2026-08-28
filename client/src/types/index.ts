@@ -147,6 +147,11 @@ export interface ExtraForSaleListing {
   cardLanguage?: string | null;
   originCountryCode?: string | null;
   publicLocality?: string | null;
+  allowsMeetup?: boolean;
+  shipsDomestically?: boolean;
+  shipsInternationally?: boolean;
+  shipsWorldwide?: boolean;
+  destinationCountries?: string[];
   fulfilment?: MarketplaceFulfilmentCoverage | null;
   eligibility?: MarketplaceListingEligibility;
 }
