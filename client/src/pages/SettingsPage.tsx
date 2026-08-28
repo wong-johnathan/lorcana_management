@@ -5,8 +5,10 @@ import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
 import UserReferencesEditor from "../components/profile/UserReferencesEditor";
 import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
+import { useAuth } from "../context/AuthContext";
 
 export default function SettingsPage() {
+  const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [extrasPolicy, setExtrasPolicy] = useState<InventoryPolicy | null>(null);
@@ -30,6 +32,10 @@ export default function SettingsPage() {
 
   const handleToggle = async () => {
     if (!settings) return;
+    if (!settings.publicEnabled && !user?.emailVerifiedAt) {
+      setError("Verify your Google email before publishing your profile.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -182,6 +188,11 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-6">
       <h2 className="text-lg font-semibold">Profile Settings</h2>
+      <div className={`rounded-lg border p-3 text-sm ${user?.emailVerifiedAt ? "border-emerald-900 bg-emerald-950/40 text-emerald-300" : "border-amber-900 bg-amber-950/30 text-amber-200"}`}>
+        {user?.emailVerifiedAt
+          ? `Email verified${user.email ? `: ${user.email}` : ""}`
+          : "Verify your Google email before publishing your collection, contact fields, references, or Extras for Sale."}
+      </div>
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
       {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
 
@@ -193,7 +204,7 @@ export default function SettingsPage() {
           </div>
           <button
             onClick={handleToggle}
-            disabled={saving}
+            disabled={saving || (!settings.publicEnabled && !user?.emailVerifiedAt)}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 focus:ring-offset-gray-900 ${settings.publicEnabled ? "bg-amber-500" : "bg-gray-700"}`}
             role="switch"
             aria-checked={settings.publicEnabled}
@@ -235,11 +246,11 @@ export default function SettingsPage() {
           <h3 className="font-medium">Public profile information</h3>
           <p className="mt-1 text-sm text-gray-400">All fields are optional. Private fields never appear on shared collection links.</p>
         </div>
-        <ProfileForm profile={profile} saving={saving} onSubmit={handleProfileSave} />
+        <ProfileForm profile={profile} saving={saving} canExposeContactFields={Boolean(user?.emailVerifiedAt)} onSubmit={handleProfileSave} />
       </div>
 
       <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
-        <UserReferencesEditor references={profile.references} saving={saving} onCreate={handleReferenceCreate} onUpdate={handleReferenceUpdate} onDelete={handleReferenceDelete} />
+        <UserReferencesEditor references={profile.references} saving={saving} canExposeReferences={Boolean(user?.emailVerifiedAt)} onCreate={handleReferenceCreate} onUpdate={handleReferenceUpdate} onDelete={handleReferenceDelete} />
       </div>
     </div>
   );

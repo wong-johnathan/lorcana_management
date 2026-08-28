@@ -6,6 +6,7 @@ type ReferenceDraft = Omit<UserReference, "id">;
 type UserReferencesEditorProps = {
   references: UserReference[];
   saving: boolean;
+  canExposeReferences?: boolean;
   onCreate: (data: ReferenceDraft) => void | Promise<void>;
   onUpdate: (id: string, data: Partial<ReferenceDraft>) => void | Promise<void>;
   onDelete: (id: string) => void | Promise<void>;
@@ -18,7 +19,7 @@ const EMPTY_DRAFT: ReferenceDraft = {
   visible: false,
 };
 
-export default function UserReferencesEditor({ references, saving, onCreate, onUpdate, onDelete }: UserReferencesEditorProps) {
+export default function UserReferencesEditor({ references, saving, canExposeReferences = true, onCreate, onUpdate, onDelete }: UserReferencesEditorProps) {
   const [draft, setDraft] = useState<ReferenceDraft>(EMPTY_DRAFT);
 
   const submit = async (event: React.FormEvent) => {
@@ -28,7 +29,7 @@ export default function UserReferencesEditor({ references, saving, onCreate, onU
       name: draft.name.trim(),
       description: draft.description?.trim() || null,
       contactInfo: draft.contactInfo?.trim() || null,
-      visible: draft.visible,
+      visible: canExposeReferences && draft.visible,
     });
     setDraft(EMPTY_DRAFT);
   };
@@ -55,7 +56,7 @@ export default function UserReferencesEditor({ references, saving, onCreate, onU
                 <p className="mt-1 text-xs text-gray-500">{reference.visible ? "Visible publicly" : "Private"}</p>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={() => onUpdate(reference.id, { visible: !reference.visible })} disabled={saving} className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:border-amber-400">
+                <button type="button" onClick={() => onUpdate(reference.id, { visible: !reference.visible })} disabled={saving || (!canExposeReferences && !reference.visible)} className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-200 hover:border-amber-400 disabled:opacity-60">
                   {reference.visible ? `Hide ${reference.name}` : `Show ${reference.name}`}
                 </button>
                 <button type="button" onClick={() => onDelete(reference.id)} disabled={saving} className="rounded border border-red-900 px-2 py-1 text-xs text-red-300 hover:border-red-500">
@@ -81,8 +82,9 @@ export default function UserReferencesEditor({ references, saving, onCreate, onU
           <input className={fieldClass} value={draft.contactInfo ?? ""} onChange={(e) => setDraft((current) => ({ ...current, contactInfo: e.target.value }))} />
         </label>
         <label className="flex items-center gap-2 text-sm text-gray-400">
-          <input type="checkbox" checked={draft.visible} onChange={(e) => setDraft((current) => ({ ...current, visible: e.target.checked }))} />
+          <input type="checkbox" checked={canExposeReferences && draft.visible} disabled={!canExposeReferences} onChange={(e) => setDraft((current) => ({ ...current, visible: e.target.checked }))} />
           Show this reference publicly
+          {!canExposeReferences && <span className="text-amber-300">Verify Google email first</span>}
         </label>
         <button type="submit" disabled={saving || !draft.name.trim()} className="w-fit rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-100 hover:bg-gray-700 disabled:opacity-60">
           Add reference

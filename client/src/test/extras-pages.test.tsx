@@ -60,6 +60,10 @@ vi.mock("../services/api", () => ({
   cards: { get: apiMocks.cardsGet },
 }));
 
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ user: { id: "user_1", username: "jw", email: "jw@example.com", emailVerifiedAt: "2026-08-28T00:00:00.000Z" } }),
+}));
+
 vi.mock("../components/profile/ProfileForm", () => ({
   default: ({ onSubmit }: { onSubmit: (data: any) => void }) => <button type="button" onClick={() => onSubmit({ displayName: "jw" })}>Save profile form</button>,
 }));

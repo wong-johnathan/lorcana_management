@@ -1,5 +1,6 @@
 import type {
   AuthResponse,
+  AuthConfig,
   PaginatedCards,
   Card,
   InventoryEntry,
@@ -75,7 +76,12 @@ export const auth = {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
-  config: () => request<{ registrationEnabled: boolean }>("/auth/config"),
+  googleLogin: (credential: string) =>
+    request<AuthResponse>("/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    }),
+  config: () => request<AuthConfig>("/auth/config"),
 };
 
 export const cards = {

@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql://lorcana:lorcana@db:5432/lorcana_inventory
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       REGISTER: ${REGISTER:-true}
       PORT: "3001"

@@ -19,6 +19,7 @@
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "google-auth-library": "^11.0.2",
     "jsonwebtoken": "^9.0.2",
     "node-cron": "^4.5.0"
   },

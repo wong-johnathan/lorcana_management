@@ -7,6 +7,7 @@ import {
   MAX_PROFILE_IMAGE_BYTES,
   uploadProfileImage,
 } from "../services/objectStorage.js";
+import { requireVerifiedEmailForAction } from "../services/userVerification.js";
 
 const prisma = new PrismaClient();
 export const profileRouter = Router();
@@ -130,6 +131,10 @@ function referenceData(input: ReferenceInput) {
   return data;
 }
 
+function exposesContactFields(body: Record<string, unknown>): boolean {
+  return VISIBILITY_FIELDS.some((field) => body[field] === true);
+}
+
 profileRouter.get("/me", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
@@ -147,6 +152,7 @@ profileRouter.get("/me", async (req: AuthRequest, res: Response) => {
 profileRouter.put("/me", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
+    if (exposesContactFields(req.body || {}) && !(await requireVerifiedEmailForAction(prisma, userId, res))) return;
     const data = buildProfileData(req.body || {}, userId);
     const profile = await prisma.userProfile.upsert({
       where: { userId },
@@ -228,6 +234,7 @@ profileRouter.post("/me/references", async (req: AuthRequest, res: Response) => 
   try {
     const userId = req.user!.userId;
     const data = referenceData(req.body || {});
+    if (data.visible === true && !(await requireVerifiedEmailForAction(prisma, userId, res))) return;
     if (!data.name || typeof data.name !== "string") {
       res.status(400).json({ error: "Reference name is required" });
       return;
@@ -258,6 +265,7 @@ profileRouter.put("/me/references/:id", async (req: AuthRequest, res: Response) 
       return;
     }
     const data = referenceData(req.body || {});
+    if (data.visible === true && !(await requireVerifiedEmailForAction(prisma, userId, res))) return;
     if ("name" in data && !data.name) {
       res.status(400).json({ error: "Reference name is required" });
       return;

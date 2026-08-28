@@ -46,12 +46,19 @@ export interface InventoryEntry {
 export interface User {
   id: string;
   username: string;
+  email?: string | null;
   emailVerifiedAt?: string | null;
+  authProvider?: "LOCAL" | "GOOGLE" | string;
 }
 
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface AuthConfig {
+  registrationEnabled: boolean;
+  googleClientId: string | null;
 }
 
 export interface PaginatedCards {

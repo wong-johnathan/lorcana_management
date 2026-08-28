@@ -9,11 +9,12 @@ const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
 interface SuggestedExtrasPanelProps {
   cards: InventoryExtrasCard[];
   autoSuggestExtras: boolean;
+  canList?: boolean;
   onList: (card: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency) => Promise<void> | void;
   onOverride: (card: InventoryExtrasCard, keep: { keepNormalQuantity: number; keepFoilQuantity: number; keepHolofoilQuantity: number }) => Promise<void> | void;
 }
 
-export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList, onOverride }: SuggestedExtrasPanelProps) {
+export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, canList = true, onList, onOverride }: SuggestedExtrasPanelProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, string>>({});
@@ -118,9 +119,10 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, onList,
                       <button
                         type="button"
                         onClick={() => onList(item, variant, Math.min(Math.max(1, desired), available), notes[key] ?? "", prices[key] ? Number(prices[key]) : null, (currencies[key] ?? "SGD") as ListingCurrency)}
-                        className="mt-3 w-full rounded bg-amber-500 px-3 py-2 font-semibold text-gray-950 hover:bg-amber-400"
+                        disabled={!canList}
+                        className="mt-3 w-full rounded bg-amber-500 px-3 py-2 font-semibold text-gray-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        List {Math.min(Math.max(1, desired), available)}
+                        {canList ? `List ${Math.min(Math.max(1, desired), available)}` : "Verify email to list"}
                       </button>
                     </div>
                   );

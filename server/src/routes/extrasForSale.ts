@@ -19,6 +19,7 @@ import {
   MARKETPLACE_PRICING_MODES,
   evaluateMarketplaceEligibility,
 } from "../services/marketplaceAvailability.js";
+import { requireVerifiedEmailForAction } from "../services/userVerification.js";
 import { compareCardContainerByIndex } from "../utils/cardSort.js";
 
 const prisma = new PrismaClient();
@@ -288,6 +289,7 @@ extrasForSaleRouter.get("/", async (req: AuthRequest, res: Response) => {
 extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
+    if (!(await requireVerifiedEmailForAction(prisma, userId, res))) return;
     const { cardId, note } = req.body;
     if (!cardId || typeof cardId !== "string") {
       res.status(400).json({ error: "cardId is required" });
@@ -392,6 +394,7 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
 extrasForSaleRouter.post("/list-all", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
+    if (!(await requireVerifiedEmailForAction(prisma, userId, res))) return;
     const [policy, overrides, entries, existingListings] = await Promise.all([
       getOrCreateInventoryPolicy(userId),
       prisma.cardRetentionOverride.findMany({ where: { userId } }),

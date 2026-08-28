@@ -84,6 +84,7 @@ describe("API client wrapper", () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) });
     await Promise.all([
       auth.register("a", "secret"),
+      auth.googleLogin("google-id-token"),
       auth.config(),
       cards.list({ search: "Mickey" }),
       cards.filters(),
@@ -145,6 +146,7 @@ describe("API client wrapper", () => {
       analysis.batchStatus(),
     ]);
     expect(fetchMock).toHaveBeenCalledWith("/api/cards?search=Mickey", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/google", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1?rarity=Common", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1/extras", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale/list-all", expect.objectContaining({ method: "POST" }));

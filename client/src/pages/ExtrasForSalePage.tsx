@@ -5,6 +5,7 @@ import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
 import ManualOverridesPanel from "../components/extras/ManualOverridesPanel";
 import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
+import { useAuth } from "../context/AuthContext";
 
 const defaultPolicy: InventoryPolicy = {
   keepNormalQuantity: 4,
@@ -16,6 +17,8 @@ const defaultPolicy: InventoryPolicy = {
 type ExtrasTab = "suggested" | "listings" | "overrides" | "settings";
 
 export default function ExtrasForSalePage() {
+  const { user } = useAuth();
+  const canListExtras = Boolean(user?.emailVerifiedAt);
   const [tab, setTab] = useState<ExtrasTab>("suggested");
   const [policy, setPolicy] = useState<InventoryPolicy>(defaultPolicy);
   const [extras, setExtras] = useState<InventoryExtrasCard[]>([]);
@@ -65,6 +68,10 @@ export default function ExtrasForSalePage() {
   };
 
   const createListing = async (item: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency) => {
+    if (!canListExtras) {
+      setError("Verify your Google email before listing extras for sale.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -167,6 +174,10 @@ export default function ExtrasForSalePage() {
   };
 
   const listAll = async () => {
+    if (!canListExtras) {
+      setError("Verify your Google email before listing extras for sale.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -207,12 +218,17 @@ export default function ExtrasForSalePage() {
         <button
           type="button"
           onClick={listAll}
-          disabled={saving}
+          disabled={saving || !canListExtras}
           className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
         >
-          {saving ? "Listing..." : "List all extras"}
+          {saving ? "Listing..." : canListExtras ? "List all extras" : "Verify email to list"}
         </button>
       </div>
+      {!canListExtras && (
+        <div className="rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-200">
+          Verify your Google email before selling, buying, contacting others, or listing your profile.
+        </div>
+      )}
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
       {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
       {saving && <div className="text-sm text-gray-400">Saving...</div>}
@@ -225,7 +241,7 @@ export default function ExtrasForSalePage() {
       </div>
 
       {tab === "suggested" ? (
-        <SuggestedExtrasPanel cards={extras} autoSuggestExtras={policy.autoSuggestExtras} onList={createListing} onOverride={saveOverride} />
+        <SuggestedExtrasPanel cards={extras} autoSuggestExtras={policy.autoSuggestExtras} canList={canListExtras} onList={createListing} onOverride={saveOverride} />
       ) : tab === "listings" ? (
         <ActiveExtrasListingsPanel listings={listings} onStatusChange={updateStatus} onRemove={removeListing} onEdit={updateListing} />
       ) : tab === "overrides" ? (

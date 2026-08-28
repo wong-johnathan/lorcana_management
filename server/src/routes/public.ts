@@ -130,12 +130,13 @@ publicRouter.get("/collection/:userId/extras", async (req: Request, res: Respons
         id: true,
         username: true,
         publicEnabled: true,
+        emailVerifiedAt: true,
         profile: true,
         references: true,
       },
     });
 
-    if (!user || !user.publicEnabled) {
+    if (!user || !user.publicEnabled || ("emailVerifiedAt" in user && !user.emailVerifiedAt)) {
       res.status(404).json({ error: "Collection not found" });
       return;
     }
@@ -198,12 +199,13 @@ publicRouter.get("/collection/:userId", async (req: Request, res: Response) => {
         id: true,
         username: true,
         publicEnabled: true,
+        emailVerifiedAt: true,
         profile: true,
         references: true,
       },
     });
 
-    if (!user || !user.publicEnabled) {
+    if (!user || !user.publicEnabled || ("emailVerifiedAt" in user && !user.emailVerifiedAt)) {
       res.status(404).json({ error: "Collection not found" });
       return;
     }

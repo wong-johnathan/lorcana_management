@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
+const googleMocks = vi.hoisted(() => ({
+  verifyIdToken: vi.fn(),
+}));
+
+vi.mock("google-auth-library", () => ({
+  OAuth2Client: vi.fn(function OAuth2Client() {
+    return { verifyIdToken: googleMocks.verifyIdToken };
+  }),
+}));
+
 vi.mock("../src/services/analysis.js", () => ({
   analyzeCardMarket: vi.fn().mockResolvedValue('{"summary":"ok","fullAnalysis":"ok"}'),
 }));
@@ -84,6 +94,8 @@ function entry(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   resetPrismaMock();
   resetSyncStatuses();
+  process.env.GOOGLE_CLIENT_ID = "google-client-id";
+  googleMocks.verifyIdToken.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(global, "setTimeout").mockImplementation((handler: TimerHandler) => {
@@ -99,9 +111,16 @@ describe("health and auth routes", () => {
 
   it("reports registration config from REGISTER env", async () => {
     const old = process.env.REGISTER;
+    const oldGoogleClientId = process.env.GOOGLE_CLIENT_ID;
     process.env.REGISTER = "false";
-    await request(app).get("/api/auth/config").expect(200, { registrationEnabled: false });
+    process.env.GOOGLE_CLIENT_ID = "google-client-id";
+    await request(app).get("/api/auth/config").expect(200, { registrationEnabled: false, googleClientId: "google-client-id" });
+
+    delete process.env.GOOGLE_CLIENT_ID;
+    await request(app).get("/api/auth/config").expect(200, { registrationEnabled: false, googleClientId: null });
+
     process.env.REGISTER = old;
+    process.env.GOOGLE_CLIENT_ID = oldGoogleClientId;
   });
 
   it("registers users, lowercases usernames, and rejects invalid registration states", async () => {
@@ -118,7 +137,7 @@ describe("health and auth routes", () => {
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
     prismaMock.user.create.mockResolvedValueOnce({ id: "user_1", username: "jw" });
     const res = await request(app).post("/api/auth/register").send({ username: "JW", password: "secret1" }).expect(201);
-    expect(res.body.user).toEqual({ id: "user_1", username: "jw" });
+    expect(res.body.user).toEqual({ id: "user_1", username: "jw", email: null, emailVerifiedAt: null, authProvider: "LOCAL" });
     expect(res.body.token).toEqual(expect.any(String));
     expect(prismaMock.user.create).toHaveBeenCalledWith({ data: { username: "jw", passwordHash: expect.any(String) } });
   });
@@ -132,10 +151,75 @@ describe("health and auth routes", () => {
     await request(app).post("/api/auth/login").send({ username: "jw", password: "wrong" }).expect(401, { error: "Invalid username or password" });
 
     const bcrypt = await import("bcryptjs");
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "google_user", username: "google", passwordHash: null });
+    await request(app).post("/api/auth/login").send({ username: "google", password: "secret1" }).expect(401, { error: "Invalid username or password" });
+
     prismaMock.user.findUnique.mockResolvedValueOnce({ id: "u", username: "jw", passwordHash: await bcrypt.hash("secret1", 4) });
     const res = await request(app).post("/api/auth/login").send({ username: "JW", password: "secret1" }).expect(200);
-    expect(res.body.user).toEqual({ id: "u", username: "jw" });
+    expect(res.body.user).toEqual({ id: "u", username: "jw", email: null, emailVerifiedAt: null, authProvider: "LOCAL" });
     expect(res.body.token).toEqual(expect.any(String));
+
+    prismaMock.user.findUnique.mockRejectedValueOnce(new Error("db"));
+    await request(app).post("/api/auth/login").send({ username: "jw", password: "secret1" }).expect(500, { error: "Internal server error" });
+  });
+
+  it("logs in with Google, links existing email users, and creates verified users", async () => {
+    googleMocks.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({ sub: "google-sub", email: "JW@Example.com", email_verified: true, name: "John Wong" }),
+    });
+
+    await request(app).post("/api/auth/google").send({}).expect(400, { error: "Google credential is required" });
+
+    const oldGoogleClientId = process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_ID;
+    await request(app).post("/api/auth/google").send({ credential: "id-token" }).expect(503, { error: "Google login is not configured" });
+    process.env.GOOGLE_CLIENT_ID = oldGoogleClientId;
+
+    googleMocks.verifyIdToken.mockResolvedValueOnce({
+      getPayload: () => ({ sub: "google-sub", email: "jw@example.com", email_verified: false }),
+    });
+    await request(app).post("/api/auth/google").send({ credential: "id-token" }).expect(403, { error: "Google email is not verified" });
+
+    googleMocks.verifyIdToken.mockRejectedValueOnce(new Error("bad token"));
+    await request(app).post("/api/auth/google").send({ credential: "bad-token" }).expect(401, { error: "Invalid Google credential" });
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "u1", username: "jw", email: "jw@example.com", emailNormalized: "jw@example.com", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"), authProvider: "GOOGLE" });
+    const existingRes = await request(app).post("/api/auth/google").send({ credential: "id-token" }).expect(200);
+    expect(existingRes.body.user).toEqual(expect.objectContaining({ id: "u1", username: "jw", email: "jw@example.com", authProvider: "GOOGLE" }));
+    expect(googleMocks.verifyIdToken).toHaveBeenLastCalledWith({ idToken: "id-token", audience: "google-client-id" });
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "u2", username: "legacy", email: "jw@example.com", emailNormalized: "jw@example.com", emailVerifiedAt: null, authProvider: "LOCAL" });
+    prismaMock.user.update.mockResolvedValueOnce({ id: "u2", username: "legacy", email: "JW@Example.com", emailNormalized: "jw@example.com", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"), authProvider: "GOOGLE" });
+    const linkedRes = await request(app).post("/api/auth/google").send({ credential: "id-token" }).expect(200);
+    expect(linkedRes.body.user).toEqual(expect.objectContaining({ id: "u2", username: "legacy", email: "JW@Example.com", authProvider: "GOOGLE" }));
+    expect(prismaMock.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "u2" },
+      data: expect.objectContaining({ googleSub: "google-sub", emailVerifiedAt: expect.any(Date), authProvider: "GOOGLE" }),
+    }));
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "collision" })
+      .mockResolvedValueOnce(null);
+    prismaMock.user.create.mockResolvedValueOnce({ id: "u3", username: "jw1", email: "JW@Example.com", emailNormalized: "jw@example.com", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"), authProvider: "GOOGLE" });
+    const createdRes = await request(app).post("/api/auth/google").send({ credential: "id-token" }).expect(201);
+    expect(createdRes.body.user).toEqual(expect.objectContaining({ id: "u3", username: "jw1", email: "JW@Example.com", authProvider: "GOOGLE" }));
+    expect(prismaMock.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ username: "jw1", googleSub: "google-sub", emailNormalized: "jw@example.com", emailVerifiedAt: expect.any(Date), passwordHash: null }),
+    }));
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ id: "collision" });
+    prismaMock.user.create.mockResolvedValueOnce({ id: "u4", username: "jw-fallback", email: "JW@Example.com", emailNormalized: "jw@example.com", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"), authProvider: "GOOGLE" });
+    await request(app).post("/api/auth/google").send({ credential: "id-token" }).expect(201);
+    expect(prismaMock.user.create).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ username: expect.stringMatching(/^jw\d+$/) }),
+    }));
   });
 });
 
@@ -606,12 +690,15 @@ describe("settings, public collection, and sync routes", () => {
 
     prismaMock.user.update.mockResolvedValueOnce({ id: "user_1", publicEnabled: false });
     await auth(request(app).patch("/api/settings/profile").send({ publicEnabled: false })).expect(200).expect((res) => expect(res.body.publicEnabled).toBe(false));
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", emailVerifiedAt: null });
+    await auth(request(app).patch("/api/settings/profile").send({ publicEnabled: true })).expect(403, { error: "Verified email required" });
     await auth(request(app).patch("/api/settings/profile").send({ publicEnabled: "yes" })).expect(400, { error: "publicEnabled (boolean) is required" });
 
     prismaMock.user.findUnique.mockResolvedValueOnce(null);
     await auth(request(app).get("/api/settings/profile")).expect(404, { error: "User not found" });
     prismaMock.user.findUnique.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).get("/api/settings/profile")).expect(500, { error: "Internal server error" });
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z") });
     prismaMock.user.update.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).patch("/api/settings/profile").send({ publicEnabled: true })).expect(500, { error: "Internal server error" });
   });

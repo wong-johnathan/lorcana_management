@@ -59,6 +59,7 @@ const visibleReference = {
 
 beforeEach(() => {
   resetPrismaMock();
+  prismaMock.user.findUnique.mockResolvedValue({ id: "user_1", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z") });
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -131,6 +132,17 @@ describe("profile routes", () => {
     }));
   });
 
+  it("requires a verified email before exposing profile contact fields", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", emailVerifiedAt: null });
+
+    await auth(request(app).put("/api/profile/me").send({
+      telegram: "johntelegram",
+      telegramVisible: true,
+    })).expect(403, { error: "Verified email required" });
+
+    expect(prismaMock.userProfile.upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe profile image payloads and uploads valid edited images through storage abstraction", async () => {
     await auth(request(app).post("/api/profile/me/photo").send({
       contentType: "image/svg+xml",
@@ -196,6 +208,18 @@ describe("profile routes", () => {
     prismaMock.userReference.findFirst.mockResolvedValueOnce(visibleReference);
     prismaMock.userReference.delete.mockResolvedValueOnce(visibleReference);
     await auth(request(app).delete("/api/profile/me/references/ref_1")).expect(204);
+  });
+
+  it("requires a verified email before creating visible trade references", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", emailVerifiedAt: null });
+
+    await auth(request(app).post("/api/profile/me/references").send({
+      name: "Alice",
+      contactInfo: "@alice",
+      visible: true,
+    })).expect(403, { error: "Verified email required" });
+
+    expect(prismaMock.userReference.create).not.toHaveBeenCalled();
   });
 
   it("rejects invalid references, deletes photos, and reports persistence failures", async () => {
@@ -272,6 +296,7 @@ describe("public collection profile payload", () => {
       id: "user_1",
       username: "jw",
       publicEnabled: true,
+      emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"),
       profile: privateProfile,
       references: [
         visibleReference,
@@ -294,5 +319,19 @@ describe("public collection profile payload", () => {
     expect(res.body.profile).not.toHaveProperty("email");
     expect(res.body.profile).not.toHaveProperty("phoneNumber");
     expect(res.body.profile).not.toHaveProperty("facebook");
+  });
+
+  it("does not expose public profile data for unverified users", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: "user_1",
+      username: "jw",
+      publicEnabled: true,
+      emailVerifiedAt: null,
+      profile: privateProfile,
+      references: [visibleReference],
+    });
+
+    await request(app).get("/api/public/collection/user_1").expect(404, { error: "Collection not found" });
+    expect(prismaMock.inventoryEntry.findMany).not.toHaveBeenCalled();
   });
 });

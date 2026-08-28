@@ -72,10 +72,10 @@ async function mockApi(page: Page) {
     const path = url.pathname;
 
     if (path === "/api/auth/config") {
-      return route.fulfill({ json: { registrationEnabled: true } });
+      return route.fulfill({ json: { registrationEnabled: true, googleClientId: null } });
     }
     if (path === "/api/auth/login") {
-      return route.fulfill({ json: { token: validClientToken, user: { id: "user_1", username: "jw" } } });
+      return route.fulfill({ json: { token: validClientToken, user: { id: "user_1", username: "jw", email: "jw@example.com", emailVerifiedAt: "2026-08-28T00:00:00.000Z", authProvider: "LOCAL" } } });
     }
     if (path === "/api/cards/filters") {
       return route.fulfill({
@@ -283,6 +283,7 @@ test("anonymous user browses database, opens card detail, and runs master-set es
 
 test("authenticated user logs in, sees inventory, and public collection stays read-only", async ({ page }) => {
   await page.goto("/login");
+  await page.getByRole("button", { name: "Use password login" }).click();
   await page.locator('input[type="text"]').fill("jw");
   await page.locator('input[type="password"]').fill("secret1");
   await page.getByRole("button", { name: "Sign In" }).click();
@@ -299,6 +300,7 @@ test("authenticated user logs in, sees inventory, and public collection stays re
 
 test("user edits public profile and shared collection profile tab only shows visible fields", async ({ page }) => {
   await page.goto("/login");
+  await page.getByRole("button", { name: "Use password login" }).click();
   await page.locator('input[type="text"]').fill("jw");
   await page.locator('input[type="password"]').fill("secret1");
   await page.getByRole("button", { name: "Sign In" }).click();

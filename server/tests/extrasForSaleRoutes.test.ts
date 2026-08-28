@@ -74,6 +74,7 @@ function listing(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   resetPrismaMock();
+  prismaMock.user.findUnique.mockResolvedValue({ id: "user_1", username: "jw1005", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z") });
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
@@ -276,6 +277,18 @@ describe("extras for sale private routes", () => {
     })).expect(403, { error: "Seller email must be verified to publish marketplace listings" });
 
     expect(prismaMock.extraForSaleListing.update).not.toHaveBeenCalled();
+  });
+
+  it("requires a verified email before creating sell listings", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw1005", emailVerifiedAt: null });
+
+    await auth(request(app).post("/api/extras-for-sale").send({
+      cardId: "card_1",
+      variant: "normal",
+      desiredQuantity: 1,
+    })).expect(403, { error: "Verified email required" });
+
+    expect(prismaMock.extraForSaleListing.create).not.toHaveBeenCalled();
   });
 
   it("validates listing inputs and returns route persistence failures", async () => {
