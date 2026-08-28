@@ -79,6 +79,8 @@ export const prismaMock = {
   cardPrice: {
     upsert: vi.fn(),
     findMany: vi.fn(),
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
   },
   cardAnalysis: {
     findUnique: vi.fn(),

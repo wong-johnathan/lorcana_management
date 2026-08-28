@@ -208,26 +208,47 @@ describe("card and price sync services", () => {
     await expect(fetchPriceGroups()).rejects.toThrow("Failed to fetch groups: 503");
   });
 
-  it("syncs tcgcsv prices, denormalizes displayPrice, skips 404 groups, and counts unmatched products", async () => {
+  it("syncs tcgcsv prices, replaces stale rows, clears missing product prices, skips unavailable groups, and counts unmatched products", async () => {
     fetchMock
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [
+        { productId: 1, name: "Mickey" },
+        { productId: 2, name: "Unmatched" },
+        { productId: 3, name: "No current price" },
+        { productId: 4, name: "All null price" },
+      ] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [
         { productId: 1, subTypeName: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
         { productId: 1, subTypeName: "Cold Foil", lowPrice: 5, midPrice: 6, highPrice: 7, marketPrice: 8 },
-        { productId: 2, subTypeName: "Normal", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null },
+        { productId: 4, subTypeName: "Normal", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null },
       ] }) })
       .mockResolvedValueOnce({ ok: false, status: 404 });
     prismaMock.card.findMany
       .mockResolvedValueOnce([{ id: "card_1" }])
-      .mockResolvedValueOnce([]);
-    prismaMock.cardPrice.upsert.mockResolvedValue({});
-    prismaMock.cardPrice.findMany.mockResolvedValue([{ variant: "Normal", marketPrice: 4 }, { variant: "Cold Foil", marketPrice: 8 }]);
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "card_no_price" }])
+      .mockResolvedValueOnce([{ id: "card_all_null" }]);
+    prismaMock.cardPrice.deleteMany.mockResolvedValue({});
+    prismaMock.cardPrice.createMany.mockResolvedValue({});
     prismaMock.card.update.mockResolvedValue({});
     const progress = vi.fn();
 
     await expect(syncGroupPrices([{ groupId: 10, name: "A" }, { groupId: 11, name: "B" }], progress))
-      .resolves.toEqual({ groups: 2, matched: 1, unmatched: 1 });
-    expect(prismaMock.cardPrice.upsert).toHaveBeenCalledTimes(2);
+      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1 });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://tcgcsv.com/tcgplayer/71/10/products", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://tcgcsv.com/tcgplayer/71/10/prices", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(prismaMock.cardPrice.deleteMany).toHaveBeenCalledWith({ where: { cardId: "card_1" } });
+    expect(prismaMock.cardPrice.createMany).toHaveBeenCalledWith({ data: [
+      { cardId: "card_1", variant: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
+      { cardId: "card_1", variant: "Cold Foil", lowPrice: 5, midPrice: 6, highPrice: 7, marketPrice: 8 },
+    ] });
     expect(prismaMock.card.update).toHaveBeenCalledWith({ where: { id: "card_1" }, data: { displayPrice: 4 } });
+    expect(prismaMock.cardPrice.deleteMany).toHaveBeenCalledWith({ where: { cardId: "card_no_price" } });
+    expect(prismaMock.cardPrice.createMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.arrayContaining([expect.objectContaining({ cardId: "card_no_price" })]),
+    }));
+    expect(prismaMock.card.update).toHaveBeenCalledWith({ where: { id: "card_no_price" }, data: { displayPrice: null } });
+    expect(prismaMock.cardPrice.deleteMany).toHaveBeenCalledWith({ where: { cardId: "card_all_null" } });
+    expect(prismaMock.card.update).toHaveBeenCalledWith({ where: { id: "card_all_null" }, data: { displayPrice: null } });
     expect(progress).toHaveBeenLastCalledWith({ groupName: "B", groupIndex: 2, totalGroups: 2 });
   });
 });

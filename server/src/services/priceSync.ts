@@ -12,6 +12,10 @@ export interface TcgcsvGroup {
   name: string;
 }
 
+interface TcgcsvProduct {
+  productId: number;
+}
+
 interface TcgcsvPrice {
   productId: number;
   subTypeName: string;
@@ -47,6 +51,38 @@ export async function fetchPriceGroups(): Promise<TcgcsvGroup[]> {
   return groups;
 }
 
+function hasAnyPrice(price: TcgcsvPrice): boolean {
+  return [price.lowPrice, price.midPrice, price.highPrice, price.marketPrice].some((value) => value != null);
+}
+
+function displayPriceFromCurrentPrices(prices: TcgcsvPrice[]): number | null {
+  return prices.find((p) => p.subTypeName === "Normal")?.marketPrice
+    ?? prices.find((p) => p.marketPrice != null)?.marketPrice
+    ?? null;
+}
+
+async function replaceCardPrices(cardId: string, currentPrices: TcgcsvPrice[]) {
+  await prisma.cardPrice.deleteMany({ where: { cardId } });
+
+  if (currentPrices.length > 0) {
+    await prisma.cardPrice.createMany({
+      data: currentPrices.map((vp) => ({
+        cardId,
+        variant: vp.subTypeName,
+        lowPrice: vp.lowPrice,
+        midPrice: vp.midPrice,
+        highPrice: vp.highPrice,
+        marketPrice: vp.marketPrice,
+      })),
+    });
+  }
+
+  await prisma.card.update({
+    where: { id: cardId },
+    data: { displayPrice: displayPriceFromCurrentPrices(currentPrices) },
+  });
+}
+
 export async function syncGroupPrices(
   groups: TcgcsvGroup[],
   onProgress?: PriceSyncProgressCallback
@@ -57,14 +93,30 @@ export async function syncGroupPrices(
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     try {
-      const pricesRes = await fetch(
-        `https://tcgcsv.com/tcgplayer/${LORCANA_CATEGORY_ID}/${group.groupId}/prices`,
+      const productsRes = await fetch(
+        `https://tcgcsv.com/tcgplayer/${LORCANA_CATEGORY_ID}/${group.groupId}/products`,
         { headers: TCGCSV_HEADERS }
       );
-      if (pricesRes.ok) {
-        const { results: prices } = (await pricesRes.json()) as {
-          results: TcgcsvPrice[];
+      if (!productsRes.ok) {
+        if (productsRes.status !== 404) {
+          throw new Error(`Failed to fetch products for group ${group.groupId}: ${productsRes.status}`);
+        }
+      } else {
+        const { results: products } = (await productsRes.json()) as {
+          results: TcgcsvProduct[];
         };
+
+        const pricesRes = await fetch(
+          `https://tcgcsv.com/tcgplayer/${LORCANA_CATEGORY_ID}/${group.groupId}/prices`,
+          { headers: TCGCSV_HEADERS }
+        );
+        if (!pricesRes.ok && pricesRes.status !== 404) {
+          throw new Error(`Failed to fetch prices for group ${group.groupId}: ${pricesRes.status}`);
+        }
+
+        const { results: prices } = pricesRes.ok
+          ? (await pricesRes.json()) as { results: TcgcsvPrice[] }
+          : { results: [] as TcgcsvPrice[] };
 
         const pricesByProduct = new Map<number, TcgcsvPrice[]>();
         for (const p of prices) {
@@ -73,7 +125,10 @@ export async function syncGroupPrices(
           pricesByProduct.set(p.productId, list);
         }
 
-        for (const [productId, variantPrices] of pricesByProduct) {
+        const currentProductIds = new Set<number>(products.map((product) => product.productId));
+        for (const productId of pricesByProduct.keys()) currentProductIds.add(productId);
+
+        for (const productId of currentProductIds) {
           const matchingCards = await prisma.card.findMany({
             where: { tcgPlayerId: productId },
           });
@@ -82,32 +137,9 @@ export async function syncGroupPrices(
             continue;
           }
 
+          const currentPrices = (pricesByProduct.get(productId) ?? []).filter(hasAnyPrice);
           for (const card of matchingCards) {
-            for (const vp of variantPrices) {
-              await prisma.cardPrice.upsert({
-                where: { cardId_variant: { cardId: card.id, variant: vp.subTypeName } },
-                create: {
-                  cardId: card.id,
-                  variant: vp.subTypeName,
-                  lowPrice: vp.lowPrice,
-                  midPrice: vp.midPrice,
-                  highPrice: vp.highPrice,
-                  marketPrice: vp.marketPrice,
-                },
-                update: {
-                  lowPrice: vp.lowPrice,
-                  midPrice: vp.midPrice,
-                  highPrice: vp.highPrice,
-                  marketPrice: vp.marketPrice,
-                },
-              });
-            }
-
-            const allPrices = await prisma.cardPrice.findMany({ where: { cardId: card.id } });
-            const displayPrice = allPrices.find((p) => p.variant === "Normal")?.marketPrice
-              ?? allPrices[0]?.marketPrice
-              ?? null;
-            await prisma.card.update({ where: { id: card.id }, data: { displayPrice } });
+            await replaceCardPrices(card.id, currentPrices);
           }
           matched += matchingCards.length;
         }
