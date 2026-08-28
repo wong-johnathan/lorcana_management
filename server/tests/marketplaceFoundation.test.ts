@@ -11,6 +11,7 @@ import {
 } from "../src/services/marketplaceTransitions.js";
 import {
   createHashedToken,
+  createVerificationToken,
   isTokenExpired,
   normalizeEmail,
   verifyTokenHash,
@@ -84,6 +85,57 @@ describe("marketplace availability foundation", () => {
 
     expect(eligible).toEqual({ eligible: true, reasons: [] });
   });
+
+  it("surfaces every marketplace eligibility blocker and fulfils via meetup/domestic/worldwide", () => {
+    const blocked = evaluateMarketplaceEligibility({
+      listing: {
+        marketplaceVisible: true,
+        status: "paused",
+        askingPriceMinor: -1,
+        currency: "ZZZ",
+        condition: "UNKNOWN",
+        cardLanguage: "",
+        originCountryCode: "",
+        allowsMeetup: false,
+        shipsDomestically: false,
+        shipsInternationally: true,
+        shipsWorldwide: false,
+        destinationCountries: [],
+      },
+      seller: { emailVerifiedAt: null },
+      availableQuantity: 0,
+    });
+
+    expect(blocked.eligible).toBe(false);
+    expect(blocked.reasons).toEqual(expect.arrayContaining([
+      "seller email is not verified",
+      "listing is not active",
+      "asking price must be a non-negative integer minor-unit amount",
+      "valid currency is required",
+      "condition is required",
+      "card language is required",
+      "origin country is required",
+      "fulfilment coverage is required",
+      "available quantity must be greater than zero",
+    ]));
+
+    const common = {
+      marketplaceVisible: true,
+      status: "active",
+      askingPriceMinor: 0,
+      currency: "USD",
+      condition: "MINT",
+      cardLanguage: "EN",
+      originCountryCode: "US",
+      shipsInternationally: false,
+      destinationCountries: [],
+    };
+    const seller = { emailVerifiedAt: "2026-08-27T00:00:00.000Z" };
+
+    expect(evaluateMarketplaceEligibility({ listing: { ...common, allowsMeetup: true }, seller, availableQuantity: 1 }).eligible).toBe(true);
+    expect(evaluateMarketplaceEligibility({ listing: { ...common, shipsDomestically: true }, seller, availableQuantity: 1 }).eligible).toBe(true);
+    expect(evaluateMarketplaceEligibility({ listing: { ...common, shipsWorldwide: true }, seller, availableQuantity: 1 }).eligible).toBe(true);
+  });
 });
 
 describe("marketplace state transition guards", () => {
@@ -101,6 +153,19 @@ describe("marketplace state transition guards", () => {
     expect(assertReservationTransition({ currentStatus: "AWAITING_BUYER_CONFIRMATION", action: "BUYER_CONFIRM", actorRole: "BUYER" })).toBe("COMPLETED");
 
     expect(() => assertReservationTransition({ currentStatus: "COMPLETED", action: "CANCEL", actorRole: "SELLER" })).toThrow(MarketplaceTransitionError);
+  });
+
+  it("covers every valid enquiry and reservation transition branch", () => {
+    expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "SELLER_ACCEPT", actorRole: "SELLER" })).toBe("RESERVED");
+    expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "SELLER_DECLINE", actorRole: "SELLER" })).toBe("DECLINED");
+    expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "BUYER_WITHDRAW", actorRole: "BUYER" })).toBe("WITHDRAWN");
+    expect(assertEnquiryTransition({ currentStatus: "AWAITING_BUYER", action: "BUYER_COUNTER", actorRole: "BUYER" })).toBe("PENDING_SELLER");
+    expect(assertEnquiryTransition({ currentStatus: "AWAITING_BUYER", action: "BUYER_WITHDRAW", actorRole: "BUYER" })).toBe("WITHDRAWN");
+
+    expect(assertReservationTransition({ currentStatus: "RESERVED", action: "CANCEL", actorRole: "BUYER" })).toBe("CANCELLED");
+    expect(assertReservationTransition({ currentStatus: "AWAITING_BUYER_CONFIRMATION", action: "BUYER_DISPUTE", actorRole: "BUYER" })).toBe("DISPUTED");
+    expect(() => assertReservationTransition({ currentStatus: "RESERVED", action: "BUYER_CONFIRM", actorRole: "SELLER" })).toThrow("buyer action requires buyer actor");
+    expect(() => assertReservationTransition({ currentStatus: "RESERVED", action: "EXPIRE", actorRole: "SELLER" })).toThrow("system action requires system actor");
   });
 });
 
@@ -122,5 +187,16 @@ describe("email verification helpers", () => {
     const now = new Date("2026-08-27T12:00:00.000Z");
     expect(isTokenExpired(new Date("2026-08-27T11:59:59.000Z"), now)).toBe(true);
     expect(isTokenExpired(new Date("2026-08-27T12:00:01.000Z"), now)).toBe(false);
+  });
+
+  it("creates expiring opaque verification tokens without exposing the hash input", () => {
+    const now = new Date("2026-08-27T12:00:00.000Z");
+    const generated = createVerificationToken(60_000, now);
+
+    expect(generated.token).toEqual(expect.any(String));
+    expect(generated.tokenHash).toHaveLength(64);
+    expect(generated.tokenHash).not.toBe(generated.token);
+    expect(generated.expiresAt.toISOString()).toBe("2026-08-27T12:01:00.000Z");
+    expect(verifyTokenHash(generated.token, generated.tokenHash)).toBe(true);
   });
 });

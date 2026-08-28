@@ -80,8 +80,8 @@ function canFulfilTo(listing: any, destinationCountry?: string | null): boolean 
 
 function serializeOffer(listing: any, availableQuantity: number) {
   const destinationCountries = destinationCountryCodes(listing);
-  const currency = listing.currency ?? listing.customPriceCurrency ?? "SGD";
-  const amountMinor = listing.askingPriceMinor ?? Math.round((listing.customPrice ?? 0) * 100);
+  const currency = listing.currency as string;
+  const amountMinor = listing.askingPriceMinor as number;
   return {
     listingId: listing.id,
     cardId: listing.cardId,
@@ -211,7 +211,7 @@ marketplaceRouter.get("/", async (req, res: Response) => {
 
     for (const offer of offers) {
       const key = `${offer.listing.cardId}:${offer.listing.variant}`;
-      const amountMinor = offer.listing.askingPriceMinor ?? Math.round((offer.listing.customPrice ?? 0) * 100);
+      const amountMinor = offer.listing.askingPriceMinor as number;
       const existing = grouped.get(key) ?? {
         cardId: offer.listing.cardId,
         card: offer.listing.card,
