@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { User, MarketplaceCardOffer } from "../../types";
-import { conditionLabel, formatMarketplaceMoney, fulfilmentSummary, variantLabel } from "./marketplaceDisplay";
+import { formatMarketplaceMoney, variantLabel } from "./marketplaceDisplay";
+import { formatReferencePrice } from "../extras/extrasUi";
 
 interface MarketplaceOfferCardProps {
   offer: MarketplaceCardOffer;
@@ -18,7 +19,7 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
         <div>
           <h3 className="text-lg font-semibold text-gray-100">{offer.seller.username}</h3>
           <p className="mt-1 text-sm text-gray-400">
-            {offer.publicLocality ? `${offer.publicLocality}, ` : ""}{offer.originCountryCode ?? "Location not set"} · {variantLabel(offer.variant)} · {conditionLabel(offer.condition)} · {offer.cardLanguage ?? "Language not set"}
+            {variantLabel(offer.variant)} × {offer.availableQuantity}
           </p>
         </div>
         <div className="text-right">
@@ -31,9 +32,6 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
 
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-full border border-gray-700 px-2 py-1 text-gray-300">
-          {offer.pricingMode === "FIXED" ? "Fixed price" : "Accepts offers"}
-        </span>
-        <span className="rounded-full border border-gray-700 px-2 py-1 text-gray-300">
           {offer.availableQuantity} available
         </span>
         {offer.sellerVerified && (
@@ -41,18 +39,9 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
         )}
       </div>
 
-      <p className="rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-200">
-        Condition reported by seller; no physical photos provided.
-      </p>
-
-      <div className="text-sm text-gray-300">
-        <p>{fulfilmentSummary(offer.fulfilment)}</p>
-      </div>
-
       <div className="rounded-lg border border-gray-800 bg-gray-950 p-3 text-sm text-gray-300">
-        <p className="font-medium text-gray-100">★ {offer.reputation.ratingAverage?.toFixed(1) ?? "New"} seller rating</p>
-        <p>{offer.reputation.reviewCount} seller reviews · {offer.reputation.completedDeals} completed marketplace deals</p>
-        <p>{offer.reputation.uniqueCounterparties} unique counterparties · Member since {new Date(offer.reputation.memberSince).getFullYear()}</p>
+        <p>TCG reference (USD): {formatReferencePrice(offer.referencePrice)}</p>
+        {offer.note && <p className="mt-1">Note: {offer.note}</p>}
       </div>
 
       {!user ? (

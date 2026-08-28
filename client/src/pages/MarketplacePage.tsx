@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { marketplace as marketplaceApi } from "../services/api";
-import type { InventoryVariant, MarketplaceCondition, MarketplaceFulfilmentMethod, MarketplaceListParams, MarketplaceListResponse } from "../types";
+import type { InventoryVariant, MarketplaceListParams, MarketplaceListResponse } from "../types";
 import MarketplaceCardResult from "../components/marketplace/MarketplaceCardResult";
 
 const variants: Array<{ value: "" | InventoryVariant; label: string }> = [
@@ -11,26 +11,9 @@ const variants: Array<{ value: "" | InventoryVariant; label: string }> = [
   { value: "holofoil", label: "Holofoil" },
 ];
 
-const conditions: Array<{ value: "" | MarketplaceCondition; label: string }> = [
-  { value: "", label: "Any condition" },
-  { value: "MINT", label: "Mint" },
-  { value: "NEAR_MINT", label: "Near Mint" },
-  { value: "LIGHTLY_PLAYED", label: "Lightly Played" },
-  { value: "MODERATELY_PLAYED", label: "Moderately Played" },
-  { value: "HEAVILY_PLAYED", label: "Heavily Played" },
-  { value: "DAMAGED", label: "Damaged" },
-];
-
-const fulfilmentMethods: Array<{ value: "" | MarketplaceFulfilmentMethod; label: string }> = [
-  { value: "", label: "Any fulfilment" },
-  { value: "MEETUP", label: "Meetup" },
-  { value: "DOMESTIC_SHIPPING", label: "Domestic shipping" },
-  { value: "INTERNATIONAL_SHIPPING", label: "International shipping" },
-];
-
 function paramsFromSearch(searchParams: URLSearchParams): MarketplaceListParams {
   const params: MarketplaceListParams = { availableOnly: "true" };
-  ["search", "set", "rarity", "color", "variant", "condition", "language", "sellerCountry", "shipsTo", "fulfilmentMethod"].forEach((key) => {
+  ["search", "set", "rarity", "color", "variant"].forEach((key) => {
     const value = searchParams.get(key);
     if (value) (params as Record<string, string>)[key] = value;
   });
@@ -91,26 +74,6 @@ export default function MarketplacePage() {
           <label htmlFor="marketplace-variant" className="mb-1 block text-sm text-gray-300">Variant</label>
           <select id="marketplace-variant" value={filters.variant ?? ""} onChange={(event) => updateFilter("variant", event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100">
             {variants.map((variant) => <option key={variant.value} value={variant.value}>{variant.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="marketplace-condition" className="mb-1 block text-sm text-gray-300">Condition</label>
-          <select id="marketplace-condition" value={filters.condition ?? ""} onChange={(event) => updateFilter("condition", event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100">
-            {conditions.map((condition) => <option key={condition.value} value={condition.value}>{condition.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="marketplace-ships-to" className="mb-1 block text-sm text-gray-300">Ships to</label>
-          <input id="marketplace-ships-to" value={filters.shipsTo ?? ""} onChange={(event) => updateFilter("shipsTo", event.target.value.toUpperCase())} placeholder="SG" className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100" />
-        </div>
-        <div>
-          <label htmlFor="marketplace-country" className="mb-1 block text-sm text-gray-300">Seller country</label>
-          <input id="marketplace-country" value={filters.sellerCountry ?? ""} onChange={(event) => updateFilter("sellerCountry", event.target.value.toUpperCase())} placeholder="SG" className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100" />
-        </div>
-        <div>
-          <label htmlFor="marketplace-fulfilment" className="mb-1 block text-sm text-gray-300">Fulfilment</label>
-          <select id="marketplace-fulfilment" value={filters.fulfilmentMethod ?? ""} onChange={(event) => updateFilter("fulfilmentMethod", event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100">
-            {fulfilmentMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
           </select>
         </div>
         <div className="flex items-end">

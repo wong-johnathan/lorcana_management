@@ -148,6 +148,9 @@ async function mockApi(page: Page) {
             approximateConvertedPrice: { amountMinor: 890, currency: "USD", rateSource: "mock", fetchedAt: new Date().toISOString() },
             condition: "NEAR_MINT",
             cardLanguage: "EN",
+            note: "Meet near MRT",
+            referencePrice: 4,
+            referencePriceCurrency: "USD",
             originCountryCode: "SG",
             publicLocality: "Singapore",
             fulfilment: { allowsMeetup: true, shipsDomestically: true, shipsInternationally: false, shipsWorldwide: false, destinationCountryCodes: ["SG"] },
@@ -255,8 +258,12 @@ test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ p
 
   await page.getByRole("link", { name: /compare offers/i }).click();
   await expect(page).toHaveURL(/\/marketplace\/card\/card_1$/);
-  await expect(page.getByText("Condition reported by seller; no physical photos provided.")).toBeVisible();
-  await expect(page.getByText("★ 4.8 seller rating")).toBeVisible();
+  await expect(page.getByText("Normal × 2")).toBeVisible();
+  await expect(page.getByText("TCG reference (USD): $4.00")).toBeVisible();
+  await expect(page.getByText("Note: Meet near MRT")).toBeVisible();
+  await expect(page.getByText("Email verified")).toBeVisible();
+  await expect(page.getByText(/physical photos/i)).toHaveCount(0);
+  await expect(page.getByText(/seller rating/i)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Log in to send enquiry" })).toBeVisible();
 });
 

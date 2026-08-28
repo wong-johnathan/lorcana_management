@@ -26,9 +26,6 @@ export default function MarketplaceCardResult({ result }: MarketplaceCardResultP
           {result.approximateConvertedPrice && (
             <p className="text-sm text-gray-400">≈ {formatMarketplaceMoney(result.approximateConvertedPrice)}</p>
           )}
-          <p className={result.canFulfilToViewer ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>
-            {result.canFulfilToViewer ? "Can fulfil to your selected destination" : "Check fulfilment coverage before enquiring"}
-          </p>
           <Link
             to={`/marketplace/card/${result.card.id}`}
             className="inline-flex rounded bg-amber-500 px-3 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400"

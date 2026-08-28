@@ -92,6 +92,8 @@ function listingPrice(listing: any): { amountMinor: number; currency: string } |
 
 function serializeOffer(listing: any, availableQuantity: number) {
   const destinationCountries = destinationCountryCodes(listing);
+  const variant = parseVariant(listing.variant);
+  const referencePrice = variant ? referencePriceForVariant(listing.card?.prices ?? [], variant) : null;
   const price = listingPrice(listing);
   return {
     listingId: listing.id,
@@ -123,7 +125,8 @@ function serializeOffer(listing: any, availableQuantity: number) {
     sellerVerified: Boolean(listing.user?.emailVerifiedAt),
     reputation: minimalReputation(listing.user),
     note: listing.note ?? null,
-    conditionDisclaimer: "Condition reported by seller; no physical photos provided.",
+    referencePrice,
+    referencePriceCurrency: "USD",
   };
 }
 

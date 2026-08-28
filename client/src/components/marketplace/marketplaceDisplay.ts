@@ -1,4 +1,4 @@
-import type { Card, InventoryVariant, MarketplaceCondition, MarketplaceFulfilmentCoverage, MarketplaceMoney } from "../../types";
+import type { Card, InventoryVariant, MarketplaceMoney } from "../../types";
 
 const currencySymbols: Record<string, string> = {
   SGD: "S$",
@@ -24,14 +24,6 @@ export function variantLabel(variant: InventoryVariant): string {
   return "Normal";
 }
 
-export function conditionLabel(condition: MarketplaceCondition | null | undefined): string {
-  if (!condition) return "Condition not set";
-  return condition
-    .split("_")
-    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
-    .join(" ");
-}
-
 export function cardTitle(card: Card): string {
   return card.subtitle ? `${card.name} - ${card.subtitle}` : card.name;
 }
@@ -42,19 +34,4 @@ export function shortCardNumber(card: Card): string {
 
 export function cardIdentifier(card: Card, variant: InventoryVariant): string {
   return `${shortCardNumber(card)} • ${card.rarity} • ${variantLabel(variant)}`;
-}
-
-export function fulfilmentSummary(fulfilment: MarketplaceFulfilmentCoverage | null | undefined): string {
-  if (!fulfilment) return "Fulfilment pending";
-  const methods = [
-    fulfilment.allowsMeetup ? "Meetup" : null,
-    fulfilment.shipsDomestically ? "Domestic shipping" : null,
-    fulfilment.shipsInternationally ? "International shipping" : null,
-  ].filter(Boolean);
-  const destinations = fulfilment.shipsWorldwide
-    ? "worldwide"
-    : fulfilment.destinationCountryCodes.length
-      ? `to ${fulfilment.destinationCountryCodes.join(", ")}`
-      : "destination not configured";
-  return `${methods.join(" · ") || "Fulfilment pending"} · ${destinations}`;
 }

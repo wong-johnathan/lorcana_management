@@ -7,9 +7,7 @@ import MarketplaceOfferCard from "../components/marketplace/MarketplaceOfferCard
 import {
   cardIdentifier,
   cardTitle,
-  conditionLabel,
   formatMarketplaceMoney,
-  fulfilmentSummary,
   shortCardNumber,
   variantLabel,
 } from "../components/marketplace/marketplaceDisplay";
@@ -53,6 +51,9 @@ function offer(overrides: Partial<MarketplaceCardOffer> = {}): MarketplaceCardOf
     pricingMode: "FIXED",
     askingPrice: { amountMinor: 1234, currency: "ZZZ" as any },
     approximateConvertedPrice: null,
+    note: "Meet near MRT",
+    referencePrice: 12,
+    referencePriceCurrency: "USD",
     condition: "LIGHTLY_PLAYED",
     cardLanguage: "EN",
     originCountryCode: "SG",
@@ -79,27 +80,23 @@ function offer(overrides: Partial<MarketplaceCardOffer> = {}): MarketplaceCardOf
 }
 
 describe("marketplace display helpers", () => {
-  it("formats money, variants, conditions, titles, identifiers, and fulfilment fallbacks", () => {
+  it("formats money, variants, titles, and identifiers", () => {
     expect(formatMarketplaceMoney(null)).toBe("Price unavailable");
     expect(formatMarketplaceMoney({ amountMinor: 1234, currency: "ZZZ" as any })).toBe("ZZZ 12.34");
     expect(formatMarketplaceMoney({ amountMinor: 1200, currency: "JPY" })).toBe("¥12.00");
     expect(variantLabel("normal")).toBe("Normal");
     expect(variantLabel("foil")).toBe("Foil");
     expect(variantLabel("holofoil")).toBe("Holofoil");
-    expect(conditionLabel("HEAVILY_PLAYED")).toBe("Heavily Played");
     expect(cardTitle(card())).toBe("Mickey Mouse");
     expect(cardTitle(card({ subtitle: "Brave Little Tailor" }))).toBe("Mickey Mouse - Brave Little Tailor");
     expect(shortCardNumber(card({ cardNumber: "207/204 • EN • 1" }))).toBe("207/204");
     expect(shortCardNumber(card({ cardNumber: "" }))).toBe("");
     expect(cardIdentifier(card({ rarity: "Enchanted" }), "foil")).toBe("12/204 • Enchanted • Foil");
-    expect(fulfilmentSummary({ allowsMeetup: false, shipsDomestically: false, shipsInternationally: false, shipsWorldwide: false, destinationCountryCodes: [] })).toBe("Fulfilment pending · destination not configured");
-    expect(fulfilmentSummary({ allowsMeetup: true, shipsDomestically: true, shipsInternationally: true, shipsWorldwide: true, destinationCountryCodes: [] })).toBe("Meetup · Domestic shipping · International shipping · worldwide");
-    expect(fulfilmentSummary({ allowsMeetup: false, shipsDomestically: false, shipsInternationally: true, shipsWorldwide: false, destinationCountryCodes: ["SG", "MY"] })).toBe("International shipping · to SG, MY");
   });
 });
 
 describe("marketplace branch rendering", () => {
-  it("renders singular seller count and destination warning without approximate conversion", () => {
+  it("renders singular seller count without approximate conversion", () => {
     const result: MarketplaceCardResult = {
       card: card(),
       variant: "normal",
@@ -117,7 +114,7 @@ describe("marketplace branch rendering", () => {
     );
 
     expect(screen.getByText("1 available seller • From ZZZ 12.34")).toBeInTheDocument();
-    expect(screen.getByText("Check fulfilment coverage before enquiring")).toBeInTheDocument();
+    expect(screen.queryByText(/fulfilment/i)).not.toBeInTheDocument();
   });
 
   it("renders unverified new sellers and the disabled saving enquiry button", () => {
@@ -134,10 +131,10 @@ describe("marketplace branch rendering", () => {
     );
 
     expect(screen.getByText("seller")).toBeInTheDocument();
-    expect(screen.getByText("SG · Normal · Lightly Played · EN")).toBeInTheDocument();
+    expect(screen.getByText("Normal × 1")).toBeInTheDocument();
+    expect(screen.getByText("TCG reference (USD): $12.00")).toBeInTheDocument();
+    expect(screen.getByText("Note: Meet near MRT")).toBeInTheDocument();
     expect(screen.queryByText("Email verified")).not.toBeInTheDocument();
-    expect(screen.getByText("★ New seller rating")).toBeInTheDocument();
-    expect(screen.getByText("0 seller reviews · 0 completed marketplace deals")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sending..." })).toBeDisabled();
   });
 });

@@ -341,6 +341,9 @@ export interface MarketplaceCardOffer {
   publicLocality?: string | null;
   fulfilment: MarketplaceFulfilmentCoverage;
   reputation: MarketplaceReputationSummary;
+  note?: string | null;
+  referencePrice: number | null;
+  referencePriceCurrency: "USD";
   eligibility?: MarketplaceListingEligibility;
 }
 

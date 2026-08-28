@@ -90,6 +90,9 @@ const offersResponse: MarketplaceCardOffersResponse = {
       approximateConvertedPrice: { amountMinor: 13320, currency: "USD", rateSource: "mock", fetchedAt: "2026-08-27T00:00:00Z" },
       condition: "NEAR_MINT",
       cardLanguage: "EN",
+      note: "Meetup preferred",
+      referencePrice: 175,
+      referencePriceCurrency: "USD",
       originCountryCode: "SG",
       publicLocality: "Singapore",
       fulfilment: {
@@ -153,7 +156,7 @@ describe("marketplace discovery pages", () => {
     apiMocks.marketplaceList.mockResolvedValue(listResponse);
 
     render(
-      <MemoryRouter initialEntries={["/marketplace?shipsTo=SG"]}>
+      <MemoryRouter initialEntries={["/marketplace"]}>
         <MarketplacePage />
       </MemoryRouter>
     );
@@ -164,7 +167,7 @@ describe("marketplace discovery pages", () => {
     expect(screen.getByText("3 available sellers • From S$180.00")).toBeInTheDocument();
     expect(screen.getByText("≈ US$133.20")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /compare offers/i })).toHaveAttribute("href", "/marketplace/card/card_elsa");
-    expect(apiMocks.marketplaceList).toHaveBeenCalledWith(expect.objectContaining({ shipsTo: "SG" }));
+    expect(apiMocks.marketplaceList).toHaveBeenCalledWith(expect.objectContaining({ availableOnly: "true" }));
 
     await userEvent.clear(screen.getByLabelText("Search marketplace"));
     await userEvent.type(screen.getByLabelText("Search marketplace"), "mickey");
@@ -174,7 +177,7 @@ describe("marketplace discovery pages", () => {
     await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey", variant: "normal" })));
   });
 
-  it("shows card offer comparison with pricing, disclaimer, reputation, and anonymous login CTA", async () => {
+  it("shows card offer comparison with the same fields used by Extras for Sale listings", async () => {
     apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
 
     render(
@@ -186,10 +189,10 @@ describe("marketplace discovery pages", () => {
     expect(await screen.findByRole("heading", { name: "Elsa - Spirit of Winter" })).toBeInTheDocument();
     expect(screen.getByText("S$180.00")).toBeInTheDocument();
     expect(screen.getByText("≈ US$133.20" )).toBeInTheDocument();
-    expect(screen.getByText("Condition reported by seller; no physical photos provided.")).toBeInTheDocument();
+    expect(screen.getByText("Holofoil × 2")).toBeInTheDocument();
+    expect(screen.getByText("TCG reference (USD): $175.00")).toBeInTheDocument();
+    expect(screen.getByText("Note: Meetup preferred")).toBeInTheDocument();
     expect(screen.getByText("Email verified")).toBeInTheDocument();
-    expect(screen.getByText("★ 4.8 seller rating")).toBeInTheDocument();
-    expect(screen.getByText("37 seller reviews · 52 completed marketplace deals")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Log in to send enquiry" })).toHaveAttribute("href", "/login");
   });
 
