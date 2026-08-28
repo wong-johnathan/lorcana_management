@@ -146,7 +146,102 @@ describe("marketplace public routes", () => {
           condition: "NEAR_MINT",
           destinationCountries: ["MY"],
         }));
+        expect(prismaMock.extraForSaleListing.findMany).toHaveBeenCalledWith(expect.objectContaining({
+          where: expect.not.objectContaining({ marketplaceVisible: true }),
+        }));
         expect(res.body.results[0].offers[0].seller).not.toHaveProperty("email");
+      });
+  });
+
+  it("shows active Extras for Sale listings in marketplace without a separate publish step", async () => {
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      marketplaceListing({
+        marketplaceVisible: false,
+        askingPriceMinor: null,
+        currency: null,
+        condition: null,
+        cardLanguage: null,
+        originCountryCode: null,
+        publicLocality: null,
+        allowsMeetup: false,
+        shipsDomestically: false,
+        shipsInternationally: false,
+        shipsWorldwide: false,
+        destinationCountries: [],
+      }),
+    ]);
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+
+    await request(app).get("/api/marketplace?search=Elsa")
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.results).toHaveLength(1);
+        expect(res.body.results[0]).toEqual(expect.objectContaining({
+          cardId: "card_1",
+          variant: "holofoil",
+          availableQuantity: 2,
+          lowestPrice: { amountMinor: 18000, currency: "SGD" },
+        }));
+        expect(res.body.results[0].offers[0]).toEqual(expect.objectContaining({
+          listingId: "listing_1",
+          askingPrice: { amountMinor: 18000, currency: "SGD" },
+          condition: null,
+          cardLanguage: null,
+          originCountryCode: null,
+        }));
+      });
+  });
+
+  it("uses reference prices when listed extras have no custom price and keeps price-less listings visible", async () => {
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
+      marketplaceListing({
+        id: "listing_reference_price",
+        cardId: "card_reference_price",
+        customPrice: null,
+        askingPriceMinor: null,
+        currency: null,
+        card: card({ id: "card_reference_price", prices: [{ variant: "Holofoil", marketPrice: 12.34 }] }),
+      }),
+      marketplaceListing({
+        id: "listing_no_price",
+        cardId: "card_no_price",
+        customPrice: null,
+        askingPriceMinor: null,
+        currency: null,
+        card: card({ id: "card_no_price", prices: [] }),
+      }),
+    ]);
+    prismaMock.inventoryEntry.findFirst
+      .mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 })
+      .mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await request(app).get("/api/marketplace")
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.results).toHaveLength(2);
+        const byCardId = new Map<string, any>(res.body.results.map((result: any) => [result.cardId, result]));
+        expect(byCardId.get("card_reference_price")).toEqual(expect.objectContaining({
+          lowestPrice: { amountMinor: 1234, currency: "USD" },
+        }));
+        expect(byCardId.get("card_reference_price").offers[0].askingPrice).toEqual({ amountMinor: 1234, currency: "USD" });
+        expect(byCardId.get("card_no_price")).toEqual(expect.objectContaining({
+          lowestPrice: null,
+          fromPriceMinor: null,
+          currency: null,
+        }));
+        expect(byCardId.get("card_no_price").offers[0].askingPrice).toBeNull();
       });
   });
 

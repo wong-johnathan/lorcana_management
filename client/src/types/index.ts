@@ -147,11 +147,6 @@ export interface ExtraForSaleListing {
   cardLanguage?: string | null;
   originCountryCode?: string | null;
   publicLocality?: string | null;
-  allowsMeetup?: boolean;
-  shipsDomestically?: boolean;
-  shipsInternationally?: boolean;
-  shipsWorldwide?: boolean;
-  destinationCountries?: string[];
   fulfilment?: MarketplaceFulfilmentCoverage | null;
   eligibility?: MarketplaceListingEligibility;
 }
@@ -338,11 +333,11 @@ export interface MarketplaceCardOffer {
   variant: InventoryVariant;
   availableQuantity: number;
   pricingMode: MarketplacePricingMode;
-  askingPrice: MarketplaceMoney;
+  askingPrice: MarketplaceMoney | null;
   approximateConvertedPrice?: MarketplaceApproximateMoney | null;
-  condition: MarketplaceCondition;
-  cardLanguage: string;
-  originCountryCode: string;
+  condition: MarketplaceCondition | null;
+  cardLanguage: string | null;
+  originCountryCode: string | null;
   publicLocality?: string | null;
   fulfilment: MarketplaceFulfilmentCoverage;
   reputation: MarketplaceReputationSummary;

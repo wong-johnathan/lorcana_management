@@ -4,6 +4,7 @@ import { authenticateToken, AuthRequest } from "../middleware/auth.js";
 import {
   DEFAULT_INVENTORY_POLICY,
   calculateExtras,
+  referencePriceForVariant,
   resolveKeepCounts,
   type InventoryCounts,
   type InventoryPolicyLike,
@@ -11,7 +12,6 @@ import {
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
 import {
-  evaluateMarketplaceEligibility,
   sumActiveReservedQuantity,
 } from "../services/marketplaceAvailability.js";
 import {
@@ -78,23 +78,34 @@ function canFulfilTo(listing: any, destinationCountry?: string | null): boolean 
   return false;
 }
 
+function listingPrice(listing: any): { amountMinor: number; currency: string } | null {
+  if (typeof listing.askingPriceMinor === "number" && listing.currency) {
+    return { amountMinor: listing.askingPriceMinor, currency: listing.currency };
+  }
+  if (typeof listing.customPrice === "number" && listing.customPriceCurrency) {
+    return { amountMinor: Math.round(listing.customPrice * 100), currency: listing.customPriceCurrency };
+  }
+  const variant = parseVariant(listing.variant);
+  const referencePrice = variant ? referencePriceForVariant(listing.card?.prices ?? [], variant) : null;
+  return referencePrice == null ? null : { amountMinor: Math.round(referencePrice * 100), currency: "USD" };
+}
+
 function serializeOffer(listing: any, availableQuantity: number) {
   const destinationCountries = destinationCountryCodes(listing);
-  const currency = listing.currency as string;
-  const amountMinor = listing.askingPriceMinor as number;
+  const price = listingPrice(listing);
   return {
     listingId: listing.id,
     cardId: listing.cardId,
     variant: listing.variant,
     availableQuantity,
     pricingMode: listing.pricingMode ?? "FIXED",
-    askingPriceMinor: amountMinor,
-    currency,
-    askingPrice: { amountMinor, currency },
+    askingPriceMinor: price?.amountMinor ?? null,
+    currency: price?.currency ?? null,
+    askingPrice: price,
     approximateConvertedPrice: null,
-    condition: listing.condition,
-    cardLanguage: listing.cardLanguage,
-    originCountryCode: listing.originCountryCode,
+    condition: listing.condition ?? null,
+    cardLanguage: listing.cardLanguage ?? null,
+    originCountryCode: listing.originCountryCode ?? null,
     publicLocality: listing.publicLocality ?? null,
     allowsMeetup: listing.allowsMeetup ?? false,
     shipsDomestically: listing.shipsDomestically ?? false,
@@ -142,17 +153,16 @@ async function availabilityForListing(listing: any, now = new Date()) {
   const reservedQuantity = sumActiveReservedQuantity(reservations, now);
   const listableQuantity = Math.max(0, Math.min(listing.desiredQuantity, getVariantCount(extras, variant)));
   const availableQuantity = Math.max(0, listableQuantity - reservedQuantity);
-  const eligibility = evaluateMarketplaceEligibility({
-    listing: { ...listing, destinationCountries: destinationCountryCodes(listing) },
-    seller: listing.user,
-    availableQuantity,
-  });
 
-  return { availableQuantity, eligible: eligibility.eligible, reasons: eligibility.reasons };
+  return {
+    availableQuantity,
+    eligible: listing.status === "active" && availableQuantity > 0,
+    reasons: listing.status === "active" ? [] : ["listing is not active"],
+  };
 }
 
 function marketplaceListingWhere(query: Record<string, unknown>, cardId?: string) {
-  const where: any = { status: "active", marketplaceVisible: true };
+  const where: any = { status: "active" };
   if (cardId) where.cardId = cardId;
 
   const cardWhere: any = {};
@@ -211,7 +221,7 @@ marketplaceRouter.get("/", async (req, res: Response) => {
 
     for (const offer of offers) {
       const key = `${offer.listing.cardId}:${offer.listing.variant}`;
-      const amountMinor = offer.listing.askingPriceMinor as number;
+      const price = listingPrice(offer.listing);
       const existing = grouped.get(key) ?? {
         cardId: offer.listing.cardId,
         card: offer.listing.card,
@@ -219,9 +229,9 @@ marketplaceRouter.get("/", async (req, res: Response) => {
         availableQuantity: 0,
         sellerCount: 0,
         offersCount: 0,
-        fromPriceMinor: amountMinor,
-        currency: offer.listing.currency,
-        lowestPrice: { amountMinor, currency: offer.listing.currency },
+        fromPriceMinor: price?.amountMinor ?? null,
+        currency: price?.currency ?? null,
+        lowestPrice: price,
         approximateConvertedPrice: null,
         canFulfilToViewer: true,
         offers: [],
@@ -229,9 +239,10 @@ marketplaceRouter.get("/", async (req, res: Response) => {
       existing.availableQuantity += offer.availableQuantity;
       existing.sellerCount += 1;
       existing.offersCount += 1;
-      if (offer.listing.currency === existing.currency && amountMinor < existing.fromPriceMinor) {
-        existing.fromPriceMinor = amountMinor;
-        existing.lowestPrice = { amountMinor, currency: offer.listing.currency };
+      if (price && (!existing.lowestPrice || (price.currency === existing.currency && price.amountMinor < existing.fromPriceMinor))) {
+        existing.fromPriceMinor = price.amountMinor;
+        existing.currency = price.currency;
+        existing.lowestPrice = price;
       }
       existing.offers.push(serializeOffer(offer.listing, offer.availableQuantity));
       grouped.set(key, existing);

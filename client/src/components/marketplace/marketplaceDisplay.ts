@@ -24,7 +24,8 @@ export function variantLabel(variant: InventoryVariant): string {
   return "Normal";
 }
 
-export function conditionLabel(condition: MarketplaceCondition): string {
+export function conditionLabel(condition: MarketplaceCondition | null | undefined): string {
+  if (!condition) return "Condition not set";
   return condition
     .split("_")
     .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
@@ -43,7 +44,8 @@ export function cardIdentifier(card: Card, variant: InventoryVariant): string {
   return `${shortCardNumber(card)} • ${card.rarity} • ${variantLabel(variant)}`;
 }
 
-export function fulfilmentSummary(fulfilment: MarketplaceFulfilmentCoverage): string {
+export function fulfilmentSummary(fulfilment: MarketplaceFulfilmentCoverage | null | undefined): string {
+  if (!fulfilment) return "Fulfilment pending";
   const methods = [
     fulfilment.allowsMeetup ? "Meetup" : null,
     fulfilment.shipsDomestically ? "Domestic shipping" : null,

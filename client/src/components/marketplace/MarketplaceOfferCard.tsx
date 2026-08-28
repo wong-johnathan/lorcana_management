@@ -18,7 +18,7 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
         <div>
           <h3 className="text-lg font-semibold text-gray-100">{offer.seller.username}</h3>
           <p className="mt-1 text-sm text-gray-400">
-            {offer.publicLocality ? `${offer.publicLocality}, ` : ""}{offer.originCountryCode} · {variantLabel(offer.variant)} · {conditionLabel(offer.condition)} · {offer.cardLanguage}
+            {offer.publicLocality ? `${offer.publicLocality}, ` : ""}{offer.originCountryCode ?? "Location not set"} · {variantLabel(offer.variant)} · {conditionLabel(offer.condition)} · {offer.cardLanguage ?? "Language not set"}
           </p>
         </div>
         <div className="text-right">

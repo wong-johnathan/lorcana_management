@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { extrasForSale as extrasApi, inventory as inventoryApi } from "../services/api";
-import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant, ListingCurrency, MarketplaceCondition, MarketplacePricingMode } from "../types";
+import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant, ListingCurrency } from "../types";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
 import ManualOverridesPanel from "../components/extras/ManualOverridesPanel";
@@ -80,24 +80,7 @@ export default function ExtrasForSalePage() {
     }
   };
 
-  const updateListing = async (id: string, data: {
-    note: string | null;
-    customPrice: number | null;
-    customPriceCurrency: ListingCurrency;
-    marketplaceVisible?: boolean;
-    pricingMode?: MarketplacePricingMode;
-    askingPriceMinor?: number | null;
-    currency?: ListingCurrency | null;
-    condition?: MarketplaceCondition | null;
-    cardLanguage?: string | null;
-    originCountryCode?: string | null;
-    publicLocality?: string | null;
-    allowsMeetup?: boolean;
-    shipsDomestically?: boolean;
-    shipsInternationally?: boolean;
-    shipsWorldwide?: boolean;
-    destinationCountries?: string[];
-  }) => {
+  const updateListing = async (id: string, data: { note: string | null; customPrice: number | null; customPriceCurrency: ListingCurrency }) => {
     setSaving(true);
     setError(null);
     setSuccess(null);
