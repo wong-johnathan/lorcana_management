@@ -54,10 +54,12 @@ model Card {
 model User {
   id              String    @id @default(cuid())
   username        String    @unique
-  passwordHash    String
+  passwordHash    String?
   email           String?
   emailNormalized String?   @unique
   emailVerifiedAt DateTime?
+  googleSub       String?   @unique
+  authProvider    String    @default("LOCAL")
   publicEnabled   Boolean   @default(false)
   createdAt       DateTime  @default(now())
 

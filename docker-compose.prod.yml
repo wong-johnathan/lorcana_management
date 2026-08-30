@@ -21,6 +21,7 @@ services:
       DATABASE_URL: postgresql://lorcana:${POSTGRES_PASSWORD:-lorcana}@db:5432/lorcana_inventory
       JWT_SECRET: ${JWT_SECRET}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Set GOOGLE_CLIENT_ID}
       SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
       OBJECT_STORAGE_DRIVER: ${OBJECT_STORAGE_DRIVER:-s3}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}

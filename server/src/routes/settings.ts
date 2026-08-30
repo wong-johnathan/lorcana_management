@@ -1,6 +1,7 @@
 import { Router, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../middleware/auth.js";
+import { requireVerifiedEmailForAction } from "../services/userVerification.js";
 
 const prisma = new PrismaClient();
 export const settingsRouter = Router();
@@ -39,6 +40,8 @@ settingsRouter.patch("/profile", async (req: AuthRequest, res: Response) => {
       res.status(400).json({ error: "publicEnabled (boolean) is required" });
       return;
     }
+
+    if (publicEnabled && !(await requireVerifiedEmailForAction(prisma, userId, res))) return;
 
     const user = await prisma.user.update({
       where: { id: userId },

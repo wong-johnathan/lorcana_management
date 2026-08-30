@@ -14,9 +14,11 @@ interface AuthContextType {
   token: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   registrationEnabled: boolean;
+  googleClientId: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [registrationEnabled, setRegistrationEnabled] = useState(true);
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   useEffect(() => {
     const savedToken = localStorage.getItem("token");
@@ -64,25 +67,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     authApi
       .config()
-      .then((res) => setRegistrationEnabled(res.registrationEnabled))
-      .catch(() => setRegistrationEnabled(true));
+      .then((res) => {
+        setRegistrationEnabled(res.registrationEnabled);
+        setGoogleClientId(res.googleClientId ?? null);
+      })
+      .catch(() => {
+        setRegistrationEnabled(true);
+        setGoogleClientId(null);
+      });
+  }, []);
+
+  const persistSession = useCallback((authResult: { token: string; user: User }) => {
+    localStorage.setItem("token", authResult.token);
+    localStorage.setItem("user", JSON.stringify(authResult.user));
+    setToken(authResult.token);
+    setUser(authResult.user);
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
     const res = await authApi.login(username, password);
-    localStorage.setItem("token", res.token);
-    localStorage.setItem("user", JSON.stringify(res.user));
-    setToken(res.token);
-    setUser(res.user);
-  }, []);
+    persistSession(res);
+  }, [persistSession]);
 
   const register = useCallback(async (username: string, password: string) => {
     const res = await authApi.register(username, password);
-    localStorage.setItem("token", res.token);
-    localStorage.setItem("user", JSON.stringify(res.user));
-    setToken(res.token);
-    setUser(res.user);
-  }, []);
+    persistSession(res);
+  }, [persistSession]);
+
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const res = await authApi.googleLogin(credential);
+    persistSession(res);
+  }, [persistSession]);
 
   const logout = useCallback(() => {
     localStorage.removeItem("token");
@@ -93,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, login, register, logout, isLoading, registrationEnabled }}
+      value={{ user, token, login, register, loginWithGoogle, logout, isLoading, registrationEnabled, googleClientId }}
     >
       {children}
     </AuthContext.Provider>
