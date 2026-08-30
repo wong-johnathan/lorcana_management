@@ -476,7 +476,7 @@ describe("marketplace public routes", () => {
     }));
   });
 
-  it("creates default-message shipping enquiries and rejects unavailable quantity", async () => {
+  it("creates bare enquiries without fabricated messages or offers and rejects unavailable quantity", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ allowsMeetup: false, shipsDomestically: true }));
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 1 });
@@ -498,13 +498,14 @@ describe("marketplace public routes", () => {
       .expect(201)
       .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_default"));
 
-    expect(prismaMock.enquiryMessage.create).toHaveBeenCalledWith({ data: { enquiryId: "enquiry_default", senderId: "buyer_1", message: "Marketplace enquiry started." } });
-    expect(prismaMock.enquiryOffer.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ fulfilmentMethod: "DOMESTIC_SHIPPING", buyerCountryCode: "SG" }),
+    expect(prismaMock.enquiryMessage.create).not.toHaveBeenCalled();
+    expect(prismaMock.enquiryOffer.create).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceEnquiry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ listingId: "listing_1", buyerId: "buyer_1", status: "PENDING_SELLER" }),
     }));
   });
 
-  it("creates meetup enquiries with custom messages and null buyer country", async () => {
+  it("creates enquiries carrying only the buyer's message and no fabricated offer", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ allowsMeetup: true, shipsDomestically: false }));
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
@@ -518,9 +519,7 @@ describe("marketplace public routes", () => {
       .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_meetup"));
 
     expect(prismaMock.enquiryMessage.create).toHaveBeenCalledWith({ data: { enquiryId: "enquiry_meetup", senderId: "buyer_1", message: "Can meet tomorrow?" } });
-    expect(prismaMock.enquiryOffer.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ fulfilmentMethod: "MEETUP", buyerCountryCode: null }),
-    }));
+    expect(prismaMock.enquiryOffer.create).not.toHaveBeenCalled();
   });
 
   it("skips invalid variants, zero inventory, and destination mismatches during browsing", async () => {
@@ -634,6 +633,32 @@ describe("marketplace enquiry and reservation routes", () => {
     expect(prismaMock.marketplaceEnquiry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "enquiry_1" },
       data: expect.objectContaining({ status: "AWAITING_BUYER" }),
+    }));
+  });
+
+  it("lets the buyer post their first offer from a pending enquiry", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [], listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
+    prismaMock.enquiryOffer.create.mockResolvedValueOnce(offer({ id: "buyer_first", proposedByUserId: "buyer_1", unitPriceMinor: 16000 }));
+    prismaMock.marketplaceEnquiry.update.mockResolvedValueOnce({});
+    prismaMock.notification.create.mockResolvedValueOnce({});
+
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
+      quantity: 1,
+      unitPriceMinor: 16000,
+      shippingPriceMinor: 0,
+      currency: "SGD",
+      fulfilmentMethod: "MEETUP",
+      buyerCountryCode: "SG",
+    }))
+      .expect(201)
+      .expect((res) => expect(res.body.offer.id).toBe("buyer_first"));
+
+    expect(prismaMock.enquiryOffer.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ enquiryId: "enquiry_1", proposedByUserId: "buyer_1", unitPriceMinor: 16000 }),
+    }));
+    expect(prismaMock.marketplaceEnquiry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "enquiry_1" },
+      data: expect.objectContaining({ status: "PENDING_SELLER" }),
     }));
   });
 

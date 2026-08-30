@@ -21,6 +21,7 @@ export type EnquiryAction =
   | "SELLER_DECLINE"
   | "BUYER_ACCEPT"
   | "BUYER_COUNTER"
+  | "BUYER_OFFER"
   | "BUYER_WITHDRAW";
 
 export type ReservationAction =
@@ -59,6 +60,7 @@ export function assertEnquiryTransition(input: {
     if (action === "SELLER_COUNTER") return "AWAITING_BUYER";
     if (action === "SELLER_DECLINE") return "DECLINED";
     if (action === "BUYER_WITHDRAW") return "WITHDRAWN";
+    if (action === "BUYER_OFFER") return "PENDING_SELLER";
   }
 
   if (currentStatus === "AWAITING_BUYER") {
