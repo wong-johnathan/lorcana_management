@@ -81,6 +81,16 @@ export const auth = {
       method: "POST",
       body: JSON.stringify({ credential }),
     }),
+  linkGoogle: (credential: string) =>
+    request<AuthResponse>("/auth/link-google", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    }),
+  deleteAccount: (confirmUsername: string, confirmText: string) =>
+    request<void>("/auth/me", {
+      method: "DELETE",
+      body: JSON.stringify({ confirmUsername, confirmText }),
+    }),
   config: () => request<AuthConfig>("/auth/config"),
 };
 

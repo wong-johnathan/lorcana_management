@@ -49,6 +49,7 @@ export interface User {
   email?: string | null;
   emailVerifiedAt?: string | null;
   authProvider?: "LOCAL" | "GOOGLE" | string;
+  googleLinked?: boolean;
 }
 
 export interface AuthResponse {

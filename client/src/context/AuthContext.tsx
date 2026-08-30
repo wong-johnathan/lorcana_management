@@ -15,6 +15,8 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   loginWithGoogle: (credential: string) => Promise<void>;
+  linkGoogleAccount: (credential: string) => Promise<void>;
+  deleteAccount: (confirmUsername: string, confirmText: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   registrationEnabled: boolean;
@@ -99,16 +101,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persistSession(res);
   }, [persistSession]);
 
-  const logout = useCallback(() => {
+  const linkGoogleAccount = useCallback(async (credential: string) => {
+    const res = await authApi.linkGoogle(credential);
+    persistSession(res);
+  }, [persistSession]);
+
+  const clearSession = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
   }, []);
 
+  const deleteAccount = useCallback(async (confirmUsername: string, confirmText: string) => {
+    await authApi.deleteAccount(confirmUsername, confirmText);
+    clearSession();
+  }, [clearSession]);
+
+  const logout = useCallback(() => {
+    clearSession();
+  }, [clearSession]);
+
   return (
     <AuthContext.Provider
-      value={{ user, token, login, register, loginWithGoogle, logout, isLoading, registrationEnabled, googleClientId }}
+      value={{ user, token, login, register, loginWithGoogle, linkGoogleAccount, deleteAccount, logout, isLoading, registrationEnabled, googleClientId }}
     >
       {children}
     </AuthContext.Provider>

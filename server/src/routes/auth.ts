@@ -1,8 +1,9 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
-import { signToken } from "../middleware/auth.js";
+import { signToken, authenticateToken, type AuthRequest } from "../middleware/auth.js";
 import { verifyGoogleCredential } from "../services/googleAuth.js";
+import { deleteProfileImage } from "../services/objectStorage.js";
 
 const prisma = new PrismaClient();
 export const authRouter = Router();
@@ -16,13 +17,15 @@ function normalizeEmail(email: string): string {
 }
 
 function serializeAuthUser(user: any) {
-  return {
+  const serialized = {
     id: user.id,
     username: user.username,
     email: user.email ?? null,
     emailVerifiedAt: user.emailVerifiedAt ?? null,
     authProvider: user.authProvider ?? "LOCAL",
-  };
+  } as any;
+  if (user.googleSub) serialized.googleLinked = true;
+  return serialized;
 }
 
 function usernameBaseFromGoogle(email: string, _name: string | null): string {
@@ -182,5 +185,103 @@ authRouter.post("/google", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Google login error:", error);
     res.status(401).json({ error: "Invalid Google credential" });
+  }
+});
+
+authRouter.post("/link-google", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { credential } = req.body || {};
+    if (typeof credential !== "string" || credential.trim().length === 0) {
+      res.status(400).json({ error: "Google credential is required" });
+      return;
+    }
+
+    const googleClientId = process.env.GOOGLE_CLIENT_ID;
+    if (!googleClientId) {
+      res.status(503).json({ error: "Google login is not configured" });
+      return;
+    }
+
+    const identity = await verifyGoogleCredential(credential, googleClientId);
+    if (!identity.emailVerified) {
+      res.status(403).json({ error: "Google email is not verified" });
+      return;
+    }
+
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!currentUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (currentUser.googleSub === identity.sub) {
+      const token = signToken({ userId: currentUser.id, username: currentUser.username });
+      res.json({ token, user: serializeAuthUser(currentUser) });
+      return;
+    }
+
+    const googleUser = await prisma.user.findUnique({ where: { googleSub: identity.sub } });
+    if (googleUser && googleUser.id !== currentUser.id) {
+      res.status(409).json({ error: "Google account is already linked to another user" });
+      return;
+    }
+
+    const emailNormalized = normalizeEmail(identity.email);
+    const emailUser = await prisma.user.findUnique({ where: { emailNormalized } });
+    if (emailUser && emailUser.id !== currentUser.id) {
+      res.status(409).json({ error: "Google email is already used by another account" });
+      return;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: currentUser.id },
+      data: {
+        googleSub: identity.sub,
+        email: identity.email,
+        emailNormalized,
+        emailVerifiedAt: currentUser.emailVerifiedAt ?? new Date(),
+        authProvider: "GOOGLE",
+      },
+    });
+
+    const token = signToken({ userId: user.id, username: user.username });
+    res.json({ token, user: serializeAuthUser(user) });
+  } catch (error) {
+    console.error("Link Google error:", error);
+    res.status(401).json({ error: "Invalid Google credential" });
+  }
+});
+
+authRouter.delete("/me", authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { confirmUsername, confirmText } = req.body || {};
+    if (confirmUsername !== req.user!.username || confirmText !== "DELETE") {
+      if (!confirmUsername || !confirmText) {
+        res.status(400).json({ error: "Type your username and DELETE to confirm account deletion" });
+        return;
+      }
+      res.status(400).json({ error: "Confirmation does not match this account" });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.userId },
+      include: { profile: true },
+    });
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const profileImageObjectKey = (user as any).profile?.profileImageObjectKey;
+    if (profileImageObjectKey) {
+      await deleteProfileImage(profileImageObjectKey).catch((error) => console.error("Delete profile image during account deletion failed:", error));
+    }
+
+    await prisma.user.delete({ where: { id: user.id } });
+    res.status(204).send();
+  } catch (error) {
+    console.error("Delete account error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });

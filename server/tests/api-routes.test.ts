@@ -11,6 +11,11 @@ vi.mock("google-auth-library", () => ({
   }),
 }));
 
+vi.mock("../src/services/objectStorage.js", () => ({
+  deleteProfileImage: vi.fn().mockResolvedValue(undefined),
+  LOCAL_UPLOAD_ROOT: "/tmp/lorcana-profile-test-uploads",
+}));
+
 vi.mock("../src/services/analysis.js", () => ({
   analyzeCardMarket: vi.fn().mockResolvedValue('{"summary":"ok","fullAnalysis":"ok"}'),
 }));
@@ -34,6 +39,7 @@ import { fetchAndSaveRemote, seedFromLocal, upsertCards } from "../src/services/
 import { fetchPriceGroups, syncGroupPrices } from "../src/services/priceSync.js";
 import { resetSyncStatuses } from "../src/routes/sync.js";
 import { compareInventoryEntryByCardIndex, compareNullableNumber } from "../src/routes/inventory.js";
+import { deleteProfileImage } from "../src/services/objectStorage.js";
 
 const app = createApp();
 const token = signToken({ userId: "user_1", username: "jw1005" });
@@ -220,6 +226,67 @@ describe("health and auth routes", () => {
     expect(prismaMock.user.create).toHaveBeenLastCalledWith(expect.objectContaining({
       data: expect.objectContaining({ username: expect.stringMatching(/^jw\d+$/) }),
     }));
+  });
+
+  it("links the authenticated username account to Google and rejects account conflicts", async () => {
+    googleMocks.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({ sub: "google-sub", email: "JW@Example.com", email_verified: true, name: "John Wong" }),
+    });
+
+    await auth(request(app).post("/api/auth/link-google").send({})).expect(400, { error: "Google credential is required" });
+
+    const oldGoogleClientId = process.env.GOOGLE_CLIENT_ID;
+    delete process.env.GOOGLE_CLIENT_ID;
+    await auth(request(app).post("/api/auth/link-google").send({ credential: "id-token" })).expect(503, { error: "Google login is not configured" });
+    process.env.GOOGLE_CLIENT_ID = oldGoogleClientId;
+
+    googleMocks.verifyIdToken.mockResolvedValueOnce({
+      getPayload: () => ({ sub: "google-sub", email: "jw@example.com", email_verified: false }),
+    });
+    await auth(request(app).post("/api/auth/link-google").send({ credential: "id-token" })).expect(403, { error: "Google email is not verified" });
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce({ id: "user_1", username: "jw", googleSub: null, emailVerifiedAt: null, authProvider: "LOCAL" })
+      .mockResolvedValueOnce({ id: "other", username: "other" });
+    await auth(request(app).post("/api/auth/link-google").send({ credential: "id-token" })).expect(409, { error: "Google account is already linked to another user" });
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce({ id: "user_1", username: "jw", googleSub: null, emailVerifiedAt: null, authProvider: "LOCAL" })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "other", username: "other" });
+    await auth(request(app).post("/api/auth/link-google").send({ credential: "id-token" })).expect(409, { error: "Google email is already used by another account" });
+
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce({ id: "user_1", username: "jw", googleSub: null, emailVerifiedAt: null, authProvider: "LOCAL", passwordHash: "hash" })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.user.update.mockResolvedValueOnce({ id: "user_1", username: "jw", googleSub: "google-sub", email: "JW@Example.com", emailNormalized: "jw@example.com", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"), authProvider: "GOOGLE", passwordHash: "hash" });
+    const linked = await auth(request(app).post("/api/auth/link-google").send({ credential: "id-token" })).expect(200);
+    expect(linked.body.user).toEqual(expect.objectContaining({ id: "user_1", username: "jw", email: "JW@Example.com", authProvider: "GOOGLE", googleLinked: true }));
+    expect(prismaMock.user.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { id: "user_1" },
+      data: expect.objectContaining({ googleSub: "google-sub", emailNormalized: "jw@example.com", emailVerifiedAt: expect.any(Date), authProvider: "GOOGLE" }),
+    }));
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", googleSub: "google-sub", email: "JW@Example.com", emailNormalized: "jw@example.com", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"), authProvider: "GOOGLE" });
+    const alreadyLinked = await auth(request(app).post("/api/auth/link-google").send({ credential: "id-token" })).expect(200);
+    expect(alreadyLinked.body.user).toEqual(expect.objectContaining({ id: "user_1", googleLinked: true }));
+  });
+
+  it("deletes the authenticated account only after double confirmation fields match", async () => {
+    await request(app).delete("/api/auth/me").expect(401, { error: "Authentication required" });
+    await auth(request(app).delete("/api/auth/me").send({ confirmUsername: "jw1005" })).expect(400, { error: "Type your username and DELETE to confirm account deletion" });
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw1005", profile: { profileImageObjectKey: "profile-images/user_1/avatar.png" } });
+    await auth(request(app).delete("/api/auth/me").send({ confirmUsername: "wrong", confirmText: "DELETE" })).expect(400, { error: "Confirmation does not match this account" });
+    expect(prismaMock.user.delete).not.toHaveBeenCalled();
+
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw1005", profile: { profileImageObjectKey: "profile-images/user_1/avatar.png" } });
+    prismaMock.user.delete.mockResolvedValueOnce({ id: "user_1" });
+    await auth(request(app).delete("/api/auth/me").send({ confirmUsername: "jw1005", confirmText: "DELETE" })).expect(204);
+
+    expect(deleteProfileImage).toHaveBeenCalledWith("profile-images/user_1/avatar.png");
+    expect(prismaMock.user.delete).toHaveBeenCalledWith({ where: { id: "user_1" } });
   });
 });
 

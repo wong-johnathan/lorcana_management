@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { inventory as inventoryApi, profile as profileApi, settings as settingsApi } from "../services/api";
 import type { InventoryPolicy, ProfileImageUpload, UserProfile, UserProfileUpdate, UserReference, UserSettings } from "../types";
 import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
 import UserReferencesEditor from "../components/profile/UserReferencesEditor";
+import AccountSettingsPanel from "../components/profile/AccountSettingsPanel";
 import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
 import { useAuth } from "../context/AuthContext";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, googleClientId, linkGoogleAccount, deleteAccount } = useAuth();
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [extrasPolicy, setExtrasPolicy] = useState<InventoryPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -169,6 +174,34 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLinkGoogle = async (credential: string) => {
+    setLinkingGoogle(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await linkGoogleAccount(credential);
+      setSuccess("Google account linked");
+    } catch (err: any) {
+      setError(err?.message || "Failed to link Google account");
+    } finally {
+      setLinkingGoogle(false);
+    }
+  };
+
+  const handleDeleteAccount = async (confirmUsername: string, confirmText: string) => {
+    setDeletingAccount(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteAccount(confirmUsername, confirmText);
+      navigate("/login", { replace: true });
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete account");
+      setDeletingAccount(false);
+      throw err;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -195,6 +228,19 @@ export default function SettingsPage() {
       </div>
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
       {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
+
+      {user && (
+        <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+          <AccountSettingsPanel
+            user={user}
+            googleClientId={googleClientId}
+            linking={linkingGoogle}
+            deleting={deletingAccount}
+            onLinkGoogle={handleLinkGoogle}
+            onDeleteAccount={handleDeleteAccount}
+          />
+        </div>
+      )}
 
       <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">
         <div className="flex items-center justify-between">

@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
 import UserReferencesEditor from "../components/profile/UserReferencesEditor";
 import PublicProfilePanel from "../components/profile/PublicProfilePanel";
+import AccountSettingsPanel from "../components/profile/AccountSettingsPanel";
 import type { UserProfile, UserReference, PublicUserProfile } from "../types";
 
 const profile: UserProfile = {
@@ -188,5 +189,116 @@ describe("profile components", () => {
     expect(screen.getByText("No photo")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Upload profile picture"), { target: { files: [] } });
     expect(screen.queryByText("Edit profile picture")).not.toBeInTheDocument();
+  });
+
+  it("links Google accounts and requires two-step account deletion confirmation", async () => {
+    const onLinkGoogle = vi.fn();
+    const onDeleteAccount = vi.fn();
+    let googleCallback: ((response: { credential?: string }) => void) | null = null;
+    const originalGoogle = (window as any).google;
+    (window as any).google = {
+      accounts: {
+        id: {
+          initialize: vi.fn((options) => { googleCallback = options.callback; }),
+          renderButton: vi.fn((element: HTMLElement) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "Link Google account";
+            button.onclick = () => googleCallback?.({ credential: "google-link-token" });
+            element.appendChild(button);
+          }),
+        },
+      },
+    };
+
+    try {
+      render(
+        <AccountSettingsPanel
+          user={{ id: "user_1", username: "jw", authProvider: "LOCAL", googleLinked: false }}
+          googleClientId="google-client-id"
+          linking={false}
+          deleting={false}
+          onLinkGoogle={onLinkGoogle}
+          onDeleteAccount={onDeleteAccount}
+        />
+      );
+
+      await act(async () => {
+        googleCallback?.({});
+      });
+      expect(screen.getByText("Google did not return a link credential")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Link Google account" }));
+      expect(onLinkGoogle).toHaveBeenCalledWith("google-link-token");
+
+      await userEvent.click(screen.getByRole("button", { name: "Delete account" }));
+      expect(screen.getByRole("heading", { name: "Delete account?" })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "I understand, continue" }));
+      expect(screen.getByRole("button", { name: "Permanently delete account" })).toBeDisabled();
+      await userEvent.type(screen.getByLabelText("Type your username"), "jw");
+      await userEvent.type(screen.getByLabelText("Type DELETE"), "DELETE");
+      await userEvent.click(screen.getByRole("button", { name: "Permanently delete account" }));
+      expect(onDeleteAccount).toHaveBeenCalledWith("jw", "DELETE");
+    } finally {
+      (window as any).google = originalGoogle;
+    }
+  });
+
+  it("renders linked and unavailable Google account states", () => {
+    const originalGoogle = (window as any).google;
+    delete (window as any).google;
+
+    try {
+      const { rerender } = render(
+        <AccountSettingsPanel
+          user={{ id: "user_1", username: "jw", email: "jw@example.com", authProvider: "GOOGLE", googleLinked: true, emailVerifiedAt: "2026-08-28T00:00:00.000Z" }}
+          googleClientId="google-client-id"
+          linking={false}
+          deleting={false}
+          onLinkGoogle={vi.fn()}
+          onDeleteAccount={vi.fn()}
+        />
+      );
+      expect(screen.getByText("Google linked: jw@example.com")).toBeInTheDocument();
+      expect(screen.queryByText("Google not configured")).not.toBeInTheDocument();
+
+      rerender(
+        <AccountSettingsPanel
+          user={{ id: "user_1", username: "jw", authProvider: "LOCAL", googleLinked: false }}
+          googleClientId={null}
+          linking={false}
+          deleting={false}
+          onLinkGoogle={vi.fn()}
+          onDeleteAccount={vi.fn()}
+        />
+      );
+      expect(screen.getByText("Google not configured")).toBeInTheDocument();
+    } finally {
+      (window as any).google = originalGoogle;
+    }
+  });
+
+  it("loads the Google script when account linking is configured but unavailable", () => {
+    const originalGoogle = (window as any).google;
+    delete (window as any).google;
+
+    try {
+      render(
+        <AccountSettingsPanel
+          user={{ id: "user_1", username: "jw", authProvider: "LOCAL", googleLinked: false }}
+          googleClientId="google-client-id"
+          linking={false}
+          deleting={false}
+          onLinkGoogle={vi.fn()}
+          onDeleteAccount={vi.fn()}
+        />
+      );
+      const script = Array.from(document.head.querySelectorAll("script")).find((item) => item.src === "https://accounts.google.com/gsi/client") as HTMLScriptElement;
+      expect(script).toBeTruthy();
+      fireEvent.error(script);
+      expect(screen.getByText("Failed to load Google account linking")).toBeInTheDocument();
+    } finally {
+      (window as any).google = originalGoogle;
+    }
   });
 });
