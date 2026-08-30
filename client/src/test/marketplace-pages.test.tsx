@@ -152,11 +152,11 @@ beforeEach(() => {
 });
 
 describe("marketplace discovery pages", () => {
-  it("loads public card-centric marketplace results and submits search filters", async () => {
+  it("loads public card-centric marketplace results and debounces search filters", async () => {
     apiMocks.marketplaceList.mockResolvedValue(listResponse);
 
     render(
-      <MemoryRouter initialEntries={["/marketplace"]}>
+      <MemoryRouter initialEntries={["/marketplace?availableOnly=true&variant=normal"]}>
         <MarketplacePage />
       </MemoryRouter>
     );
@@ -167,14 +167,23 @@ describe("marketplace discovery pages", () => {
     expect(screen.getByText("3 available sellers • From S$180.00")).toBeInTheDocument();
     expect(screen.getByText("≈ US$133.20")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /compare offers/i })).toHaveAttribute("href", "/marketplace/card/card_elsa");
-    expect(apiMocks.marketplaceList).toHaveBeenCalledWith(expect.objectContaining({ availableOnly: "true" }));
+    expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
+    expect(apiMocks.marketplaceList).toHaveBeenCalledWith(expect.objectContaining({ availableOnly: "true", variant: "normal" }));
 
     await userEvent.clear(screen.getByLabelText("Search marketplace"));
     await userEvent.type(screen.getByLabelText("Search marketplace"), "mickey");
-    await userEvent.selectOptions(screen.getByLabelText("Variant"), "normal");
-    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(apiMocks.marketplaceList).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey" }));
 
-    await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey", variant: "normal" })));
+    await waitFor(
+      () => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey", variant: "normal" })),
+      { timeout: 2000 }
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear search" }));
+
+    await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith({ availableOnly: "true" }));
+    expect(screen.getByLabelText("Search marketplace")).toHaveValue("");
+    expect(screen.getByLabelText("Variant")).toHaveValue("");
   });
 
   it("shows card offer comparison with the same fields used by Extras for Sale listings", async () => {
