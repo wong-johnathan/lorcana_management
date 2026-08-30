@@ -1,8 +1,23 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { marketplace as marketplaceApi } from "../services/api";
 import type { InventoryVariant, MarketplaceListParams, MarketplaceListResponse } from "../types";
 import MarketplaceCardResult from "../components/marketplace/MarketplaceCardResult";
+
+const DEBOUNCE_MS = 1000;
+const DEFAULT_FILTERS: MarketplaceListParams = { availableOnly: "true" };
+const queryParamKeys: Array<keyof MarketplaceListParams> = [
+  "search",
+  "set",
+  "rarity",
+  "color",
+  "variant",
+  "condition",
+  "language",
+  "sellerCountry",
+  "shipsTo",
+  "fulfilmentMethod",
+];
 
 const variants: Array<{ value: "" | InventoryVariant; label: string }> = [
   { value: "", label: "Any variant" },
@@ -12,12 +27,30 @@ const variants: Array<{ value: "" | InventoryVariant; label: string }> = [
 ];
 
 function paramsFromSearch(searchParams: URLSearchParams): MarketplaceListParams {
-  const params: MarketplaceListParams = { availableOnly: "true" };
-  ["search", "set", "rarity", "color", "variant"].forEach((key) => {
+  const params: MarketplaceListParams = { availableOnly: searchParams.get("availableOnly") || "true" };
+  queryParamKeys.forEach((key) => {
     const value = searchParams.get(key);
     if (value) (params as Record<string, string>)[key] = value;
   });
   return params;
+}
+
+function searchParamsFromFilters(filters: MarketplaceListParams): URLSearchParams {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  return params;
+}
+
+function hasActiveFilters(filters: MarketplaceListParams): boolean {
+  return Object.entries(filters).some(([key, value]) => key !== "availableOnly" && Boolean(value));
+}
+
+function filtersEqual(left: MarketplaceListParams, right: MarketplaceListParams): boolean {
+  return (["availableOnly", ...queryParamKeys] as Array<keyof MarketplaceListParams>).every(
+    (key) => (left[key] || "") === (right[key] || "")
+  );
 }
 
 export default function MarketplacePage() {
@@ -39,18 +72,27 @@ export default function MarketplacePage() {
       .finally(() => setLoading(false));
   }, [searchParams]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (!filtersEqual(filters, paramsFromSearch(searchParams))) {
+        setSearchParams(searchParamsFromFilters(filters), { replace: true });
+      }
+    }, DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [filters, searchParams, setSearchParams]);
+
   const updateFilter = (key: keyof MarketplaceListParams, value: string) => {
     setFilters((current) => ({ ...current, [key]: value }));
   };
 
-  const submitSearch = (event: FormEvent) => {
-    event.preventDefault();
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) params.set(key, value);
-    });
-    setSearchParams(params);
+  const clearSearch = () => {
+    const nextParams = searchParamsFromFilters(DEFAULT_FILTERS);
+    setFilters(DEFAULT_FILTERS);
+    setSearchParams(nextParams, { replace: true });
   };
+
+  const activeFilters = hasActiveFilters(filters);
 
   return (
     <div className="mx-auto max-w-6xl p-4 space-y-4">
@@ -59,7 +101,7 @@ export default function MarketplacePage() {
         <p className="mt-1 text-sm text-gray-400">Search exact Lorcana printings and compare globally published extras.</p>
       </div>
 
-      <form onSubmit={submitSearch} className="grid gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4 md:grid-cols-4">
+      <form onSubmit={(event) => event.preventDefault()} className="grid gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4 md:grid-cols-4">
         <div className="md:col-span-2">
           <label htmlFor="marketplace-search" className="mb-1 block text-sm text-gray-300">Search marketplace</label>
           <input
@@ -69,6 +111,7 @@ export default function MarketplacePage() {
             placeholder="Card name, subtitle, collector number"
             className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
           />
+          <p className="mt-1 text-xs text-gray-500">Search and filters apply automatically after 1 second.</p>
         </div>
         <div>
           <label htmlFor="marketplace-variant" className="mb-1 block text-sm text-gray-300">Variant</label>
@@ -77,7 +120,14 @@ export default function MarketplacePage() {
           </select>
         </div>
         <div className="flex items-end">
-          <button type="submit" className="w-full rounded bg-amber-500 px-4 py-2 font-semibold text-gray-950 hover:bg-amber-400">Search</button>
+          <button
+            type="button"
+            onClick={clearSearch}
+            disabled={!activeFilters}
+            className="w-full rounded border border-gray-700 px-4 py-2 font-semibold text-gray-200 transition-colors hover:border-amber-500 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-gray-700 disabled:hover:text-gray-200"
+          >
+            Clear search
+          </button>
         </div>
       </form>
 
