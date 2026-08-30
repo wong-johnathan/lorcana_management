@@ -259,7 +259,7 @@ describe("marketplace discovery pages", () => {
     expect(screen.getByRole("link", { name: "Log in to send enquiry" })).toHaveAttribute("href", "/login");
   });
 
-  it("lets verified buyers create a listing-bound enquiry and blocks unverified buyers", async () => {
+  it("lets verified buyers create a listing-bound enquiry with a message and blocks unverified buyers", async () => {
     apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
     apiMocks.marketplaceCreateEnquiry.mockResolvedValue({ enquiry: { id: "enquiry_1" } });
     authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
@@ -270,8 +270,9 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Send enquiry" }));
-    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", expect.objectContaining({ quantity: 1 }));
+    await userEvent.type(await screen.findByLabelText("Message (optional)"), "Is this available?");
+    await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
+    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 1, message: "Is this available?" });
     expect(await screen.findByText("Enquiry sent" )).toBeInTheDocument();
 
     authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: null } } as any);
@@ -281,6 +282,21 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
     expect(await screen.findByText("Verify email to send enquiries")).toBeInTheDocument();
+  });
+
+  it("sends an enquiry without a message when the buyer leaves it blank", async () => {
+    apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
+    apiMocks.marketplaceCreateEnquiry.mockResolvedValue({ enquiry: { id: "enquiry_1" } });
+    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
+
+    render(
+      <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
+        <Routes><Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} /></Routes>
+      </MemoryRouter>
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Send enquiry" }));
+    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 1 });
   });
 
   it("groups authenticated buyer enquiries by status with dashboard links", async () => {

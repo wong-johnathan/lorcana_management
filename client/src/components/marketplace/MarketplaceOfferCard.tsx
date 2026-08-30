@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { User, MarketplaceCardOffer } from "../../types";
 import { formatMarketplaceMoney, variantLabel } from "./marketplaceDisplay";
@@ -7,11 +8,13 @@ interface MarketplaceOfferCardProps {
   offer: MarketplaceCardOffer;
   user: User | null;
   saving?: boolean;
-  onEnquire: (listingId: string) => void;
+  onEnquire: (listingId: string, message?: string) => void;
 }
 
 export default function MarketplaceOfferCard({ offer, user, saving = false, onEnquire }: MarketplaceOfferCardProps) {
   const verifiedBuyer = Boolean(user?.emailVerifiedAt);
+  const [message, setMessage] = useState("");
+  const messageId = `enquiry-message-${offer.listingId}`;
 
   return (
     <article className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
@@ -49,14 +52,25 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
           Log in to send enquiry
         </Link>
       ) : verifiedBuyer ? (
-        <button
-          type="button"
-          onClick={() => onEnquire(offer.listingId)}
-          disabled={saving}
-          className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
-        >
-          {saving ? "Sending..." : "Send enquiry"}
-        </button>
+        <div className="space-y-2">
+          <label htmlFor={messageId} className="block text-sm text-gray-300">Message (optional)</label>
+          <textarea
+            id={messageId}
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder="Add a message for the seller"
+            rows={2}
+            className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
+          />
+          <button
+            type="button"
+            onClick={() => onEnquire(offer.listingId, message.trim())}
+            disabled={saving}
+            className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
+          >
+            {saving ? "Sending..." : "Send enquiry"}
+          </button>
+        </div>
       ) : (
         <p className="rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-200">Verify email to send enquiries</p>
       )}

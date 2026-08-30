@@ -1,5 +1,5 @@
 import { MemoryRouter } from "react-router-dom";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Card, MarketplaceCardOffer, MarketplaceCardResult } from "../types";
 import MarketplaceCardResultComponent from "../components/marketplace/MarketplaceCardResult";
@@ -136,5 +136,40 @@ describe("marketplace branch rendering", () => {
     expect(screen.getByText("Note: Meet near MRT")).toBeInTheDocument();
     expect(screen.queryByText("Email verified")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sending..." })).toBeDisabled();
+  });
+
+  it("passes the buyer's message through when sending an enquiry", () => {
+    const onEnquire = vi.fn();
+    render(
+      <MemoryRouter>
+        <MarketplaceOfferCard
+          offer={offer({ pricingMode: "FIXED" })}
+          user={{ id: "buyer_1", username: "buyer", emailVerifiedAt: "2026-08-27T00:00:00Z" } as any}
+          onEnquire={onEnquire}
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText("Message (optional)"), { target: { value: "  Is this still available?  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
+
+    expect(onEnquire).toHaveBeenCalledWith("listing_1", "Is this still available?");
+  });
+
+  it("sends an empty message when the buyer leaves the field blank", () => {
+    const onEnquire = vi.fn();
+    render(
+      <MemoryRouter>
+        <MarketplaceOfferCard
+          offer={offer({ pricingMode: "FIXED" })}
+          user={{ id: "buyer_1", username: "buyer", emailVerifiedAt: "2026-08-27T00:00:00Z" } as any}
+          onEnquire={onEnquire}
+        />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
+
+    expect(onEnquire).toHaveBeenCalledWith("listing_1", "");
   });
 });

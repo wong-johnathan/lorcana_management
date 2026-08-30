@@ -26,12 +26,13 @@ export default function MarketplaceCardPage() {
       .finally(() => setLoading(false));
   }, [cardId]);
 
-  const sendEnquiry = async (listingId: string) => {
+  const sendEnquiry = async (listingId: string, messageInput?: string) => {
     setSavingListingId(listingId);
     setError(null);
     setSuccess(null);
     try {
-      await marketplaceApi.createEnquiry(listingId, { quantity: 1 });
+      const message = messageInput?.trim();
+      await marketplaceApi.createEnquiry(listingId, message ? { quantity: 1, message } : { quantity: 1 });
       setSuccess("Enquiry sent");
     } catch (err: any) {
       setError(err?.message || "Failed to send enquiry");
