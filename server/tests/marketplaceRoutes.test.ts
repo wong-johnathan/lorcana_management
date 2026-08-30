@@ -457,6 +457,25 @@ describe("marketplace public routes", () => {
     expect(prismaMock.marketplaceEnquiry.create).not.toHaveBeenCalled();
   });
 
+  it("allows enquiries on active Extras listings without a separate marketplace visibility flag", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ marketplaceVisible: false, allowsMeetup: false, shipsDomestically: true }));
+    prismaMock.marketplaceEnquiry.findFirst.mockResolvedValueOnce(null);
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceEnquiry.create.mockResolvedValueOnce({ id: "enquiry_visible" });
+
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1, buyerCountryCode: "SG" }))
+      .expect(201)
+      .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_visible"));
+
+    expect(prismaMock.extraForSaleListing.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "listing_1", status: "active" },
+    }));
+  });
+
   it("creates default-message shipping enquiries and rejects unavailable quantity", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ allowsMeetup: false, shipsDomestically: true }));
