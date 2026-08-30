@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 export const prismaMock = {
+  $transaction: vi.fn(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock)),
   user: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -38,15 +39,16 @@ export const prismaMock = {
   },
   marketplaceEnquiry: {
     findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
   },
   enquiryMessage: {
+    findMany: vi.fn(),
     create: vi.fn(),
   },
   enquiryOffer: {
-    create: vi.fn(),
-  },
-  marketplaceReservation: {
     findMany: vi.fn(),
     create: vi.fn(),
   },
@@ -107,6 +109,7 @@ export const prismaMock = {
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   marketplaceReview: {
     findUnique: vi.fn(),
@@ -140,6 +143,11 @@ vi.mock("@prisma/client", () => ({
 
 export function resetPrismaMock() {
   for (const model of Object.values(prismaMock)) {
+    if (typeof model === "function" && "mockReset" in model) {
+      model.mockReset();
+      model.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
+      continue;
+    }
     for (const fn of Object.values(model)) {
       if (typeof fn === "function" && "mockReset" in fn) fn.mockReset();
     }
