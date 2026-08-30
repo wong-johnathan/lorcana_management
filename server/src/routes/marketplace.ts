@@ -453,7 +453,7 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
     }
 
     const listing = await prisma.extraForSaleListing.findFirst({
-      where: { id: listingId, status: "active", marketplaceVisible: true },
+      where: { id: listingId, status: "active" },
       include: {
         card: true,
         user: { select: { id: true, username: true, emailVerifiedAt: true, createdAt: true } },
