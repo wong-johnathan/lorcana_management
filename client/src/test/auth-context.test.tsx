@@ -10,6 +10,8 @@ vi.mock("../services/api", () => ({
     login: vi.fn(),
     register: vi.fn(),
     googleLogin: vi.fn(),
+    linkGoogle: vi.fn(),
+    deleteAccount: vi.fn(),
   },
 }));
 
@@ -30,6 +32,8 @@ function Harness() {
       <button onClick={() => auth.login("jw", "secret")}>login</button>
       <button onClick={() => auth.register("alice", "secret")}>register</button>
       <button onClick={() => auth.loginWithGoogle("google-id-token")}>google</button>
+      <button onClick={() => auth.linkGoogleAccount("google-link-token")}>link google</button>
+      <button onClick={() => auth.deleteAccount("jw", "DELETE")}>delete account</button>
       <button onClick={auth.logout}>logout</button>
     </div>
   );
@@ -41,6 +45,8 @@ describe("AuthContext", () => {
     vi.mocked(authApi.login).mockResolvedValue({ token: "login-token", user: { id: "u1", username: "jw" } });
     vi.mocked(authApi.register).mockResolvedValue({ token: "register-token", user: { id: "u2", username: "alice" } });
     vi.mocked(authApi.googleLogin).mockResolvedValue({ token: "google-token", user: { id: "u3", username: "google", emailVerifiedAt: "2026-08-28T00:00:00.000Z" } });
+    vi.mocked(authApi.linkGoogle).mockResolvedValue({ token: "linked-token", user: { id: "u1", username: "jw", email: "jw@example.com", emailVerifiedAt: "2026-08-28T00:00:00.000Z", googleLinked: true } });
+    vi.mocked(authApi.deleteAccount).mockResolvedValue(undefined);
   });
 
   it("loads saved non-expired sessions and registration config", async () => {
@@ -77,6 +83,17 @@ describe("AuthContext", () => {
     expect(screen.getByTestId("user")).toHaveTextContent("google");
     expect(localStorage.getItem("token")).toBe("google-token");
 
+    await userEvent.click(screen.getByRole("button", { name: "link google" }));
+    expect(authApi.linkGoogle).toHaveBeenCalledWith("google-link-token");
+    expect(screen.getByTestId("user")).toHaveTextContent("jw");
+    expect(localStorage.getItem("token")).toBe("linked-token");
+
+    await userEvent.click(screen.getByRole("button", { name: "delete account" }));
+    expect(authApi.deleteAccount).toHaveBeenCalledWith("jw", "DELETE");
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(localStorage.getItem("token")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "login" }));
     act(() => window.dispatchEvent(new CustomEvent("auth:expired")));
     await waitFor(() => expect(screen.getByTestId("user")).toHaveTextContent("none"));
 

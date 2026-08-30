@@ -4,7 +4,7 @@ import { marketplace as marketplaceApi } from "../services/api";
 import type { InventoryVariant, MarketplaceListParams, MarketplaceListResponse } from "../types";
 import MarketplaceCardResult from "../components/marketplace/MarketplaceCardResult";
 
-const DEBOUNCE_MS = 1000;
+const SEARCH_DEBOUNCE_MS = 500;
 const DEFAULT_FILTERS: MarketplaceListParams = { availableOnly: "true" };
 const queryParamKeys: Array<keyof MarketplaceListParams> = [
   "search",
@@ -77,13 +77,17 @@ export default function MarketplacePage() {
       if (!filtersEqual(filters, paramsFromSearch(searchParams))) {
         setSearchParams(searchParamsFromFilters(filters), { replace: true });
       }
-    }, DEBOUNCE_MS);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);
   }, [filters, searchParams, setSearchParams]);
 
-  const updateFilter = (key: keyof MarketplaceListParams, value: string) => {
-    setFilters((current) => ({ ...current, [key]: value }));
+  const updateFilter = (key: keyof MarketplaceListParams, value: string, applyImmediately = false) => {
+    const nextFilters = { ...filters, [key]: value };
+    setFilters(nextFilters);
+    if (applyImmediately) {
+      setSearchParams(searchParamsFromFilters(nextFilters), { replace: true });
+    }
   };
 
   const clearSearch = () => {
@@ -111,15 +115,16 @@ export default function MarketplacePage() {
             placeholder="Card name, subtitle, collector number"
             className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
           />
-          <p className="mt-1 text-xs text-gray-500">Search and filters apply automatically after 1 second.</p>
+          <p className="mt-1 text-xs text-gray-500">Search applies automatically after 0.5 seconds. Dropdown filters apply immediately.</p>
         </div>
         <div>
           <label htmlFor="marketplace-variant" className="mb-1 block text-sm text-gray-300">Variant</label>
-          <select id="marketplace-variant" value={filters.variant ?? ""} onChange={(event) => updateFilter("variant", event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100">
+          <select id="marketplace-variant" value={filters.variant ?? ""} onChange={(event) => updateFilter("variant", event.target.value, true)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100">
             {variants.map((variant) => <option key={variant.value} value={variant.value}>{variant.label}</option>)}
           </select>
         </div>
-        <div className="flex items-end">
+        <div>
+          <span className="mb-1 hidden text-sm text-transparent md:block" aria-hidden="true">Actions</span>
           <button
             type="button"
             onClick={clearSearch}

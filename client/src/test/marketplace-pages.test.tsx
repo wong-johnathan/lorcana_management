@@ -1,5 +1,5 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Card, MarketplaceCardOffersResponse, MarketplaceListResponse, MarketplaceEnquiriesResponse } from "../types";
@@ -170,16 +170,25 @@ describe("marketplace discovery pages", () => {
     expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
     expect(apiMocks.marketplaceList).toHaveBeenCalledWith(expect.objectContaining({ availableOnly: "true", variant: "normal" }));
 
-    await userEvent.clear(screen.getByLabelText("Search marketplace"));
-    await userEvent.type(screen.getByLabelText("Search marketplace"), "mickey");
+    fireEvent.change(screen.getByLabelText("Variant"), { target: { value: "holofoil" } });
+    await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ availableOnly: "true", variant: "holofoil" })));
+
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByLabelText("Search marketplace"), { target: { value: "mickey" } });
     expect(apiMocks.marketplaceList).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey" }));
 
-    await waitFor(
-      () => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey", variant: "normal" })),
-      { timeout: 2000 }
-    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(apiMocks.marketplaceList).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey" }));
 
-    await userEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    vi.useRealTimers();
+    await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey", variant: "holofoil" })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 
     await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith({ availableOnly: "true" }));
     expect(screen.getByLabelText("Search marketplace")).toHaveValue("");
