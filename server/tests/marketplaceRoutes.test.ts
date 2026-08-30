@@ -153,6 +153,40 @@ describe("marketplace public routes", () => {
       });
   });
 
+  it("excludes the current user's own listings when browsing marketplace while logged in", async () => {
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([marketplaceListing({ userId: "seller_1" })]);
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+
+    await auth(request(app).get("/api/marketplace?search=Elsa"))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.results).toHaveLength(1);
+        expect(prismaMock.extraForSaleListing.findMany).toHaveBeenCalledWith(expect.objectContaining({
+          where: expect.objectContaining({ userId: { not: "buyer_1" } }),
+        }));
+      });
+  });
+
+  it("excludes the current user's own offers from card-specific marketplace comparison", async () => {
+    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([marketplaceListing({ userId: "seller_1" })]);
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+
+    await auth(request(app).get("/api/marketplace/cards/card_1/offers"))
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.offers).toHaveLength(1);
+        expect(prismaMock.extraForSaleListing.findMany).toHaveBeenCalledWith(expect.objectContaining({
+          where: expect.objectContaining({ userId: { not: "buyer_1" } }),
+        }));
+      });
+  });
+
   it("shows active Extras for Sale listings in marketplace without a separate publish step", async () => {
     prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
       marketplaceListing({

@@ -1,6 +1,6 @@
 import { Router, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import { authenticateToken, AuthRequest } from "../middleware/auth.js";
+import { authenticateOptional, authenticateToken, AuthRequest } from "../middleware/auth.js";
 import {
   DEFAULT_INVENTORY_POLICY,
   calculateExtras,
@@ -164,9 +164,10 @@ async function availabilityForListing(listing: any, now = new Date()) {
   };
 }
 
-function marketplaceListingWhere(query: Record<string, unknown>, cardId?: string) {
+function marketplaceListingWhere(query: Record<string, unknown>, cardId?: string, excludeUserId?: string | null) {
   const where: any = { status: "active" };
   if (cardId) where.cardId = cardId;
+  if (excludeUserId) where.userId = { not: excludeUserId };
 
   const cardWhere: any = {};
   if (typeof query.search === "string" && query.search.trim()) {
@@ -192,14 +193,14 @@ function marketplaceListingWhere(query: Record<string, unknown>, cardId?: string
   return where;
 }
 
-async function eligibleOffers(query: Record<string, unknown>, cardId?: string) {
+async function eligibleOffers(query: Record<string, unknown>, cardId?: string, excludeUserId?: string | null) {
   const destinationCountry = typeof query.destinationCountry === "string"
     ? query.destinationCountry.toUpperCase()
     : typeof query.shipsTo === "string"
       ? query.shipsTo.toUpperCase()
       : null;
   const listings = await prisma.extraForSaleListing.findMany({
-    where: marketplaceListingWhere(query, cardId),
+    where: marketplaceListingWhere(query, cardId, excludeUserId),
     include: {
       card: { include: { prices: true } },
       user: { select: { id: true, username: true, emailVerifiedAt: true, createdAt: true } },
@@ -217,9 +218,9 @@ async function eligibleOffers(query: Record<string, unknown>, cardId?: string) {
   return offers;
 }
 
-marketplaceRouter.get("/", async (req, res: Response) => {
+marketplaceRouter.get("/", authenticateOptional, async (req: AuthRequest, res: Response) => {
   try {
-    const offers = await eligibleOffers(req.query as Record<string, unknown>);
+    const offers = await eligibleOffers(req.query as Record<string, unknown>, undefined, req.user?.userId);
     const grouped = new Map<string, any>();
 
     for (const offer of offers) {
@@ -258,10 +259,10 @@ marketplaceRouter.get("/", async (req, res: Response) => {
   }
 });
 
-marketplaceRouter.get("/cards/:cardId/offers", async (req, res: Response) => {
+marketplaceRouter.get("/cards/:cardId/offers", authenticateOptional, async (req: AuthRequest, res: Response) => {
   try {
     const { cardId } = req.params as { cardId: string };
-    const offers = await eligibleOffers(req.query as Record<string, unknown>, cardId);
+    const offers = await eligibleOffers(req.query as Record<string, unknown>, cardId, req.user?.userId);
     const card = offers[0]?.listing.card ?? await prisma.card.findUnique({ where: { id: cardId } });
     if (!card) {
       res.status(404).json({ error: "Card not found" });

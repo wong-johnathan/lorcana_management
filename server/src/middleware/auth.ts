@@ -13,13 +13,17 @@ export interface AuthRequest extends Request {
   user?: AuthPayload;
 }
 
+function tokenFromRequest(req: AuthRequest): string | null {
+  const authHeader = req.headers.authorization;
+  return authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+}
+
 export function authenticateToken(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): void {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = tokenFromRequest(req);
 
   if (!token) {
     res.status(401).json({ error: "Authentication required" });
@@ -33,6 +37,25 @@ export function authenticateToken(
   } catch {
     res.status(401).json({ error: "Invalid or expired token" });
   }
+}
+
+export function authenticateOptional(
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction
+): void {
+  const token = tokenFromRequest(req);
+  if (!token) {
+    next();
+    return;
+  }
+
+  try {
+    req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
+  } catch {
+    // Marketplace browsing stays public; an invalid optional token simply means anonymous browsing.
+  }
+  next();
 }
 
 export function signToken(payload: AuthPayload): string {
