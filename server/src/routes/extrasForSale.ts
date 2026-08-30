@@ -20,6 +20,10 @@ import {
   evaluateMarketplaceEligibility,
 } from "../services/marketplaceAvailability.js";
 import { requireVerifiedEmailForAction } from "../services/userVerification.js";
+import {
+  ACTIVE_RESERVATION_CONFLICT_MESSAGE,
+  hasActiveReservationsForUserListings,
+} from "../services/marketplaceReservationGuards.js";
 import { compareCardContainerByIndex } from "../utils/cardSort.js";
 
 const prisma = new PrismaClient();
@@ -477,6 +481,11 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if ((desiredQuantity !== undefined || req.body.status !== undefined) && await hasActiveReservationsForUserListings(prisma, userId, existing.cardId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
+
     const variant = parseVariant(existing.variant);
     const [entry, policy, override] = await Promise.all([
       prisma.inventoryEntry.findFirst({ where: { userId, cardId: existing.cardId } }),
@@ -533,6 +542,11 @@ extrasForSaleRouter.delete("/:id", async (req: AuthRequest, res: Response) => {
     const existing = await prisma.extraForSaleListing.findFirst({ where: { id, userId } });
     if (!existing) {
       res.status(404).json({ error: "Listing not found" });
+      return;
+    }
+
+    if (await hasActiveReservationsForUserListings(prisma, userId, existing.cardId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
       return;
     }
 

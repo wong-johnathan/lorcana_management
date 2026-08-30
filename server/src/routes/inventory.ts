@@ -10,6 +10,10 @@ import {
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
 import {
+  ACTIVE_RESERVATION_CONFLICT_MESSAGE,
+  hasActiveReservationsForUserListings,
+} from "../services/marketplaceReservationGuards.js";
+import {
   compareCardContainerByIndex,
   compareNullableNumber as compareNullableNumberByIndex,
 } from "../utils/cardSort.js";
@@ -209,6 +213,11 @@ inventoryRouter.patch("/policy", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if (await hasActiveReservationsForUserListings(prisma, userId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
+
     const data = {
       ...(keepNormalQuantity !== undefined && { keepNormalQuantity }),
       ...(keepFoilQuantity !== undefined && { keepFoilQuantity }),
@@ -358,6 +367,11 @@ inventoryRouter.put("/retention/:cardId", async (req: AuthRequest, res: Response
       return;
     }
 
+    if (await hasActiveReservationsForUserListings(prisma, userId, cardId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
+
     const data = {
       ...(keepNormalQuantity !== undefined && { keepNormalQuantity }),
       ...(keepFoilQuantity !== undefined && { keepFoilQuantity }),
@@ -380,6 +394,10 @@ inventoryRouter.delete("/retention/:cardId", async (req: AuthRequest, res: Respo
   try {
     const userId = req.user!.userId;
     const { cardId } = req.params as { cardId: string };
+    if (await hasActiveReservationsForUserListings(prisma, userId, cardId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
     await prisma.cardRetentionOverride.deleteMany({ where: { userId, cardId } });
     res.status(204).send();
   } catch (error) {
@@ -502,6 +520,10 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
 inventoryRouter.delete("/", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
+    if (await hasActiveReservationsForUserListings(prisma, userId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
     const result = await prisma.inventoryEntry.deleteMany({ where: { userId } });
     res.json({ deleted: result.count });
   } catch (error) {
@@ -657,6 +679,11 @@ inventoryRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    if (await hasActiveReservationsForUserListings(prisma, userId, existing.cardId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
+
     const entry = await prisma.inventoryEntry.update({
       where: { id },
       data: {
@@ -686,6 +713,11 @@ inventoryRouter.delete("/:id", async (req: AuthRequest, res: Response) => {
     });
     if (!existing) {
       res.status(404).json({ error: "Inventory entry not found" });
+      return;
+    }
+
+    if (await hasActiveReservationsForUserListings(prisma, userId, existing.cardId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
       return;
     }
 

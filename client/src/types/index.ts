@@ -398,11 +398,30 @@ export interface MarketplaceEnquiryOffer extends MarketplaceEnquiryOfferSummary 
   enquiryId: string;
   proposedBy: User;
   createdAt: string;
+  buyerCountryCode?: string | null;
+}
+
+export interface MarketplaceReservation {
+  id: string;
+  listingId: string;
+  enquiryId: string;
+  acceptedOfferId?: string | null;
+  quantity: number;
+  unitPriceMinor: number;
+  shippingPriceMinor: number;
+  currency: ListingCurrency;
+  fulfilmentMethod: MarketplaceFulfilmentMethod;
+  buyerCountryCode?: string | null;
+  expiresAt: string;
+  status: "RESERVED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "DISPUTED" | "AWAITING_BUYER_CONFIRMATION";
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MarketplaceEnquiryDetail extends MarketplaceEnquirySummary {
   messages: MarketplaceEnquiryMessage[];
   offers: MarketplaceEnquiryOffer[];
+  reservation?: MarketplaceReservation | null;
 }
 
 export interface MarketplaceEnquiryDetailResponse {

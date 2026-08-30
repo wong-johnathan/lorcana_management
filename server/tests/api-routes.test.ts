@@ -541,6 +541,21 @@ describe("inventory routes", () => {
     await auth(request(app).delete("/api/inventory/entry_1")).expect(204);
   });
 
+  it("blocks inventory and keep-policy mutations that would invalidate active reservations", async () => {
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry());
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
+    await auth(request(app).patch("/api/inventory/entry_1").send({ quantity: 4 }))
+      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
+
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
+    await auth(request(app).delete("/api/inventory"))
+      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
+
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
+    await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: 8 }))
+      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
+  });
+
   it("calculates inventory stats, wipe, CSV, and decklist outputs", async () => {
     prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
       entry({ quantity: 1, foilQuantity: 1, holofoilQuantity: 1, card: { setName: "Set A", prices: [{ variant: "Normal", marketPrice: 2 }, { variant: "Cold Foil", marketPrice: 3 }, { variant: "Holofoil", marketPrice: 4 }] } }),

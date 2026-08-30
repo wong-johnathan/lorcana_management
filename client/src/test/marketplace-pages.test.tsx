@@ -2,13 +2,20 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Card, MarketplaceCardOffersResponse, MarketplaceListResponse, MarketplaceEnquiriesResponse } from "../types";
+import type { Card, MarketplaceCardOffersResponse, MarketplaceListResponse, MarketplaceEnquiriesResponse, MarketplaceEnquiryDetailResponse } from "../types";
 
 const apiMocks = vi.hoisted(() => ({
   marketplaceList: vi.fn(),
   marketplaceCardOffers: vi.fn(),
   marketplaceCreateEnquiry: vi.fn(),
   marketplaceListEnquiries: vi.fn(),
+  marketplaceGetEnquiry: vi.fn(),
+  marketplaceSendMessage: vi.fn(),
+  marketplaceCreateOffer: vi.fn(),
+  marketplaceAcceptEnquiry: vi.fn(),
+  marketplaceDeclineEnquiry: vi.fn(),
+  marketplaceWithdrawEnquiry: vi.fn(),
+  marketplaceCancelReservation: vi.fn(),
 }));
 
 const authMocks = vi.hoisted(() => ({
@@ -21,6 +28,13 @@ vi.mock("../services/api", () => ({
     cardOffers: apiMocks.marketplaceCardOffers,
     createEnquiry: apiMocks.marketplaceCreateEnquiry,
     listEnquiries: apiMocks.marketplaceListEnquiries,
+    getEnquiry: apiMocks.marketplaceGetEnquiry,
+    sendMessage: apiMocks.marketplaceSendMessage,
+    createOffer: apiMocks.marketplaceCreateOffer,
+    acceptEnquiry: apiMocks.marketplaceAcceptEnquiry,
+    declineEnquiry: apiMocks.marketplaceDeclineEnquiry,
+    withdrawEnquiry: apiMocks.marketplaceWithdrawEnquiry,
+    cancelReservation: apiMocks.marketplaceCancelReservation,
   },
 }));
 
@@ -31,6 +45,7 @@ vi.mock("../context/AuthContext", () => ({
 import MarketplacePage from "../pages/MarketplacePage";
 import MarketplaceCardPage from "../pages/MarketplaceCardPage";
 import MarketplaceEnquiriesPage from "../pages/MarketplaceEnquiriesPage";
+import MarketplaceEnquiryPage from "../pages/MarketplaceEnquiryPage";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
@@ -146,6 +161,36 @@ const enquiriesResponse: MarketplaceEnquiriesResponse = {
   ],
 };
 
+const enquiryDetailResponse: MarketplaceEnquiryDetailResponse = {
+  enquiry: {
+    ...enquiriesResponse.enquiries[1],
+    reservation: null,
+    messages: [
+      {
+        id: "message_1",
+        enquiryId: "enquiry_2",
+        sender: { id: "seller_2", username: "elsa" },
+        message: "I can do S$170.",
+        createdAt: "2026-08-27T01:10:00Z",
+      },
+    ],
+    offers: [
+      {
+        id: "offer_1",
+        enquiryId: "enquiry_2",
+        proposedBy: { id: "seller_2", username: "elsa" },
+        quantity: 1,
+        unitPrice: { amountMinor: 17000, currency: "SGD" },
+        shippingPrice: { amountMinor: 0, currency: "SGD" },
+        fulfilmentMethod: "MEETUP",
+        buyerCountryCode: "SG",
+        createdAt: "2026-08-27T01:05:00Z",
+      },
+    ],
+    latestOffer: { quantity: 1, unitPrice: { amountMinor: 17000, currency: "SGD" }, fulfilmentMethod: "MEETUP" },
+  },
+};
+
 beforeEach(() => {
   Object.values(apiMocks).forEach((mock) => mock.mockReset());
   authMocks.useAuth.mockReturnValue({ user: null } as any);
@@ -253,5 +298,35 @@ describe("marketplace discovery pages", () => {
     expect(screen.getByText("2 unread")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Elsa - Spirit of Winter/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_1");
     expect(screen.getByRole("link", { name: /Mickey Mouse - Brave Little Tailor/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_2");
+  });
+
+  it("renders an actionable enquiry thread with messages, offers, accept, counter, and reservation controls", async () => {
+    apiMocks.marketplaceGetEnquiry.mockResolvedValue(enquiryDetailResponse);
+    apiMocks.marketplaceSendMessage.mockResolvedValue({ message: { id: "message_2" } });
+    apiMocks.marketplaceCreateOffer.mockResolvedValue({ offer: { id: "offer_2" } });
+    apiMocks.marketplaceAcceptEnquiry.mockResolvedValue({ reservation: { id: "reservation_1", status: "RESERVED" } });
+    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
+
+    render(
+      <MemoryRouter initialEntries={["/marketplace/enquiries/enquiry_2"]}>
+        <Routes><Route path="/marketplace/enquiries/:enquiryId" element={<MarketplaceEnquiryPage />} /></Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Mickey Mouse - Brave Little Tailor" })).toBeInTheDocument();
+    expect(screen.getByText("I can do S$170.")).toBeInTheDocument();
+    expect(screen.getByText("Offer from elsa: 1 × S$170.00" )).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Message"), "Sounds good");
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(apiMocks.marketplaceSendMessage).toHaveBeenCalledWith("enquiry_2", "Sounds good");
+
+    await userEvent.clear(screen.getByLabelText("Unit price"));
+    await userEvent.type(screen.getByLabelText("Unit price"), "165");
+    await userEvent.click(screen.getByRole("button", { name: "Send counteroffer" }));
+    expect(apiMocks.marketplaceCreateOffer).toHaveBeenCalledWith("enquiry_2", expect.objectContaining({ unitPriceMinor: 16500, currency: "SGD" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Accept offer and reserve" }));
+    expect(apiMocks.marketplaceAcceptEnquiry).toHaveBeenCalledWith("enquiry_2");
   });
 });

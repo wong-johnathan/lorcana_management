@@ -31,6 +31,7 @@ import type {
   MarketplaceEnquiriesResponse,
   MarketplaceCreateOfferPayload,
   MarketplaceEnquiryOffer,
+  MarketplaceReservation,
   MarketplaceReputationSummary,
 } from "../types";
 
@@ -246,6 +247,14 @@ export const marketplace = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  acceptEnquiry: (id: string) =>
+    request<{ reservation: MarketplaceReservation }>(`/marketplace/enquiries/${id}/accept`, { method: "POST" }),
+  declineEnquiry: (id: string) =>
+    request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}/decline`, { method: "POST" }),
+  withdrawEnquiry: (id: string) =>
+    request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}/withdraw`, { method: "POST" }),
+  cancelReservation: (id: string) =>
+    request<{ reservation: MarketplaceReservation }>(`/marketplace/reservations/${id}/cancel`, { method: "POST" }),
   userReputation: (userId: string) =>
     request<MarketplaceReputationSummary>(`/marketplace/users/${userId}/reputation`),
 };
