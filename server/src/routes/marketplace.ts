@@ -34,7 +34,6 @@ const prisma = new PrismaClient() as any;
 export const marketplaceRouter = Router();
 
 const MAX_ENQUIRY_MESSAGE_LENGTH = 2000;
-const DEFAULT_ENQUIRY_MESSAGE = "Marketplace enquiry started.";
 
 function parseVariant(value: string): InventoryVariant | null {
   if (value === "normal" || value === "foil" || value === "holofoil") return value;
@@ -444,9 +443,7 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       res.status(400).json({ error: "quantity must be a positive integer" });
       return;
     }
-    const message = typeof req.body.message === "string" && req.body.message.trim()
-      ? req.body.message.trim()
-      : DEFAULT_ENQUIRY_MESSAGE;
+    const message = typeof req.body.message === "string" ? req.body.message.trim() : "";
     if (message.length > MAX_ENQUIRY_MESSAGE_LENGTH) {
       res.status(400).json({ error: "message must be 2000 characters or fewer" });
       return;
@@ -488,7 +485,6 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       return;
     }
 
-    const initialPrice = listingPrice(listing);
     const enquiry = await prisma.marketplaceEnquiry.create({
       data: {
         listingId,
@@ -497,19 +493,9 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
         lastActivityAt: new Date(),
       },
     });
-    await prisma.enquiryMessage.create({ data: { enquiryId: enquiry.id, senderId: buyerId, message } });
-    await prisma.enquiryOffer.create({
-      data: {
-        enquiryId: enquiry.id,
-        proposedByUserId: buyerId,
-        quantity,
-        unitPriceMinor: initialPrice?.amountMinor ?? 0,
-        shippingPriceMinor: 0,
-        currency: initialPrice?.currency ?? listing.currency ?? "SGD",
-        fulfilmentMethod: listing.allowsMeetup ? "MEETUP" : "DOMESTIC_SHIPPING",
-        buyerCountryCode: req.body.buyerCountryCode ?? null,
-      },
-    });
+    if (message) {
+      await prisma.enquiryMessage.create({ data: { enquiryId: enquiry.id, senderId: buyerId, message } });
+    }
     await prisma.notification.create({
       data: { userId: listing.userId, type: "MARKETPLACE_ENQUIRY_CREATED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id },
     });
@@ -602,7 +588,10 @@ marketplaceRouter.post("/enquiries/:id/offers", authenticateToken, async (req: A
     }
     let nextStatus;
     try {
-      const action: EnquiryAction = actorRole === "SELLER" ? "SELLER_COUNTER" : "BUYER_COUNTER";
+      const isFirstBuyerOffer = actorRole === "BUYER" && enquiry.status === "PENDING_SELLER" && (enquiry.offers?.length ?? 0) === 0;
+      const action: EnquiryAction = actorRole === "SELLER"
+        ? "SELLER_COUNTER"
+        : isFirstBuyerOffer ? "BUYER_OFFER" : "BUYER_COUNTER";
       nextStatus = assertEnquiryTransition({ currentStatus: enquiry.status, action, actorRole });
     } catch (error) {
       mapTransitionError(error, res);

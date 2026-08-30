@@ -159,6 +159,7 @@ describe("marketplace state transition guards", () => {
     expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "SELLER_ACCEPT", actorRole: "SELLER" })).toBe("RESERVED");
     expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "SELLER_DECLINE", actorRole: "SELLER" })).toBe("DECLINED");
     expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "BUYER_WITHDRAW", actorRole: "BUYER" })).toBe("WITHDRAWN");
+    expect(assertEnquiryTransition({ currentStatus: "PENDING_SELLER", action: "BUYER_OFFER", actorRole: "BUYER" })).toBe("PENDING_SELLER");
     expect(assertEnquiryTransition({ currentStatus: "AWAITING_BUYER", action: "BUYER_COUNTER", actorRole: "BUYER" })).toBe("PENDING_SELLER");
     expect(assertEnquiryTransition({ currentStatus: "AWAITING_BUYER", action: "BUYER_WITHDRAW", actorRole: "BUYER" })).toBe("WITHDRAWN");
 
