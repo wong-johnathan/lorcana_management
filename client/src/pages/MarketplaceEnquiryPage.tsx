@@ -146,10 +146,10 @@ export default function MarketplaceEnquiryPage() {
   if (!enquiry || !counterparty) return <div className="py-12 text-center text-gray-500">Chat not found.</div>;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col p-4" style={{ height: "calc(100vh - 8rem)" }}>
-      <div className="flex items-center gap-3 rounded-t-xl border border-gray-800 bg-gray-900 p-3">
-        <Link to="/marketplace/enquiries" className="text-sm text-amber-300 hover:text-amber-200">←</Link>
-        <img src={enquiry.card.imageUrl} alt={cardTitle(enquiry.card)} className="h-14 w-10 rounded object-cover bg-gray-800" />
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+      <div className="flex items-center gap-3 border-b border-gray-800 bg-gray-900 px-3 py-2.5">
+        <Link to="/marketplace/enquiries" className="px-1 text-xl leading-none text-amber-300 hover:text-amber-200" aria-label="Back to messages">←</Link>
+        <img src={enquiry.card.imageUrl} alt={cardTitle(enquiry.card)} className="h-11 w-8 rounded object-cover bg-gray-800" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-gray-100">{counterparty.username}</p>
           <p className="truncate text-xs text-gray-400">{cardTitle(enquiry.card)} · {variantLabel(enquiry.variant)}</p>
@@ -160,7 +160,8 @@ export default function MarketplaceEnquiryPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto border-x border-gray-800 bg-gray-950 p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto bg-gray-950">
+        <div className="mx-auto w-full max-w-3xl space-y-3 p-4">
         {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-2 text-xs text-red-300">{error}</div>}
 
         {timeline.length === 0 ? (
@@ -190,9 +191,11 @@ export default function MarketplaceEnquiryPage() {
             </div>
           );
         })}
+        </div>
       </div>
 
-      <div className="rounded-b-xl border border-gray-800 bg-gray-900 p-3 space-y-3">
+      <div className="border-t border-gray-800 bg-gray-900 px-3 py-2.5">
+        <div className="mx-auto w-full max-w-3xl space-y-2">
         {enquiry.reservation?.status === "RESERVED" && (
           <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-300">
             Reserved — {enquiry.reservation.quantity} × {formatMarketplaceMoney({ amountMinor: enquiry.reservation.unitPriceMinor, currency: enquiry.reservation.currency })} until {timeOf(enquiry.reservation.expiresAt)}
@@ -238,6 +241,7 @@ export default function MarketplaceEnquiryPage() {
         )}
 
         {!canAct && <p className="text-center text-xs text-gray-500">This chat is {enquiry.status.toLowerCase().replace(/_/g, " ")}.</p>}
+        </div>
       </div>
     </div>
   );
