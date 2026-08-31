@@ -440,8 +440,6 @@ describe("marketplace public routes", () => {
   it("validates enquiry creation branches before creating messages and offers", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
 
-    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({}))
-      .expect(400, { error: "quantity is required" });
     await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 0 }))
       .expect(400, { error: "quantity must be a positive integer" });
     await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1.5 }))
@@ -537,6 +535,26 @@ describe("marketplace public routes", () => {
     expect(prismaMock.marketplaceEnquiry.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ listingId: "listing_1", buyerId: "buyer_1", quantity: 1, status: "PENDING_SELLER" }),
     }));
+  });
+
+  it("creates a chat-first enquiry without a quantity", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ allowsMeetup: false, shipsDomestically: true }));
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceEnquiry.create.mockResolvedValueOnce({ id: "enquiry_chat" });
+
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({}))
+      .expect(201)
+      .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_chat"));
+
+    expect(prismaMock.marketplaceEnquiry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ listingId: "listing_1", buyerId: "buyer_1", quantity: null, status: "PENDING_SELLER" }),
+    }));
+    expect(prismaMock.enquiryMessage.create).not.toHaveBeenCalled();
+    expect(prismaMock.enquiryOffer.create).not.toHaveBeenCalled();
   });
 
   it("creates enquiries carrying only the buyer's message and no fabricated offer", async () => {

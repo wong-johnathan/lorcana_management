@@ -199,7 +199,7 @@ model MarketplaceEnquiry {
   listing        ExtraForSaleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   buyerId        String
   buyer          User                @relation("MarketplaceBuyerEnquiries", fields: [buyerId], references: [id], onDelete: Cascade)
-  quantity       Int
+  quantity       Int?
   status         String              @default("PENDING_SELLER")
   lastActivityAt DateTime            @default(now())
   createdAt      DateTime            @default(now())

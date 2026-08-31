@@ -128,6 +128,25 @@ async function mockApi(page: Page) {
             lowestPrice: { amountMinor: 1200, currency: "SGD" },
             approximateConvertedPrice: { amountMinor: 890, currency: "USD", rateSource: "mock", fetchedAt: new Date().toISOString() },
             canFulfilToViewer: true,
+            offers: [{
+              listingId: "listing_1",
+              seller: { id: "seller_1", username: "seller", emailVerifiedAt: new Date().toISOString() },
+              sellerVerified: true,
+              variant: "normal",
+              availableQuantity: 2,
+              pricingMode: "FIXED",
+              askingPrice: { amountMinor: 1200, currency: "SGD" },
+              approximateConvertedPrice: { amountMinor: 890, currency: "USD", rateSource: "mock", fetchedAt: new Date().toISOString() },
+              condition: "NEAR_MINT",
+              cardLanguage: "EN",
+              note: "Meet near MRT",
+              referencePrice: 4,
+              referencePriceCurrency: "USD",
+              originCountryCode: "SG",
+              publicLocality: "Singapore",
+              fulfilment: { allowsMeetup: true, shipsDomestically: true, shipsInternationally: false, shipsWorldwide: false, destinationCountryCodes: ["SG"] },
+              reputation: { userId: "seller_1", role: "seller", ratingAverage: 4.8, reviewCount: 3, completedDeals: 5, uniqueCounterparties: 4, memberSince: "2026-01-01T00:00:00Z", emailVerified: true },
+            }],
           }],
           pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
         },
@@ -254,17 +273,15 @@ test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ p
   await page.goto("/marketplace");
   await expect(page.getByRole("heading", { name: "Marketplace" })).toBeVisible();
   await expect(page.getByText("Mickey Mouse - Brave Little Tailor")).toBeVisible();
-  await expect(page.getByText("1 available seller • From S$12.00")).toBeVisible();
+  await expect(page.getByText("S$12.00")).toBeVisible();
+  await expect(page.getByText("2 available ·")).toBeVisible();
+  await expect(page.getByText("@seller")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Log in to chat" })).toBeVisible();
 
-  await page.getByRole("link", { name: /compare offers/i }).click();
+  await page.getByRole("link", { name: "Mickey Mouse - Brave Little Tailor", exact: true }).click();
   await expect(page).toHaveURL(/\/marketplace\/card\/card_1$/);
-  await expect(page.getByText("Normal × 2")).toBeVisible();
-  await expect(page.getByText("TCG reference (USD): $4.00")).toBeVisible();
-  await expect(page.getByText("Note: Meet near MRT")).toBeVisible();
-  await expect(page.getByText("Email verified")).toBeVisible();
-  await expect(page.getByText(/physical photos/i)).toHaveCount(0);
-  await expect(page.getByText(/seller rating/i)).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Log in to send enquiry" })).toBeVisible();
+  await expect(page.getByText("S$12.00")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Log in to chat" })).toBeVisible();
 });
 
 test("anonymous user browses database, opens card detail, and runs master-set estimate", async ({ page }) => {

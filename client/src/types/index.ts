@@ -306,6 +306,7 @@ export interface MarketplaceCardResult {
   lowestPrice: MarketplaceMoney | null;
   approximateConvertedPrice?: MarketplaceApproximateMoney | null;
   canFulfilToViewer: boolean;
+  offers: MarketplaceCardOffer[];
 }
 
 export interface MarketplaceListParams {
@@ -373,7 +374,7 @@ export interface MarketplaceEnquirySummary {
   seller: User;
   card: Card;
   variant: InventoryVariant;
-  quantity: number;
+  quantity: number | null;
   pricingMode: MarketplacePricingMode;
   askingPrice: MarketplaceMoney | null;
   lastActivityAt: string;
@@ -425,7 +426,7 @@ export interface MarketplaceEnquiryDetailResponse {
 }
 
 export interface MarketplaceCreateEnquiryPayload {
-  quantity: number;
+  quantity?: number;
   message?: string;
   unitPriceMinor?: number;
 }

@@ -1,20 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { marketplace as marketplaceApi } from "../services/api";
-import { useAuth } from "../context/AuthContext";
 import type { MarketplaceCardOffersResponse } from "../types";
-import MarketplaceOfferCard from "../components/marketplace/MarketplaceOfferCard";
+import MarketplaceListingCard from "../components/marketplace/MarketplaceListingCard";
 import { cardIdentifier, cardTitle } from "../components/marketplace/marketplaceDisplay";
 
 export default function MarketplaceCardPage() {
   const { cardId } = useParams<{ cardId: string }>();
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<MarketplaceCardOffersResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savingListingId, setSavingListingId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!cardId) return;
@@ -27,21 +24,20 @@ export default function MarketplaceCardPage() {
       .finally(() => setLoading(false));
   }, [cardId]);
 
-  const sendEnquiry = async (listingId: string, input: { quantity: number; message?: string; unitPriceMinor?: number }) => {
-    setSavingListingId(listingId);
+  const startChat = async (listingId: string) => {
+    setOpeningId(listingId);
     setError(null);
-    setSuccess(null);
     try {
-      const response = await marketplaceApi.createEnquiry(listingId, input);
+      const response = await marketplaceApi.createEnquiry(listingId, {});
       navigate(`/marketplace/enquiries/${response.enquiry.id}`);
     } catch (err: any) {
       if (err?.status === 409 && err?.body?.enquiryId) {
         navigate(`/marketplace/enquiries/${err.body.enquiryId}`);
         return;
       }
-      setError(err?.message || "Failed to send enquiry");
+      setError(err?.message || "Failed to start chat");
     } finally {
-      setSavingListingId(null);
+      setOpeningId(null);
     }
   };
 
@@ -64,33 +60,32 @@ export default function MarketplaceCardPage() {
   const primaryVariant = data.offers[0]?.variant ?? "normal";
 
   return (
-    <div className="mx-auto max-w-6xl p-4 space-y-4">
+    <div className="mx-auto max-w-4xl p-4 space-y-4">
       <Link to="/marketplace" className="text-sm text-amber-300 hover:text-amber-200">← Back to marketplace</Link>
-      <div className="grid gap-6 md:grid-cols-[260px,1fr]">
+      <div className="grid gap-6 md:grid-cols-[200px,1fr]">
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
           <img src={data.card.imageUrl} alt={cardTitle(data.card)} className="w-full rounded-lg bg-gray-800" />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 self-center">
           <h2 className="text-2xl font-semibold text-gray-100">{cardTitle(data.card)}</h2>
           <p className="text-gray-400">{cardIdentifier(data.card, primaryVariant)}</p>
-          <p className="text-sm text-gray-500">Original seller currency remains authoritative. Converted prices are approximate.</p>
+          <p className="text-sm text-gray-500">Prices are in the seller's currency. Chat to arrange meetup or delivery.</p>
         </div>
       </div>
 
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
-      {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
 
       {data.offers.length === 0 ? (
-        <div className="py-12 text-center text-gray-500">No active marketplace offers for this card.</div>
+        <div className="py-12 text-center text-gray-500">No active listings for this card.</div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3 sm:grid-cols-2">
           {data.offers.map((offer) => (
-            <MarketplaceOfferCard
+            <MarketplaceListingCard
               key={offer.listingId}
+              card={data.card}
               offer={offer}
-              user={user}
-              saving={savingListingId === offer.listingId}
-              onEnquire={sendEnquiry}
+              saving={openingId === offer.listingId}
+              onChat={startChat}
             />
           ))}
         </div>

@@ -2,7 +2,7 @@ import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Card, MarketplaceCardOffersResponse, MarketplaceListResponse, MarketplaceEnquiriesResponse, MarketplaceEnquiryDetailResponse } from "../types";
+import type { Card, MarketplaceCardOffer, MarketplaceCardOffersResponse, MarketplaceListResponse, MarketplaceEnquiriesResponse, MarketplaceEnquiryDetailResponse } from "../types";
 
 const apiMocks = vi.hoisted(() => ({
   marketplaceList: vi.fn(),
@@ -81,16 +81,55 @@ function makeCard(overrides: Partial<Card> = {}): Card {
   };
 }
 
+function makeOffer(overrides: Partial<MarketplaceCardOffer> = {}): MarketplaceCardOffer {
+  return {
+    listingId: "listing_1",
+    seller: { id: "seller_1", username: "anna", emailVerifiedAt: "2026-01-01T00:00:00Z" },
+    sellerVerified: true,
+    variant: "holofoil",
+    availableQuantity: 2,
+    pricingMode: "ACCEPTS_OFFERS",
+    askingPrice: { amountMinor: 18000, currency: "SGD" },
+    approximateConvertedPrice: { amountMinor: 13320, currency: "USD", rateSource: "mock", fetchedAt: "2026-08-27T00:00:00Z" },
+    condition: "NEAR_MINT",
+    cardLanguage: "EN",
+    note: "Meetup preferred",
+    referencePrice: 175,
+    referencePriceCurrency: "USD",
+    originCountryCode: "SG",
+    publicLocality: "Singapore",
+    fulfilment: {
+      allowsMeetup: true,
+      shipsDomestically: true,
+      shipsInternationally: false,
+      shipsWorldwide: false,
+      destinationCountryCodes: ["SG"],
+    },
+    reputation: {
+      userId: "seller_1",
+      role: "seller",
+      ratingAverage: 4.8,
+      reviewCount: 37,
+      completedDeals: 52,
+      uniqueCounterparties: 31,
+      memberSince: "2025-03-01T00:00:00Z",
+      emailVerified: true,
+    },
+    ...overrides,
+  };
+}
+
 const listResponse: MarketplaceListResponse = {
   results: [
     {
       card: makeCard(),
       variant: "holofoil",
-      offersCount: 3,
-      availableQuantity: 4,
+      offersCount: 1,
+      availableQuantity: 2,
       lowestPrice: { amountMinor: 18000, currency: "SGD" },
       approximateConvertedPrice: { amountMinor: 13320, currency: "USD", rateSource: "mock", fetchedAt: "2026-08-27T00:00:00Z" },
       canFulfilToViewer: true,
+      offers: [makeOffer()],
     },
   ],
   pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
@@ -98,42 +137,7 @@ const listResponse: MarketplaceListResponse = {
 
 const offersResponse: MarketplaceCardOffersResponse = {
   card: makeCard(),
-  offers: [
-    {
-      listingId: "listing_1",
-      seller: { id: "seller_1", username: "anna", emailVerifiedAt: "2026-01-01T00:00:00Z" },
-      sellerVerified: true,
-      variant: "holofoil",
-      availableQuantity: 2,
-      pricingMode: "ACCEPTS_OFFERS",
-      askingPrice: { amountMinor: 18000, currency: "SGD" },
-      approximateConvertedPrice: { amountMinor: 13320, currency: "USD", rateSource: "mock", fetchedAt: "2026-08-27T00:00:00Z" },
-      condition: "NEAR_MINT",
-      cardLanguage: "EN",
-      note: "Meetup preferred",
-      referencePrice: 175,
-      referencePriceCurrency: "USD",
-      originCountryCode: "SG",
-      publicLocality: "Singapore",
-      fulfilment: {
-        allowsMeetup: true,
-        shipsDomestically: true,
-        shipsInternationally: false,
-        shipsWorldwide: false,
-        destinationCountryCodes: ["SG"],
-      },
-      reputation: {
-        userId: "seller_1",
-        role: "seller",
-        ratingAverage: 4.8,
-        reviewCount: 37,
-        completedDeals: 52,
-        uniqueCounterparties: 31,
-        memberSince: "2025-03-01T00:00:00Z",
-        emailVerified: true,
-      },
-    },
-  ],
+  offers: [makeOffer()],
 };
 
 const enquiriesResponse: MarketplaceEnquiriesResponse = {
@@ -203,7 +207,7 @@ beforeEach(() => {
 });
 
 describe("marketplace discovery pages", () => {
-  it("loads public card-centric marketplace results and debounces search filters", async () => {
+  it("loads a listing feed and debounces search filters", async () => {
     apiMocks.marketplaceList.mockResolvedValue(listResponse);
 
     render(
@@ -214,10 +218,12 @@ describe("marketplace discovery pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Marketplace" })).toBeInTheDocument();
     expect(await screen.findByText("Elsa - Spirit of Winter")).toBeInTheDocument();
-    expect(screen.getByText("207/204 • Enchanted • Holofoil")).toBeInTheDocument();
-    expect(screen.getByText("3 available sellers • From S$180.00")).toBeInTheDocument();
-    expect(screen.getByText("≈ US$133.20")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /compare offers/i })).toHaveAttribute("href", "/marketplace/card/card_elsa");
+    expect(screen.getByText("Holofoil · Enchanted")).toBeInTheDocument();
+    expect(screen.getByText("S$180.00")).toBeInTheDocument();
+    expect(screen.getByText("2 available ·")).toBeInTheDocument();
+    expect(screen.getByText("Open to offers")).toBeInTheDocument();
+    expect(screen.getByText("@anna")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Log in to chat" })).toHaveAttribute("href", "/login");
     expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
     expect(apiMocks.marketplaceList).toHaveBeenCalledWith(expect.objectContaining({ availableOnly: "true", variant: "normal" }));
 
@@ -225,7 +231,7 @@ describe("marketplace discovery pages", () => {
     await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith(expect.objectContaining({ availableOnly: "true", variant: "holofoil" })));
 
     vi.useFakeTimers();
-    fireEvent.change(screen.getByLabelText("Search marketplace"), { target: { value: "mickey" } });
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "mickey" } });
     expect(apiMocks.marketplaceList).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: "mickey" }));
 
     await act(async () => {
@@ -242,11 +248,11 @@ describe("marketplace discovery pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 
     await waitFor(() => expect(apiMocks.marketplaceList).toHaveBeenLastCalledWith({ availableOnly: "true" }));
-    expect(screen.getByLabelText("Search marketplace")).toHaveValue("");
+    expect(screen.getByLabelText("Search")).toHaveValue("");
     expect(screen.getByLabelText("Variant")).toHaveValue("");
   });
 
-  it("shows card offer comparison with the same fields used by Extras for Sale listings", async () => {
+  it("shows a card's listings with a chat CTA and no enquiry form", async () => {
     apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
 
     render(
@@ -255,47 +261,16 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByRole("heading", { name: "Elsa - Spirit of Winter" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Elsa - Spirit of Winter")).length).toBeGreaterThan(0);
     expect(screen.getByText("S$180.00")).toBeInTheDocument();
-    expect(screen.getByText("≈ US$133.20" )).toBeInTheDocument();
-    expect(screen.getByText("Holofoil × 2")).toBeInTheDocument();
-    expect(screen.getByText("TCG reference (USD): $175.00")).toBeInTheDocument();
-    expect(screen.getByText("Note: Meetup preferred")).toBeInTheDocument();
-    expect(screen.getByText("Email verified")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Log in to send enquiry" })).toHaveAttribute("href", "/login");
+    expect(screen.getByText("Open to offers")).toBeInTheDocument();
+    expect(screen.getByText("@anna")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Log in to chat" })).toHaveAttribute("href", "/login");
+    expect(screen.queryByLabelText("Quantity wanted")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send enquiry" })).not.toBeInTheDocument();
   });
 
-  it("lets verified buyers create a listing-bound enquiry with a message and blocks unverified buyers", async () => {
-    apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
-    apiMocks.marketplaceCreateEnquiry.mockResolvedValue({ enquiry: { id: "enquiry_1" } });
-    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
-
-    const { rerender } = render(
-      <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
-        <Routes>
-          <Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} />
-          <Route path="/marketplace/enquiries/:enquiryId" element={<div>Enquiry thread</div>} />
-        </Routes>
-      </MemoryRouter>
-    );
-
-    await userEvent.type(await screen.findByLabelText("Quantity wanted"), "2");
-    await userEvent.type(screen.getByLabelText("Message (optional)"), "Is this available?");
-    await userEvent.type(screen.getByLabelText("Offer unit price (optional)"), "170");
-    await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
-    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 2, message: "Is this available?", unitPriceMinor: 17000 });
-    expect(await screen.findByText("Enquiry thread")).toBeInTheDocument();
-
-    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: null } } as any);
-    rerender(
-      <MemoryRouter key="unverified" initialEntries={["/marketplace/card/card_elsa"]}>
-        <Routes><Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} /></Routes>
-      </MemoryRouter>
-    );
-    expect(await screen.findByText("Verify email to send enquiries")).toBeInTheDocument();
-  });
-
-  it("sends an enquiry without a message when the buyer leaves it blank", async () => {
+  it("lets a verified buyer start a chat with one tap", async () => {
     apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
     apiMocks.marketplaceCreateEnquiry.mockResolvedValue({ enquiry: { id: "enquiry_1" } });
     authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
@@ -309,13 +284,26 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    await userEvent.type(await screen.findByLabelText("Quantity wanted"), "1");
-    await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
-    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 1 });
+    await userEvent.click(await screen.findByRole("button", { name: "Chat" }));
+    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", {});
     expect(await screen.findByText("Enquiry thread")).toBeInTheDocument();
   });
 
-  it("redirects to the existing enquiry when a duplicate enquiry is sent", async () => {
+  it("prompts unverified buyers to verify email instead of chatting", async () => {
+    apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
+    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: null } } as any);
+
+    render(
+      <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
+        <Routes><Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} /></Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Verify email to chat")).toBeInTheDocument();
+    expect(apiMocks.marketplaceCreateEnquiry).not.toHaveBeenCalled();
+  });
+
+  it("redirects to the existing chat when a duplicate enquiry is sent", async () => {
     apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
     const conflict = Object.assign(new Error("An active enquiry already exists for this listing"), {
       status: 409,
@@ -333,13 +321,13 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    await userEvent.type(await screen.findByLabelText("Quantity wanted"), "1");
-    await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Chat" }));
     expect(await screen.findByText("Enquiry: enquiry_existing")).toBeInTheDocument();
   });
 
-  it("groups authenticated buyer enquiries by status with dashboard links", async () => {
+  it("lists messages with counterparty, preview, and unread badge", async () => {
     apiMocks.marketplaceListEnquiries.mockResolvedValue(enquiriesResponse);
+    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
 
     render(
       <MemoryRouter initialEntries={["/marketplace/enquiries"]}>
@@ -347,15 +335,16 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByRole("heading", { name: "Marketplace enquiries" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Awaiting seller" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Awaiting buyer" })).toBeInTheDocument();
-    expect(screen.getByText("2 unread")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Elsa - Spirit of Winter/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_1");
-    expect(screen.getByRole("link", { name: /Mickey Mouse - Brave Little Tailor/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_2");
+    expect(await screen.findByRole("heading", { name: "Messages" })).toBeInTheDocument();
+    expect(screen.getByText("anna")).toBeInTheDocument();
+    expect(screen.getByText("elsa")).toBeInTheDocument();
+    expect(screen.getByText("Offer: 1 × S$180.00")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /anna/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_1");
+    expect(screen.getByRole("link", { name: /Mickey Mouse/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_2");
   });
 
-  it("renders an actionable enquiry thread with messages, offers, accept, counter, and reservation controls", async () => {
+  it("renders a chat thread with messages, offers, and deal actions", async () => {
     apiMocks.marketplaceGetEnquiry.mockResolvedValue(enquiryDetailResponse);
     apiMocks.marketplaceSendMessage.mockResolvedValue({ message: { id: "message_2" } });
     apiMocks.marketplaceCreateOffer.mockResolvedValue({ offer: { id: "offer_2" } });
@@ -368,21 +357,22 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByRole("heading", { name: "Mickey Mouse - Brave Little Tailor" })).toBeInTheDocument();
+    expect(await screen.findByText("Mickey Mouse - Brave Little Tailor · Normal")).toBeInTheDocument();
     expect(screen.getByText("I can do S$170.")).toBeInTheDocument();
-    expect(screen.getByText("Offer from elsa: 1 × S$170.00" )).toBeInTheDocument();
-    expect(screen.queryByText(/Shipping price|Fulfilment|Buyer country/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Offer · elsa")).toBeInTheDocument();
+    expect(screen.getByText("1 × S$170.00")).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText("Message"), "Sounds good");
-    await userEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await userEvent.type(screen.getByPlaceholderText("Message elsa…"), "Sounds good");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(apiMocks.marketplaceSendMessage).toHaveBeenCalledWith("enquiry_2", "Sounds good");
 
+    await userEvent.click(screen.getByRole("button", { name: "Make offer" }));
     await userEvent.clear(screen.getByLabelText("Unit price"));
     await userEvent.type(screen.getByLabelText("Unit price"), "165");
-    await userEvent.click(screen.getByRole("button", { name: "Send counteroffer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Send offer" }));
     expect(apiMocks.marketplaceCreateOffer).toHaveBeenCalledWith("enquiry_2", expect.objectContaining({ unitPriceMinor: 16500 }));
 
-    await userEvent.click(screen.getByRole("button", { name: "Accept and reserve" }));
+    await userEvent.click(screen.getByRole("button", { name: "Accept offer" }));
     expect(apiMocks.marketplaceAcceptEnquiry).toHaveBeenCalledWith("enquiry_2");
   });
 });

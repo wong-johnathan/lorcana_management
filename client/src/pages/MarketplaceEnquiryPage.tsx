@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { marketplace as marketplaceApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import type { MarketplaceEnquiryDetailResponse } from "../types";
+import type { MarketplaceEnquiryDetailResponse, MarketplaceMoney } from "../types";
 import { cardTitle, formatMarketplaceMoney, variantLabel } from "../components/marketplace/marketplaceDisplay";
 
 function dollarsToMinor(value: string) {
@@ -18,6 +18,15 @@ function websocketUrl() {
   return `${protocol}//${window.location.host}/api/marketplace/ws?token=${encodeURIComponent(token)}`;
 }
 
+function timeOf(iso: string) {
+  const date = new Date(iso);
+  return date.toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit" });
+}
+
+type TimelineItem =
+  | { kind: "message"; id: string; at: string; senderId: string; senderName: string; text: string }
+  | { kind: "offer"; id: string; at: string; senderId: string; senderName: string; quantity: number; unitPrice: MarketplaceMoney };
+
 export default function MarketplaceEnquiryPage() {
   const { enquiryId } = useParams<{ enquiryId: string }>();
   const { user } = useAuth();
@@ -25,10 +34,10 @@ export default function MarketplaceEnquiryPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [unitPrice, setUnitPrice] = useState("");
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [offerQty, setOfferQty] = useState("1");
+  const [offerPrice, setOfferPrice] = useState("");
 
   const loadEnquiry = useCallback(async (showLoader = false) => {
     if (!enquiryId) return;
@@ -36,12 +45,7 @@ export default function MarketplaceEnquiryPage() {
     setError(null);
     try {
       const response = await marketplaceApi.getEnquiry(enquiryId);
-      if (response) {
-        setData(response);
-        const latest = response.enquiry.latestOffer;
-        setQuantity(String(latest?.quantity ?? response.enquiry.quantity));
-        setUnitPrice(latest ? String((latest.unitPrice.amountMinor / 100).toFixed(2)) : "");
-      }
+      if (response) setData(response);
     } catch (err: any) {
       setError(err?.message || "Failed to load enquiry");
     } finally {
@@ -75,6 +79,7 @@ export default function MarketplaceEnquiryPage() {
   const enquiry = data?.enquiry;
   const isBuyer = Boolean(user && enquiry?.buyer.id === user.id);
   const isSeller = Boolean(user && enquiry?.seller.id === user.id);
+  const counterparty = isSeller ? enquiry?.buyer : enquiry?.seller;
   const isObo = enquiry?.pricingMode === "ACCEPTS_OFFERS";
   const terminalStatuses = ["DECLINED", "WITHDRAWN", "CANCELLED", "EXPIRED", "COMPLETED", "DISPUTED"];
   const canAct = Boolean(enquiry && (isBuyer || isSeller) && !terminalStatuses.includes(enquiry.status));
@@ -83,19 +88,31 @@ export default function MarketplaceEnquiryPage() {
   const canAcceptObo = Boolean(enquiry && isObo && latestOffer && latestOffer.proposedBy.id !== user?.id && (enquiry.status === "PENDING_SELLER" || enquiry.status === "AWAITING_BUYER"));
   const canSendOffer = Boolean(canAct && isObo && (enquiry.status === "PENDING_SELLER" || enquiry.status === "AWAITING_BUYER"));
 
-  const actionLabel = useMemo(() => {
-    if (isBuyer && enquiry?.offers.length === 0) return "Make offer";
-    return "Send counteroffer";
-  }, [enquiry, isBuyer]);
+  const timeline = useMemo<TimelineItem[]>(() => {
+    if (!enquiry) return [];
+    const messages: TimelineItem[] = enquiry.messages.map((m) => ({
+      kind: "message", id: m.id, at: m.createdAt, senderId: m.sender.id, senderName: m.sender.username, text: m.message,
+    }));
+    const offers: TimelineItem[] = enquiry.offers.map((o) => ({
+      kind: "offer", id: o.id, at: o.createdAt, senderId: o.proposedBy.id, senderName: o.proposedBy.username, quantity: o.quantity, unitPrice: o.unitPrice,
+    }));
+    return [...messages, ...offers].sort((a, b) => a.at.localeCompare(b.at));
+  }, [enquiry]);
 
-  const runAction = async (fn: () => Promise<unknown>, messageText: string) => {
+  const openOffer = () => {
+    if (!enquiry) return;
+    const base = latestOffer?.unitPrice ?? enquiry.askingPrice;
+    setOfferQty(String(latestOffer?.quantity ?? enquiry.quantity ?? 1));
+    setOfferPrice(base ? String((base.amountMinor / 100).toFixed(2)) : "");
+    setOfferOpen(true);
+  };
+
+  const runAction = async (fn: () => Promise<unknown>) => {
     if (!enquiryId) return;
     setSaving(true);
     setError(null);
-    setSuccess(null);
     try {
       await fn();
-      setSuccess(messageText);
       await loadEnquiry(false);
     } catch (err: any) {
       setError(err?.message || "Marketplace action failed");
@@ -105,105 +122,123 @@ export default function MarketplaceEnquiryPage() {
   };
 
   const sendMessage = () => runAction(async () => {
-    if (!enquiryId) return;
+    if (!enquiryId || !message.trim()) return;
     await marketplaceApi.sendMessage(enquiryId, message.trim());
     setMessage("");
-  }, "Message sent");
+  });
 
   const sendOffer = () => runAction(async () => {
     if (!enquiryId) return;
-    const parsedQuantity = Number(quantity);
-    const unitPriceMinor = dollarsToMinor(unitPrice);
+    const parsedQuantity = Number(offerQty);
+    const unitPriceMinor = dollarsToMinor(offerPrice);
     if (!Number.isInteger(parsedQuantity) || parsedQuantity < 1) throw new Error("Enter a valid quantity");
     if (unitPriceMinor === null) throw new Error("Enter a valid unit price");
     await marketplaceApi.createOffer(enquiryId, { quantity: parsedQuantity, unitPriceMinor });
-  }, "Offer sent");
+    setOfferOpen(false);
+  });
 
-  const acceptEnquiry = () => runAction(async () => {
-    if (!enquiryId) return;
-    await marketplaceApi.acceptEnquiry(enquiryId);
-  }, "Accepted and reserved");
+  const acceptEnquiry = () => runAction(() => marketplaceApi.acceptEnquiry(enquiryId!));
+  const declineEnquiry = () => runAction(() => marketplaceApi.declineEnquiry(enquiryId!));
+  const withdrawEnquiry = () => runAction(() => marketplaceApi.withdrawEnquiry(enquiryId!));
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center text-gray-400">Loading enquiry...</div>;
-  if (error && !data) return <div className="mx-auto max-w-4xl p-4"><div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div></div>;
-  if (!enquiry) return <div className="py-12 text-center text-gray-500">Enquiry not found.</div>;
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center text-gray-400">Loading chat...</div>;
+  if (error && !enquiry) return <div className="mx-auto max-w-3xl p-4"><div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div></div>;
+  if (!enquiry || !counterparty) return <div className="py-12 text-center text-gray-500">Chat not found.</div>;
 
   return (
-    <div className="mx-auto max-w-4xl p-4 space-y-4">
-      <Link to="/marketplace/enquiries" className="text-sm text-amber-300 hover:text-amber-200">← Back to enquiries</Link>
-      <section className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-100">{cardTitle(enquiry.card)}</h2>
-            <p className="text-sm text-gray-400">{variantLabel(enquiry.variant)} · Requested qty {enquiry.quantity} · {enquiry.status}</p>
-            <p className="text-sm text-gray-500">Buyer {enquiry.buyer.username} · Seller {enquiry.seller.username}</p>
-            <p className="text-sm text-gray-500">{isObo ? "Open to offers" : `Fixed price ${formatMarketplaceMoney(enquiry.askingPrice)}`}</p>
-          </div>
-          {enquiry.reservation && (
-            <span className="rounded-full border border-amber-800 bg-amber-950/40 px-3 py-1 text-sm text-amber-200">
-              Reservation {enquiry.reservation.status}
-            </span>
-          )}
+    <div className="mx-auto flex max-w-3xl flex-col p-4" style={{ height: "calc(100vh - 8rem)" }}>
+      <div className="flex items-center gap-3 rounded-t-xl border border-gray-800 bg-gray-900 p-3">
+        <Link to="/marketplace/enquiries" className="text-sm text-amber-300 hover:text-amber-200">←</Link>
+        <img src={enquiry.card.imageUrl} alt={cardTitle(enquiry.card)} className="h-14 w-10 rounded object-cover bg-gray-800" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-gray-100">{counterparty.username}</p>
+          <p className="truncate text-xs text-gray-400">{cardTitle(enquiry.card)} · {variantLabel(enquiry.variant)}</p>
         </div>
-        {enquiry.latestOffer && (
-          <p className="text-sm text-amber-300">Latest offer: {enquiry.latestOffer.quantity} × {formatMarketplaceMoney(enquiry.latestOffer.unitPrice)}</p>
-        )}
-      </section>
+        <div className="text-right">
+          <p className="text-sm font-bold text-amber-300">{enquiry.askingPrice ? formatMarketplaceMoney(enquiry.askingPrice) : "—"}</p>
+          <span className="text-[10px] uppercase tracking-wide text-gray-500">{enquiry.status.replace(/_/g, " ")}</span>
+        </div>
+      </div>
 
-      {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
-      {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
+      <div className="flex-1 overflow-y-auto border-x border-gray-800 bg-gray-950 p-4 space-y-3">
+        {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-2 text-xs text-red-300">{error}</div>}
 
-      <section className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
-        <h3 className="text-lg font-semibold text-gray-100">Chat</h3>
-        <p className="text-xs text-gray-500">Use chat for meetup, delivery, payment, and logistics. Structured shipping fields are intentionally hidden for V1.</p>
-        {enquiry.messages.length === 0 ? <p className="text-sm text-gray-500">No messages yet.</p> : enquiry.messages.map((item) => (
-          <div key={item.id} className="rounded-lg border border-gray-800 bg-gray-950 p-3">
-            <p className="text-sm font-medium text-gray-100">{item.sender.username}</p>
-            <p className="text-sm text-gray-300">{item.message}</p>
+        {timeline.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-500">
+            Say hi to {counterparty.username}. Meetup, delivery, and payment are arranged here.
+          </p>
+        ) : timeline.map((item) => {
+          const mine = item.senderId === user?.id;
+          if (item.kind === "offer") {
+            return (
+              <div key={item.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] rounded-2xl border px-4 py-2.5 ${mine ? "border-amber-800 bg-amber-950/40" : "border-gray-700 bg-gray-900"}`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-300">Offer · {item.senderName}</p>
+                  <p className="text-sm text-gray-100">{item.quantity} × {formatMarketplaceMoney(item.unitPrice)}</p>
+                  <p className="text-right text-[10px] text-gray-500">{timeOf(item.at)}</p>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={item.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${mine ? "rounded-br-md bg-amber-500 text-gray-950" : "rounded-bl-md bg-gray-800 text-gray-100"}`}>
+                {!mine && <p className="mb-0.5 text-[10px] font-semibold text-gray-400">{item.senderName}</p>}
+                <p className="whitespace-pre-wrap break-words">{item.text}</p>
+                <p className={`text-right text-[10px] ${mine ? "text-gray-800" : "text-gray-500"}`}>{timeOf(item.at)}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-b-xl border border-gray-800 bg-gray-900 p-3 space-y-3">
+        {enquiry.reservation?.status === "RESERVED" && (
+          <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-300">
+            Reserved — {enquiry.reservation.quantity} × {formatMarketplaceMoney({ amountMinor: enquiry.reservation.unitPriceMinor, currency: enquiry.reservation.currency })} until {timeOf(enquiry.reservation.expiresAt)}
           </div>
-        ))}
+        )}
+
+        {offerOpen && (
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-gray-700 bg-gray-950 p-2">
+            <label className="text-xs text-gray-400">
+              Qty
+              <input type="number" min={1} value={offerQty} onChange={(e) => setOfferQty(e.target.value)} className="ml-1 w-16 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-gray-100" />
+            </label>
+            <label className="text-xs text-gray-400">
+              Unit price
+              <input type="number" min={0} step="0.01" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} className="ml-1 w-24 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-gray-100" />
+            </label>
+            <button type="button" onClick={sendOffer} disabled={saving} className="rounded bg-amber-500 px-3 py-1.5 text-xs font-bold text-gray-950 disabled:opacity-60">Send offer</button>
+            <button type="button" onClick={() => setOfferOpen(false)} disabled={saving} className="rounded border border-gray-700 px-3 py-1.5 text-xs text-gray-300">Cancel</button>
+          </div>
+        )}
+
         {canAct && (
-          <div className="space-y-2">
-            <label className="block text-sm text-gray-300" htmlFor="message">Message</label>
-            <textarea id="message" value={message} onChange={(event) => setMessage(event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100" />
-            <button type="button" onClick={sendMessage} disabled={saving || !message.trim()} className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 disabled:opacity-60">Send message</button>
+          <div className="flex flex-wrap gap-2">
+            {canAcceptFixed && <button type="button" onClick={acceptEnquiry} disabled={saving} className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-bold text-gray-950 disabled:opacity-60">Accept &amp; reserve</button>}
+            {canAcceptObo && <button type="button" onClick={acceptEnquiry} disabled={saving} className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-bold text-gray-950 disabled:opacity-60">Accept offer</button>}
+            {canSendOffer && <button type="button" onClick={openOffer} disabled={saving} className="rounded-md border border-amber-700 px-3 py-1.5 text-xs font-semibold text-amber-300 disabled:opacity-60">Make offer</button>}
+            {isSeller && <button type="button" onClick={declineEnquiry} disabled={saving} className="rounded-md border border-red-800 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-60">Decline</button>}
+            {isBuyer && <button type="button" onClick={withdrawEnquiry} disabled={saving} className="rounded-md border border-gray-700 px-3 py-1.5 text-xs font-semibold text-gray-300 disabled:opacity-60">Withdraw</button>}
           </div>
         )}
-      </section>
 
-      <section className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3">
-        <h3 className="text-lg font-semibold text-gray-100">Deal terms</h3>
-        {!isObo ? (
-          <p className="text-sm text-gray-300">Fixed-price listing. Seller can accept the requested quantity at the listed price, or continue in chat / decline.</p>
-        ) : enquiry.offers.length === 0 ? (
-          <p className="text-sm text-gray-500">No offers yet.</p>
-        ) : enquiry.offers.map((offer) => (
-          <div key={offer.id} className="rounded-lg border border-gray-800 bg-gray-950 p-3 text-sm text-gray-300">
-            Offer from {offer.proposedBy.username}: {offer.quantity} × {formatMarketplaceMoney(offer.unitPrice)}
-          </div>
-        ))}
-        {canSendOffer && (
-          <div className="grid gap-3 md:grid-cols-3">
-            <div>
-              <label className="block text-sm text-gray-300" htmlFor="quantity">Quantity</label>
-              <input id="quantity" type="number" min="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100" />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-300" htmlFor="unitPrice">Unit price</label>
-              <input id="unitPrice" type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100" />
-            </div>
-            <div className="flex items-end">
-              <button type="button" onClick={sendOffer} disabled={saving} className="rounded bg-gray-800 px-4 py-2 text-sm font-semibold text-gray-100 disabled:opacity-60">{actionLabel}</button>
-            </div>
+        {canAct && (
+          <div className="flex gap-2">
+            <input
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") void sendMessage(); }}
+              placeholder={`Message ${counterparty.username}…`}
+              className="flex-1 rounded-full border border-gray-700 bg-gray-950 px-4 py-2 text-sm text-gray-100"
+            />
+            <button type="button" onClick={sendMessage} disabled={saving || !message.trim()} className="rounded-full bg-amber-500 px-4 py-2 text-sm font-bold text-gray-950 disabled:opacity-60">Send</button>
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          {(canAcceptFixed || canAcceptObo) && <button type="button" onClick={acceptEnquiry} disabled={saving} className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 disabled:opacity-60">Accept and reserve</button>}
-          {isSeller && canAct && <button type="button" onClick={() => runAction(() => marketplaceApi.declineEnquiry(enquiry.id), "Enquiry declined")} disabled={saving} className="rounded border border-red-800 px-4 py-2 text-sm font-semibold text-red-300 disabled:opacity-60">Decline</button>}
-          {isBuyer && canAct && <button type="button" onClick={() => runAction(() => marketplaceApi.withdrawEnquiry(enquiry.id), "Enquiry withdrawn")} disabled={saving} className="rounded border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 disabled:opacity-60">Withdraw</button>}
-          {enquiry.reservation?.status === "RESERVED" && <button type="button" onClick={() => runAction(() => marketplaceApi.cancelReservation(enquiry.reservation!.id), "Reservation cancelled")} disabled={saving} className="rounded border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 disabled:opacity-60">Cancel reservation</button>}
-        </div>
-      </section>
+
+        {!canAct && <p className="text-center text-xs text-gray-500">This chat is {enquiry.status.toLowerCase().replace(/_/g, " ")}.</p>}
+      </div>
     </div>
   );
 }
