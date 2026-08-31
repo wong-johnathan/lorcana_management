@@ -59,7 +59,10 @@ async function request<T>(
     if (res.status === 401 && body.error === "Invalid or expired token") {
       window.dispatchEvent(new CustomEvent("auth:expired"));
     }
-    throw new Error(body.error || `Request failed: ${res.status}`);
+    const error = new Error(body.error || `Request failed: ${res.status}`) as Error & { status?: number; body?: unknown };
+    error.status = res.status;
+    error.body = body;
+    throw error;
   }
 
   if (res.status === 204) return undefined as T;

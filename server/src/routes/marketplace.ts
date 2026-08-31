@@ -441,15 +441,11 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       return;
     }
 
-    if (req.body.quantity === undefined) {
-      res.status(400).json({ error: "quantity is required" });
-      return;
-    }
-    const quantity = req.body.quantity;
-    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
+    if (req.body.quantity !== undefined && (typeof req.body.quantity !== "number" || !Number.isInteger(req.body.quantity) || req.body.quantity <= 0)) {
       res.status(400).json({ error: "quantity must be a positive integer" });
       return;
     }
+    const quantity = req.body.quantity ?? null;
     const message = typeof req.body.message === "string" ? req.body.message.trim() : "";
     if (message.length > MAX_ENQUIRY_MESSAGE_LENGTH) {
       res.status(400).json({ error: "message must be 2000 characters or fewer" });
@@ -666,7 +662,7 @@ marketplaceRouter.post("/enquiries/:id/accept", authenticateToken, async (req: A
         if (!price) return { status: 400, body: { error: "Fixed-price listing needs a price before acceptance" } };
         reservationTerms = {
           acceptedOfferId: null,
-          quantity: enquiry.quantity,
+          quantity: enquiry.quantity ?? 1,
           unitPriceMinor: price.amountMinor,
           currency: price.currency,
         };

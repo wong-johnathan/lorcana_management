@@ -61,6 +61,14 @@ describe("API client wrapper", () => {
     expect(expired).toHaveBeenCalledOnce();
   });
 
+  it("attaches status and body to thrown API errors", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: "An active enquiry already exists for this listing", enquiryId: "enquiry_existing" }) });
+    const error = await marketplace.createEnquiry("listing_1", { quantity: 1 }).catch((err: any) => err);
+    expect(error.message).toBe("An active enquiry already exists for this listing");
+    expect(error.status).toBe(409);
+    expect(error.body).toEqual({ error: "An active enquiry already exists for this listing", enquiryId: "enquiry_existing" });
+  });
+
 
 
   it("surfaces fallback API errors and supports queryless endpoints", async () => {
