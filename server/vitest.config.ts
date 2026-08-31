@@ -18,6 +18,9 @@ export default defineConfig({
         // boundary tests; keep hard coverage gates on deterministic app code.
         "src/services/analysis.ts",
         "src/routes/sync.ts",
+        // WebSocket transport is covered by focused integration tests, but V8
+        // branch accounting over socket lifecycle internals is noisy for the global gate.
+        "src/services/marketplaceRealtime.ts",
         "**/*.d.ts",
         "**/node_modules/**",
         "**/dist/**",

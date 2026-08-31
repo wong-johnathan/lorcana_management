@@ -184,7 +184,7 @@ describe("extras for sale pages", () => {
     await userEvent.type(screen.getByLabelText("Custom price"), "12");
     await userEvent.selectOptions(screen.getByLabelText("Currency"), "SGD");
     await userEvent.click(await screen.findByRole("button", { name: "List 4" }));
-    expect(apiMocks.extrasCreate).toHaveBeenCalledWith({ cardId: "card_1", variant: "normal", desiredQuantity: 4, note: null, customPrice: 12, customPriceCurrency: "SGD" });
+    expect(apiMocks.extrasCreate).toHaveBeenCalledWith({ cardId: "card_1", variant: "normal", desiredQuantity: 4, note: null, customPrice: 12, customPriceCurrency: "SGD", pricingMode: "FIXED" });
     expect(await screen.findByText("Extra listed for sale")).toBeInTheDocument();
   });
 
@@ -222,7 +222,7 @@ describe("extras for sale pages", () => {
     await userEvent.selectOptions(screen.getByLabelText("Currency"), "SGD");
     await userEvent.click(screen.getByRole("button", { name: "Save listing" }));
 
-    expect(apiMocks.extrasUpdate).toHaveBeenCalledWith("listing_1", { note: "cash only", customPrice: 15, customPriceCurrency: "SGD" });
+    expect(apiMocks.extrasUpdate).toHaveBeenCalledWith("listing_1", { note: "cash only", customPrice: 15, customPriceCurrency: "SGD", pricingMode: "FIXED" });
     expect(await screen.findByText("Listing updated")).toBeInTheDocument();
   });
 

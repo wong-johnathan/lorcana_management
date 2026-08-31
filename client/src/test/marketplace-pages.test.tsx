@@ -142,9 +142,11 @@ const enquiriesResponse: MarketplaceEnquiriesResponse = {
       card: makeCard(),
       variant: "holofoil",
       quantity: 1,
+      pricingMode: "ACCEPTS_OFFERS",
+      askingPrice: { amountMinor: 18000, currency: "SGD" },
       lastActivityAt: "2026-08-27T00:00:00Z",
       unreadCount: 2,
-      latestOffer: { quantity: 1, unitPrice: { amountMinor: 18000, currency: "SGD" }, fulfilmentMethod: "MEETUP" },
+      latestOffer: { quantity: 1, unitPrice: { amountMinor: 18000, currency: "SGD" } },
     },
     {
       id: "enquiry_2",
@@ -155,6 +157,8 @@ const enquiriesResponse: MarketplaceEnquiriesResponse = {
       card: makeCard({ id: "card_mickey", name: "Mickey Mouse", subtitle: "Brave Little Tailor" }),
       variant: "normal",
       quantity: 1,
+      pricingMode: "ACCEPTS_OFFERS",
+      askingPrice: { amountMinor: 18000, currency: "SGD" },
       lastActivityAt: "2026-08-27T01:00:00Z",
       unreadCount: 0,
     },
@@ -181,13 +185,10 @@ const enquiryDetailResponse: MarketplaceEnquiryDetailResponse = {
         proposedBy: { id: "seller_2", username: "elsa" },
         quantity: 1,
         unitPrice: { amountMinor: 17000, currency: "SGD" },
-        shippingPrice: { amountMinor: 0, currency: "SGD" },
-        fulfilmentMethod: "MEETUP",
-        buyerCountryCode: "SG",
         createdAt: "2026-08-27T01:05:00Z",
       },
     ],
-    latestOffer: { quantity: 1, unitPrice: { amountMinor: 17000, currency: "SGD" }, fulfilmentMethod: "MEETUP" },
+    latestOffer: { quantity: 1, unitPrice: { amountMinor: 17000, currency: "SGD" } },
   },
 };
 
@@ -270,9 +271,11 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    await userEvent.type(await screen.findByLabelText("Message (optional)"), "Is this available?");
+    await userEvent.type(await screen.findByLabelText("Quantity wanted"), "2");
+    await userEvent.type(screen.getByLabelText("Message (optional)"), "Is this available?");
+    await userEvent.type(screen.getByLabelText("Offer unit price (optional)"), "170");
     await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
-    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 1, message: "Is this available?" });
+    expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 2, message: "Is this available?", unitPriceMinor: 17000 });
     expect(await screen.findByText("Enquiry sent" )).toBeInTheDocument();
 
     authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: null } } as any);
@@ -295,7 +298,8 @@ describe("marketplace discovery pages", () => {
       </MemoryRouter>
     );
 
-    await userEvent.click(await screen.findByRole("button", { name: "Send enquiry" }));
+    await userEvent.type(await screen.findByLabelText("Quantity wanted"), "1");
+    await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
     expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 1 });
   });
 
@@ -332,6 +336,7 @@ describe("marketplace discovery pages", () => {
     expect(await screen.findByRole("heading", { name: "Mickey Mouse - Brave Little Tailor" })).toBeInTheDocument();
     expect(screen.getByText("I can do S$170.")).toBeInTheDocument();
     expect(screen.getByText("Offer from elsa: 1 × S$170.00" )).toBeInTheDocument();
+    expect(screen.queryByText(/Shipping price|Fulfilment|Buyer country/i)).not.toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("Message"), "Sounds good");
     await userEvent.click(screen.getByRole("button", { name: "Send message" }));
@@ -340,9 +345,9 @@ describe("marketplace discovery pages", () => {
     await userEvent.clear(screen.getByLabelText("Unit price"));
     await userEvent.type(screen.getByLabelText("Unit price"), "165");
     await userEvent.click(screen.getByRole("button", { name: "Send counteroffer" }));
-    expect(apiMocks.marketplaceCreateOffer).toHaveBeenCalledWith("enquiry_2", expect.objectContaining({ unitPriceMinor: 16500, currency: "SGD" }));
+    expect(apiMocks.marketplaceCreateOffer).toHaveBeenCalledWith("enquiry_2", expect.objectContaining({ unitPriceMinor: 16500 }));
 
-    await userEvent.click(screen.getByRole("button", { name: "Accept offer and reserve" }));
+    await userEvent.click(screen.getByRole("button", { name: "Accept and reserve" }));
     expect(apiMocks.marketplaceAcceptEnquiry).toHaveBeenCalledWith("enquiry_2");
   });
 });

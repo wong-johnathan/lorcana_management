@@ -12,7 +12,6 @@ import {
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
 import {
-  MARKETPLACE_CURRENCIES,
   sumActiveReservedQuantity,
 } from "../services/marketplaceAvailability.js";
 import {
@@ -28,6 +27,7 @@ import {
 } from "../services/marketplaceReviews.js";
 import { buildMarketplaceReputation } from "../services/marketplaceReputation.js";
 import { buildReviewReportModerationPlan } from "../services/marketplaceModeration.js";
+import { broadcastMarketplaceEvent } from "../services/marketplaceRealtime.js";
 import { compareCardContainerByIndex } from "../utils/cardSort.js";
 
 const prisma = new PrismaClient() as any;
@@ -107,9 +107,6 @@ function serializeEnquiryOffer(offer: any) {
     proposedBy: offer.proposedByUser ? sellerPayload(offer.proposedByUser) : undefined,
     quantity: offer.quantity,
     unitPrice: serializeMoney(offer.unitPriceMinor, offer.currency),
-    shippingPrice: serializeMoney(offer.shippingPriceMinor ?? 0, offer.currency),
-    fulfilmentMethod: offer.fulfilmentMethod,
-    buyerCountryCode: offer.buyerCountryCode ?? null,
     createdAt: offer.createdAt,
   };
 }
@@ -123,7 +120,7 @@ function latestOffer(enquiry: any) {
 function serializeEnquiry(enquiry: any) {
   const listing = enquiry.listing;
   const latest = latestOffer(enquiry);
-  const quantity = enquiry.reservation?.quantity ?? latest?.quantity ?? 1;
+  const quantity = enquiry.reservation?.quantity ?? enquiry.quantity;
   return {
     id: enquiry.id,
     status: enquiry.status,
@@ -133,13 +130,13 @@ function serializeEnquiry(enquiry: any) {
     card: listing.card,
     variant: listing.variant,
     quantity,
+    pricingMode: listing.pricingMode ?? "FIXED",
+    askingPrice: listingPrice(listing),
     lastActivityAt: enquiry.lastActivityAt,
     unreadCount: 0,
     latestOffer: latest ? {
       quantity: latest.quantity,
       unitPrice: serializeMoney(latest.unitPriceMinor, latest.currency),
-      shippingPrice: serializeMoney(latest.shippingPriceMinor ?? 0, latest.currency),
-      fulfilmentMethod: latest.fulfilmentMethod,
     } : null,
     messages: (enquiry.messages ?? []).map((message: any) => ({
       id: message.id,
@@ -149,7 +146,7 @@ function serializeEnquiry(enquiry: any) {
       createdAt: message.createdAt,
     })),
     offers: (enquiry.offers ?? []).map(serializeEnquiryOffer),
-    reservation: enquiry.reservation ?? null,
+    reservation: serializeReservation(enquiry.reservation),
   };
 }
 
@@ -193,24 +190,17 @@ function parseMinorAmount(value: unknown, field: string) {
   return value;
 }
 
-function parseCurrency(value: unknown) {
-  if (typeof value !== "string" || !(MARKETPLACE_CURRENCIES as readonly string[]).includes(value)) throw new Error(`currency must be one of ${MARKETPLACE_CURRENCIES.join(", ")}`);
-  return value;
-}
-
-function parseFulfilmentMethod(value: unknown) {
-  if (value === "MEETUP" || value === "DOMESTIC_SHIPPING" || value === "INTERNATIONAL_SHIPPING") return value;
-  throw new Error("fulfilmentMethod must be MEETUP, DOMESTIC_SHIPPING, or INTERNATIONAL_SHIPPING");
-}
-
-function parseOfferInput(body: any) {
+function parseOfferInput(body: any, listing: any) {
+  if (body.currency !== undefined) throw new Error("currency is inherited from the listing");
+  if (body.shippingPriceMinor !== undefined || body.fulfilmentMethod !== undefined || body.buyerCountryCode !== undefined) {
+    throw new Error("shipping, fulfilment, and buyer country are handled in chat for now");
+  }
+  const price = listingPrice(listing);
+  if (!price) throw new Error("listing price or currency is unavailable");
   return {
     quantity: parsePositiveInt(body.quantity, "quantity"),
     unitPriceMinor: parseMinorAmount(body.unitPriceMinor, "unitPriceMinor"),
-    shippingPriceMinor: body.shippingPriceMinor === undefined ? 0 : parseMinorAmount(body.shippingPriceMinor, "shippingPriceMinor"),
-    currency: parseCurrency(body.currency),
-    fulfilmentMethod: parseFulfilmentMethod(body.fulfilmentMethod),
-    buyerCountryCode: typeof body.buyerCountryCode === "string" && body.buyerCountryCode.trim() ? body.buyerCountryCode.trim().toUpperCase() : null,
+    currency: price.currency,
   };
 }
 
@@ -233,7 +223,20 @@ function reservationExpiry(now = new Date()) {
 }
 
 function serializeReservation(reservation: any) {
-  return reservation;
+  if (!reservation) return null;
+  return {
+    id: reservation.id,
+    listingId: reservation.listingId,
+    enquiryId: reservation.enquiryId,
+    acceptedOfferId: reservation.acceptedOfferId ?? null,
+    quantity: reservation.quantity,
+    unitPriceMinor: reservation.unitPriceMinor,
+    currency: reservation.currency,
+    expiresAt: reservation.expiresAt,
+    status: reservation.status,
+    createdAt: reservation.createdAt,
+    updatedAt: reservation.updatedAt,
+  };
 }
 
 function serializeOffer(listing: any, availableQuantity: number) {
@@ -438,7 +441,11 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       return;
     }
 
-    const quantity = req.body.quantity === undefined ? 1 : req.body.quantity;
+    if (req.body.quantity === undefined) {
+      res.status(400).json({ error: "quantity is required" });
+      return;
+    }
+    const quantity = req.body.quantity;
     if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
       res.status(400).json({ error: "quantity must be a positive integer" });
       return;
@@ -465,6 +472,27 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       res.status(400).json({ error: "Cannot enquire on your own listing" });
       return;
     }
+    if (req.body.shippingPriceMinor !== undefined || req.body.fulfilmentMethod !== undefined || req.body.buyerCountryCode !== undefined) {
+      res.status(400).json({ error: "shipping, fulfilment, and buyer country are handled in chat for now" });
+      return;
+    }
+    if (req.body.currency !== undefined) {
+      res.status(400).json({ error: "currency is inherited from the listing" });
+      return;
+    }
+    let initialOfferInput: ReturnType<typeof parseOfferInput> | null = null;
+    if (req.body.unitPriceMinor !== undefined) {
+      if (listing.pricingMode !== "ACCEPTS_OFFERS") {
+        res.status(400).json({ error: "Fixed-price listings do not accept counteroffers" });
+        return;
+      }
+      try {
+        initialOfferInput = parseOfferInput(req.body, listing);
+      } catch (error) {
+        mapTransitionError(error, res);
+        return;
+      }
+    }
 
     const existingActiveEnquiry = await prisma.marketplaceEnquiry.findFirst({
       where: {
@@ -489,12 +517,16 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       data: {
         listingId,
         buyerId,
+        quantity,
         status: "PENDING_SELLER",
         lastActivityAt: new Date(),
       },
     });
     if (message) {
       await prisma.enquiryMessage.create({ data: { enquiryId: enquiry.id, senderId: buyerId, message } });
+    }
+    if (initialOfferInput) {
+      await prisma.enquiryOffer.create({ data: { enquiryId: enquiry.id, proposedByUserId: buyerId, ...initialOfferInput } });
     }
     await prisma.notification.create({
       data: { userId: listing.userId, type: "MARKETPLACE_ENQUIRY_CREATED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id },
@@ -558,6 +590,7 @@ marketplaceRouter.post("/enquiries/:id/messages", authenticateToken, async (req:
     const created = await prisma.enquiryMessage.create({ data: { enquiryId: enquiry.id, senderId: actorUserId, message } });
     await prisma.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { lastActivityAt: new Date() } });
     await prisma.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_MESSAGE_CREATED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id } });
+    broadcastMarketplaceEvent({ type: "message.created", enquiryId: enquiry.id, payload: { id: created.id } });
     res.status(201).json({ message: created });
   } catch (error) {
     console.error("Marketplace message error:", error);
@@ -575,13 +608,13 @@ marketplaceRouter.post("/enquiries/:id/offers", authenticateToken, async (req: A
     }
     const actorRole = ensureParticipant(enquiry, actorUserId, res);
     if (!actorRole) return;
-    if (enquiry.listing.pricingMode === "FIXED" && enquiry.offers?.length > 0) {
+    if (enquiry.listing.pricingMode !== "ACCEPTS_OFFERS") {
       res.status(400).json({ error: "Fixed-price listings do not accept counteroffers" });
       return;
     }
     let input;
     try {
-      input = parseOfferInput(req.body);
+      input = parseOfferInput(req.body, enquiry.listing);
     } catch (error) {
       mapTransitionError(error, res);
       return;
@@ -600,7 +633,9 @@ marketplaceRouter.post("/enquiries/:id/offers", authenticateToken, async (req: A
     const offer = await prisma.enquiryOffer.create({ data: { enquiryId: enquiry.id, proposedByUserId: actorUserId, ...input } });
     await prisma.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { status: nextStatus, lastActivityAt: new Date() } });
     await prisma.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_OFFER_CREATED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id } });
-    res.status(201).json({ offer });
+    broadcastMarketplaceEvent({ type: "offer.created", enquiryId: enquiry.id, payload: { id: offer.id } });
+    broadcastMarketplaceEvent({ type: "enquiry.status_changed", enquiryId: enquiry.id, payload: { status: nextStatus } });
+    res.status(201).json({ offer: serializeEnquiryOffer(offer) });
   } catch (error) {
     console.error("Marketplace offer error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -615,30 +650,49 @@ marketplaceRouter.post("/enquiries/:id/accept", authenticateToken, async (req: A
       if (!enquiry) return { status: 404, body: { error: "Enquiry not found" } };
       const actorRole = participantRole(enquiry, actorUserId);
       if (!actorRole) return { status: 403, body: { error: "Not allowed to access this enquiry" } };
-      const accepted = latestOffer(enquiry);
-      if (!accepted) return { status: 400, body: { error: "No offer to accept" } };
+      const pricingMode = enquiry.listing.pricingMode ?? "FIXED";
       const action: EnquiryAction = actorRole === "SELLER" ? "SELLER_ACCEPT" : "BUYER_ACCEPT";
       try {
         assertEnquiryTransition({ currentStatus: enquiry.status, action, actorRole });
       } catch (error) {
         return { status: 400, body: { error: error instanceof Error ? error.message : "Invalid marketplace transition" } };
       }
-      if (accepted.proposedByUserId === actorUserId) return { status: 400, body: { error: "Cannot accept your own offer" } };
+
+      const accepted = latestOffer(enquiry);
+      let reservationTerms: { acceptedOfferId: string | null; quantity: number; unitPriceMinor: number; currency: string };
+      if (pricingMode === "FIXED") {
+        if (actorRole !== "SELLER") return { status: 400, body: { error: "Only the seller can accept fixed-price enquiries" } };
+        const price = listingPrice(enquiry.listing);
+        if (!price) return { status: 400, body: { error: "Fixed-price listing needs a price before acceptance" } };
+        reservationTerms = {
+          acceptedOfferId: null,
+          quantity: enquiry.quantity,
+          unitPriceMinor: price.amountMinor,
+          currency: price.currency,
+        };
+      } else {
+        if (!accepted) return { status: 400, body: { error: "OBO enquiries need an offer before acceptance" } };
+        if (accepted.proposedByUserId === actorUserId) return { status: 400, body: { error: "Cannot accept your own offer" } };
+        reservationTerms = {
+          acceptedOfferId: accepted.id,
+          quantity: accepted.quantity,
+          unitPriceMinor: accepted.unitPriceMinor,
+          currency: accepted.currency,
+        };
+      }
+
       const availability = await availabilityForListing(enquiry.listing, new Date(), tx);
-      if (!availability.eligible || accepted.quantity > availability.availableQuantity) {
+      if (!availability.eligible || reservationTerms.quantity > availability.availableQuantity) {
         return { status: 409, body: { error: "Listing is no longer available for that quantity" } };
       }
       const reservation = await tx.marketplaceReservation.create({
         data: {
           listingId: enquiry.listingId,
           enquiryId: enquiry.id,
-          acceptedOfferId: accepted.id,
-          quantity: accepted.quantity,
-          unitPriceMinor: accepted.unitPriceMinor,
-          shippingPriceMinor: accepted.shippingPriceMinor ?? 0,
-          currency: accepted.currency,
-          fulfilmentMethod: accepted.fulfilmentMethod,
-          buyerCountryCode: accepted.buyerCountryCode ?? null,
+          acceptedOfferId: reservationTerms.acceptedOfferId,
+          quantity: reservationTerms.quantity,
+          unitPriceMinor: reservationTerms.unitPriceMinor,
+          currency: reservationTerms.currency,
           status: "RESERVED",
           expiresAt: reservationExpiry(),
         },
@@ -648,6 +702,10 @@ marketplaceRouter.post("/enquiries/:id/accept", authenticateToken, async (req: A
       return { status: 201, body: { reservation: serializeReservation(reservation) } };
     });
     res.status(result.status).json(result.body);
+    if (result.status === 201 && result.body.reservation?.enquiryId) {
+      broadcastMarketplaceEvent({ type: "reservation.created", enquiryId: result.body.reservation.enquiryId, payload: { id: result.body.reservation.id } });
+      broadcastMarketplaceEvent({ type: "enquiry.status_changed", enquiryId: result.body.reservation.enquiryId, payload: { status: "RESERVED" } });
+    }
   } catch (error) {
     console.error("Marketplace accept error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -673,6 +731,7 @@ marketplaceRouter.post("/enquiries/:id/decline", authenticateToken, async (req: 
     }
     const updated = await prisma.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { status: nextStatus, lastActivityAt: new Date() }, include: ENQUIRY_INCLUDE });
     await prisma.notification.create({ data: { userId: enquiry.buyerId, type: "MARKETPLACE_ENQUIRY_DECLINED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id } });
+    broadcastMarketplaceEvent({ type: "enquiry.status_changed", enquiryId: enquiry.id, payload: { status: nextStatus } });
     res.json({ enquiry: serializeEnquiry(updated) });
   } catch (error) {
     console.error("Marketplace decline error:", error);
@@ -699,6 +758,7 @@ marketplaceRouter.post("/enquiries/:id/withdraw", authenticateToken, async (req:
     }
     const updated = await prisma.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { status: nextStatus, lastActivityAt: new Date() }, include: ENQUIRY_INCLUDE });
     await prisma.notification.create({ data: { userId: enquiry.listing.userId, type: "MARKETPLACE_ENQUIRY_WITHDRAWN", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id } });
+    broadcastMarketplaceEvent({ type: "enquiry.status_changed", enquiryId: enquiry.id, payload: { status: nextStatus } });
     res.json({ enquiry: serializeEnquiry(updated) });
   } catch (error) {
     console.error("Marketplace withdraw error:", error);
@@ -738,6 +798,8 @@ marketplaceRouter.post("/reservations/:id/cancel", authenticateToken, async (req
     const updated = await prisma.marketplaceReservation.update({ where: { id: reservation.id }, data: { status: "CANCELLED" } });
     await prisma.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { status: "CANCELLED", lastActivityAt: new Date() } });
     await prisma.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_RESERVATION_CANCELLED", relatedType: "MarketplaceReservation", relatedId: reservation.id } });
+    broadcastMarketplaceEvent({ type: "reservation.cancelled", enquiryId: enquiry.id, payload: { id: reservation.id } });
+    broadcastMarketplaceEvent({ type: "enquiry.status_changed", enquiryId: enquiry.id, payload: { status: "CANCELLED" } });
     res.json({ reservation: serializeReservation(updated) });
   } catch (error) {
     console.error("Marketplace reservation cancel error:", error);

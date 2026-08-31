@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { InventoryExtrasCard, InventoryVariant, ListingCurrency } from "../../types";
+import type { InventoryExtrasCard, InventoryVariant, ListingCurrency, MarketplacePricingMode } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import RetentionOverrideDialog from "./RetentionOverrideDialog";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, LISTING_CURRENCIES, variantQuantity } from "./extrasUi";
@@ -10,7 +10,7 @@ interface SuggestedExtrasPanelProps {
   cards: InventoryExtrasCard[];
   autoSuggestExtras: boolean;
   canList?: boolean;
-  onList: (card: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency) => Promise<void> | void;
+  onList: (card: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency, pricingMode: MarketplacePricingMode) => Promise<void> | void;
   onOverride: (card: InventoryExtrasCard, keep: { keepNormalQuantity: number; keepFoilQuantity: number; keepHolofoilQuantity: number }) => Promise<void> | void;
 }
 
@@ -19,6 +19,7 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, canList
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [currencies, setCurrencies] = useState<Record<string, string>>({});
+  const [pricingModes, setPricingModes] = useState<Record<string, MarketplacePricingMode>>({});
   const [overrideCardId, setOverrideCardId] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExtrasFilters>(EMPTY_EXTRAS_FILTERS);
   const activeOverride = cards.find((item) => item.card.id === overrideCardId);
@@ -116,9 +117,20 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, canList
                           ))}
                         </select>
                       </label>
+                      <label className="mt-2 block text-gray-300">
+                        Pricing mode
+                        <select
+                          value={pricingModes[key] ?? "FIXED"}
+                          onChange={(event) => setPricingModes((current) => ({ ...current, [key]: event.target.value as MarketplacePricingMode }))}
+                          className="mt-1 w-full rounded border border-gray-700 bg-gray-900 px-2 py-1"
+                        >
+                          <option value="FIXED">Fixed price</option>
+                          <option value="ACCEPTS_OFFERS">Open to offers (OBO)</option>
+                        </select>
+                      </label>
                       <button
                         type="button"
-                        onClick={() => onList(item, variant, Math.min(Math.max(1, desired), available), notes[key] ?? "", prices[key] ? Number(prices[key]) : null, (currencies[key] ?? "SGD") as ListingCurrency)}
+                        onClick={() => onList(item, variant, Math.min(Math.max(1, desired), available), notes[key] ?? "", prices[key] ? Number(prices[key]) : null, (currencies[key] ?? "SGD") as ListingCurrency, pricingModes[key] ?? "FIXED")}
                         disabled={!canList}
                         className="mt-3 w-full rounded bg-amber-500 px-3 py-2 font-semibold text-gray-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >

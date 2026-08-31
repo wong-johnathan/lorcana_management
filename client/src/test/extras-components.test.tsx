@@ -99,7 +99,7 @@ describe("extras for sale components", () => {
     await userEvent.type(screen.getAllByLabelText("Qty")[0], "2");
     await userEvent.type(screen.getAllByLabelText("Note")[0], "cash only");
     await userEvent.click(screen.getByRole("button", { name: "List 2" }));
-    expect(onList).toHaveBeenCalledWith(extrasCard, "normal", 2, "cash only", null, "SGD");
+    expect(onList).toHaveBeenCalledWith(extrasCard, "normal", 2, "cash only", null, "SGD", "FIXED");
 
     await userEvent.click(screen.getByRole("button", { name: "Set keep override" }));
     await userEvent.clear(screen.getByLabelText("Keep normal"));
@@ -133,7 +133,7 @@ describe("extras for sale components", () => {
     await userEvent.type(screen.getByLabelText("Custom price"), "20");
     await userEvent.selectOptions(screen.getByLabelText("Currency"), "MYR");
     await userEvent.click(screen.getByRole("button", { name: "Save listing" }));
-    expect(onEdit).toHaveBeenCalledWith("listing_1", { note: "updated meetup", customPrice: 20, customPriceCurrency: "MYR" });
+    expect(onEdit).toHaveBeenCalledWith("listing_1", { note: "updated meetup", customPrice: 20, customPriceCurrency: "MYR", pricingMode: "FIXED" });
     await userEvent.click(screen.getByRole("button", { name: "Pause" }));
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(onStatusChange).toHaveBeenCalledWith("listing_1", "paused");
