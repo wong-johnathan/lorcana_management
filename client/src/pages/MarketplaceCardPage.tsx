@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { marketplace as marketplaceApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { MarketplaceCardOffersResponse } from "../types";
@@ -9,6 +9,7 @@ import { cardIdentifier, cardTitle } from "../components/marketplace/marketplace
 export default function MarketplaceCardPage() {
   const { cardId } = useParams<{ cardId: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState<MarketplaceCardOffersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingListingId, setSavingListingId] = useState<string | null>(null);
@@ -31,9 +32,13 @@ export default function MarketplaceCardPage() {
     setError(null);
     setSuccess(null);
     try {
-      await marketplaceApi.createEnquiry(listingId, input);
-      setSuccess("Enquiry sent");
+      const response = await marketplaceApi.createEnquiry(listingId, input);
+      navigate(`/marketplace/enquiries/${response.enquiry.id}`);
     } catch (err: any) {
+      if (err?.status === 409 && err?.body?.enquiryId) {
+        navigate(`/marketplace/enquiries/${err.body.enquiryId}`);
+        return;
+      }
       setError(err?.message || "Failed to send enquiry");
     } finally {
       setSavingListingId(null);

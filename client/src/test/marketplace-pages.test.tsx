@@ -1,4 +1,4 @@
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +46,11 @@ import MarketplacePage from "../pages/MarketplacePage";
 import MarketplaceCardPage from "../pages/MarketplaceCardPage";
 import MarketplaceEnquiriesPage from "../pages/MarketplaceEnquiriesPage";
 import MarketplaceEnquiryPage from "../pages/MarketplaceEnquiryPage";
+
+function EnquiryProbe() {
+  const { enquiryId } = useParams<{ enquiryId: string }>();
+  return <div>Enquiry: {enquiryId}</div>;
+}
 
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
@@ -267,7 +272,10 @@ describe("marketplace discovery pages", () => {
 
     const { rerender } = render(
       <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
-        <Routes><Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} /></Routes>
+        <Routes>
+          <Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} />
+          <Route path="/marketplace/enquiries/:enquiryId" element={<div>Enquiry thread</div>} />
+        </Routes>
       </MemoryRouter>
     );
 
@@ -276,11 +284,11 @@ describe("marketplace discovery pages", () => {
     await userEvent.type(screen.getByLabelText("Offer unit price (optional)"), "170");
     await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
     expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 2, message: "Is this available?", unitPriceMinor: 17000 });
-    expect(await screen.findByText("Enquiry sent" )).toBeInTheDocument();
+    expect(await screen.findByText("Enquiry thread")).toBeInTheDocument();
 
     authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: null } } as any);
     rerender(
-      <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
+      <MemoryRouter key="unverified" initialEntries={["/marketplace/card/card_elsa"]}>
         <Routes><Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} /></Routes>
       </MemoryRouter>
     );
@@ -294,13 +302,40 @@ describe("marketplace discovery pages", () => {
 
     render(
       <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
-        <Routes><Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} /></Routes>
+        <Routes>
+          <Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} />
+          <Route path="/marketplace/enquiries/:enquiryId" element={<div>Enquiry thread</div>} />
+        </Routes>
       </MemoryRouter>
     );
 
     await userEvent.type(await screen.findByLabelText("Quantity wanted"), "1");
     await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
     expect(apiMocks.marketplaceCreateEnquiry).toHaveBeenCalledWith("listing_1", { quantity: 1 });
+    expect(await screen.findByText("Enquiry thread")).toBeInTheDocument();
+  });
+
+  it("redirects to the existing enquiry when a duplicate enquiry is sent", async () => {
+    apiMocks.marketplaceCardOffers.mockResolvedValue(offersResponse);
+    const conflict = Object.assign(new Error("An active enquiry already exists for this listing"), {
+      status: 409,
+      body: { error: "An active enquiry already exists for this listing", enquiryId: "enquiry_existing" },
+    });
+    apiMocks.marketplaceCreateEnquiry.mockRejectedValue(conflict);
+    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
+
+    render(
+      <MemoryRouter initialEntries={["/marketplace/card/card_elsa"]}>
+        <Routes>
+          <Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} />
+          <Route path="/marketplace/enquiries/:enquiryId" element={<EnquiryProbe />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await userEvent.type(await screen.findByLabelText("Quantity wanted"), "1");
+    await userEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
+    expect(await screen.findByText("Enquiry: enquiry_existing")).toBeInTheDocument();
   });
 
   it("groups authenticated buyer enquiries by status with dashboard links", async () => {
