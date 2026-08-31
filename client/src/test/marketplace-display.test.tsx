@@ -138,25 +138,30 @@ describe("marketplace branch rendering", () => {
     expect(screen.getByRole("button", { name: "Sending..." })).toBeDisabled();
   });
 
-  it("passes the buyer's message through when sending an enquiry", () => {
+  it("requires buyer quantity and passes message plus optional OBO offer through", () => {
     const onEnquire = vi.fn();
     render(
       <MemoryRouter>
         <MarketplaceOfferCard
-          offer={offer({ pricingMode: "FIXED" })}
+          offer={offer({ pricingMode: "ACCEPTS_OFFERS", availableQuantity: 3 })}
           user={{ id: "buyer_1", username: "buyer", emailVerifiedAt: "2026-08-27T00:00:00Z" } as any}
           onEnquire={onEnquire}
         />
       </MemoryRouter>
     );
 
+    const button = screen.getByRole("button", { name: "Send enquiry" });
+    expect(button).toBeDisabled();
+    expect(screen.getByText("Open to offers")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Quantity wanted"), { target: { value: "2" } });
     fireEvent.change(screen.getByLabelText("Message (optional)"), { target: { value: "  Is this still available?  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
+    fireEvent.change(screen.getByLabelText("Offer unit price (optional)"), { target: { value: "10.50" } });
+    fireEvent.click(button);
 
-    expect(onEnquire).toHaveBeenCalledWith("listing_1", "Is this still available?");
+    expect(onEnquire).toHaveBeenCalledWith("listing_1", { quantity: 2, message: "Is this still available?", unitPriceMinor: 1050 });
   });
 
-  it("sends an empty message when the buyer leaves the field blank", () => {
+  it("sends no message and shows no offer input for fixed listings", () => {
     const onEnquire = vi.fn();
     render(
       <MemoryRouter>
@@ -168,8 +173,11 @@ describe("marketplace branch rendering", () => {
       </MemoryRouter>
     );
 
+    fireEvent.change(screen.getByLabelText("Quantity wanted"), { target: { value: "1" } });
     fireEvent.click(screen.getByRole("button", { name: "Send enquiry" }));
 
-    expect(onEnquire).toHaveBeenCalledWith("listing_1", "");
+    expect(screen.queryByLabelText("Offer unit price (optional)")).not.toBeInTheDocument();
+    expect(screen.getByText("Fixed price")).toBeInTheDocument();
+    expect(onEnquire).toHaveBeenCalledWith("listing_1", { quantity: 1 });
   });
 });

@@ -199,6 +199,7 @@ model MarketplaceEnquiry {
   listing        ExtraForSaleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
   buyerId        String
   buyer          User                @relation("MarketplaceBuyerEnquiries", fields: [buyerId], references: [id], onDelete: Cascade)
+  quantity       Int
   status         String              @default("PENDING_SELLER")
   lastActivityAt DateTime            @default(now())
   createdAt      DateTime            @default(now())
@@ -238,7 +239,7 @@ model EnquiryOffer {
   unitPriceMinor     Int
   shippingPriceMinor Int                @default(0)
   currency           String
-  fulfilmentMethod   String
+  fulfilmentMethod   String?
   buyerCountryCode   String?
   createdAt          DateTime           @default(now())
 
@@ -260,7 +261,7 @@ model MarketplaceReservation {
   unitPriceMinor     Int
   shippingPriceMinor Int                 @default(0)
   currency           String
-  fulfilmentMethod   String
+  fulfilmentMethod   String?
   buyerCountryCode   String?
   expiresAt          DateTime
   status             String              @default("RESERVED")

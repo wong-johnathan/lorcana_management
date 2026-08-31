@@ -112,7 +112,7 @@ describe("API client wrapper", () => {
       marketplace.listEnquiries({ status: "PENDING_SELLER" }),
       marketplace.getEnquiry("enquiry_1"),
       marketplace.sendMessage("enquiry_1", "Meet up?"),
-      marketplace.createOffer("enquiry_1", { quantity: 1, unitPriceMinor: 18000, shippingPriceMinor: 0, currency: "SGD", fulfilmentMethod: "MEETUP", buyerCountryCode: "SG" }),
+      marketplace.createOffer("enquiry_1", { quantity: 1, unitPriceMinor: 18000 }),
       marketplace.acceptEnquiry("enquiry_1"),
       marketplace.declineEnquiry("enquiry_1"),
       marketplace.withdrawEnquiry("enquiry_1"),

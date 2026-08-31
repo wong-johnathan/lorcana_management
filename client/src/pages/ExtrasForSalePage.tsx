@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { extrasForSale as extrasApi, inventory as inventoryApi } from "../services/api";
-import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant, ListingCurrency } from "../types";
+import type { CardRetentionOverrideListItem, ExtraForSaleListing, InventoryExtrasCard, InventoryPolicy, InventoryVariant, ListingCurrency, MarketplacePricingMode } from "../types";
 import SuggestedExtrasPanel from "../components/extras/SuggestedExtrasPanel";
 import ActiveExtrasListingsPanel from "../components/extras/ActiveExtrasListingsPanel";
 import ManualOverridesPanel from "../components/extras/ManualOverridesPanel";
@@ -67,7 +67,7 @@ export default function ExtrasForSalePage() {
     }
   };
 
-  const createListing = async (item: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency) => {
+  const createListing = async (item: InventoryExtrasCard, variant: InventoryVariant, desiredQuantity: number, note: string, customPrice: number | null, customPriceCurrency: ListingCurrency, pricingMode: MarketplacePricingMode) => {
     if (!canListExtras) {
       setError("Verify your Google email before listing extras for sale.");
       return;
@@ -76,7 +76,7 @@ export default function ExtrasForSalePage() {
     setError(null);
     setSuccess(null);
     try {
-      await extrasApi.create({ cardId: item.card.id, variant, desiredQuantity, note: note || null, customPrice, customPriceCurrency });
+      await extrasApi.create({ cardId: item.card.id, variant, desiredQuantity, note: note || null, customPrice, customPriceCurrency, pricingMode });
       setSuccess("Extra listed for sale");
       setTab("listings");
       await load();
@@ -87,7 +87,7 @@ export default function ExtrasForSalePage() {
     }
   };
 
-  const updateListing = async (id: string, data: { note: string | null; customPrice: number | null; customPriceCurrency: ListingCurrency }) => {
+  const updateListing = async (id: string, data: { note: string | null; customPrice: number | null; customPriceCurrency: ListingCurrency; pricingMode: MarketplacePricingMode }) => {
     setSaving(true);
     setError(null);
     setSuccess(null);

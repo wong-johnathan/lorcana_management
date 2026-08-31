@@ -83,7 +83,7 @@ function transaction(overrides: Record<string, unknown> = {}) {
     sellerId: "seller_1",
     status: "COMPLETED",
     completedAt: new Date("2026-08-01T00:00:00.000Z"),
-    reviewWindowEndsAt: new Date("2026-08-31T00:00:00.000Z"),
+    reviewWindowEndsAt: new Date("2026-12-31T00:00:00.000Z"),
     disputedAt: null,
     reviews: [],
     ...overrides,
@@ -133,6 +133,7 @@ function enquiry(overrides: Record<string, unknown> = {}) {
     id: "enquiry_1",
     listingId: "listing_1",
     buyerId: "buyer_1",
+    quantity: 1,
     status: "PENDING_SELLER",
     lastActivityAt: new Date("2026-08-27T00:00:00.000Z"),
     createdAt: new Date("2026-08-27T00:00:00.000Z"),
@@ -439,6 +440,8 @@ describe("marketplace public routes", () => {
   it("validates enquiry creation branches before creating messages and offers", async () => {
     prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
 
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({}))
+      .expect(400, { error: "quantity is required" });
     await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 0 }))
       .expect(400, { error: "quantity must be a positive integer" });
     await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1.5 }))
@@ -454,7 +457,38 @@ describe("marketplace public routes", () => {
     await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1 }))
       .expect(400, { error: "Cannot enquire on your own listing" });
 
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing());
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1, currency: "SGD" }))
+      .expect(400, { error: "currency is inherited from the listing" });
+
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing());
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1, shippingPriceMinor: 0 }))
+      .expect(400, { error: "shipping, fulfilment, and buyer country are handled in chat for now" });
+
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ pricingMode: "FIXED" }));
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1, unitPriceMinor: 16000 }))
+      .expect(400, { error: "Fixed-price listings do not accept counteroffers" });
+
     expect(prismaMock.marketplaceEnquiry.create).not.toHaveBeenCalled();
+  });
+
+  it("creates an initial buyer offer only for OBO enquiries", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: "buyer_1", username: "buyer", emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") });
+    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(marketplaceListing({ pricingMode: "ACCEPTS_OFFERS", currency: "SGD" }));
+    prismaMock.marketplaceEnquiry.findFirst.mockResolvedValueOnce(null);
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceEnquiry.create.mockResolvedValueOnce({ id: "enquiry_offer" });
+    prismaMock.enquiryOffer.create.mockResolvedValueOnce(offer({ id: "initial_offer", currency: "SGD" }));
+
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 2, unitPriceMinor: 16000, message: "" }))
+      .expect(201)
+      .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_offer"));
+
+    expect(prismaMock.enquiryMessage.create).not.toHaveBeenCalled();
+    expect(prismaMock.enquiryOffer.create).toHaveBeenCalledWith({ data: expect.objectContaining({ enquiryId: "enquiry_offer", proposedByUserId: "buyer_1", quantity: 2, unitPriceMinor: 16000, currency: "SGD" }) });
   });
 
   it("allows enquiries on active Extras listings without a separate marketplace visibility flag", async () => {
@@ -467,7 +501,7 @@ describe("marketplace public routes", () => {
     prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
     prismaMock.marketplaceEnquiry.create.mockResolvedValueOnce({ id: "enquiry_visible" });
 
-    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1, buyerCountryCode: "SG" }))
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1 }))
       .expect(201)
       .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_visible"));
 
@@ -494,14 +528,14 @@ describe("marketplace public routes", () => {
     prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
     prismaMock.marketplaceEnquiry.create.mockResolvedValueOnce({ id: "enquiry_default" });
 
-    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1, buyerCountryCode: "SG" }))
+    await auth(request(app).post("/api/marketplace/listings/listing_1/enquiries").send({ quantity: 1 }))
       .expect(201)
       .expect((res) => expect(res.body.enquiry.id).toBe("enquiry_default"));
 
     expect(prismaMock.enquiryMessage.create).not.toHaveBeenCalled();
     expect(prismaMock.enquiryOffer.create).not.toHaveBeenCalled();
     expect(prismaMock.marketplaceEnquiry.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ listingId: "listing_1", buyerId: "buyer_1", status: "PENDING_SELLER" }),
+      data: expect.objectContaining({ listingId: "listing_1", buyerId: "buyer_1", quantity: 1, status: "PENDING_SELLER" }),
     }));
   });
 
@@ -622,10 +656,6 @@ describe("marketplace enquiry and reservation routes", () => {
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: 17000,
-      shippingPriceMinor: 0,
-      currency: "SGD",
-      fulfilmentMethod: "MEETUP",
-      buyerCountryCode: "SG",
     }), sellerToken)
       .expect(201)
       .expect((res) => expect(res.body.offer.id).toBe("seller_counter"));
@@ -645,10 +675,6 @@ describe("marketplace enquiry and reservation routes", () => {
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: 16000,
-      shippingPriceMinor: 0,
-      currency: "SGD",
-      fulfilmentMethod: "MEETUP",
-      buyerCountryCode: "SG",
     }))
       .expect(201)
       .expect((res) => expect(res.body.offer.id).toBe("buyer_first"));
@@ -664,7 +690,7 @@ describe("marketplace enquiry and reservation routes", () => {
 
   it("accepts the latest valid offer into a 48-hour reservation with stock validation", async () => {
     const latestOffer = offer({ id: "buyer_offer", proposedByUserId: "buyer_1", quantity: 1 });
-    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [latestOffer] }));
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [latestOffer], listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
     prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
     prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
@@ -684,6 +710,36 @@ describe("marketplace enquiry and reservation routes", () => {
     }));
   });
 
+  it("accepts fixed-price enquiries directly at listing price and requested quantity", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({
+      offers: [],
+      quantity: 2,
+      listing: marketplaceListing({ pricingMode: "FIXED", askingPriceMinor: 18000, currency: "SGD" }),
+    }));
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 4 });
+    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
+    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceReservation.create.mockResolvedValueOnce(reservation({ acceptedOfferId: null, quantity: 2 }));
+    prismaMock.marketplaceEnquiry.update.mockResolvedValueOnce({});
+    prismaMock.notification.create.mockResolvedValueOnce({});
+
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/accept"), sellerToken)
+      .expect(201)
+      .expect((res) => expect(res.body.reservation).toEqual(expect.objectContaining({ status: "RESERVED", quantity: 2 })));
+
+    expect(prismaMock.marketplaceReservation.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        enquiryId: "enquiry_1",
+        acceptedOfferId: null,
+        quantity: 2,
+        unitPriceMinor: 18000,
+        currency: "SGD",
+        status: "RESERVED",
+      }),
+    }));
+  });
+
   it("cancels and expires active reservations without deleting the enquiry thread", async () => {
     prismaMock.marketplaceReservation.findUnique.mockResolvedValueOnce({ ...reservation(), enquiry: enquiry() });
     prismaMock.marketplaceReservation.update.mockResolvedValueOnce(reservation({ status: "CANCELLED" }));
@@ -697,6 +753,10 @@ describe("marketplace enquiry and reservation routes", () => {
     prismaMock.marketplaceReservation.updateMany.mockResolvedValueOnce({ count: 2 });
     await auth(request(app).post("/api/marketplace/reservations/expire-due"), sellerToken)
       .expect(200, { expired: 2 });
+
+    prismaMock.marketplaceReservation.updateMany.mockRejectedValueOnce(new Error("db down"));
+    await auth(request(app).post("/api/marketplace/reservations/expire-due"), sellerToken)
+      .expect(500, { error: "Internal server error" });
   });
 
   it("validates enquiry and reservation action edge cases", async () => {
@@ -711,12 +771,10 @@ describe("marketplace enquiry and reservation routes", () => {
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/messages").send({ message: "x".repeat(2001) }))
       .expect(400, { error: "message must be 2000 characters or fewer" });
 
-    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry());
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [] }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: 18000,
-      currency: "SGD",
-      fulfilmentMethod: "MEETUP",
     }), sellerToken).expect(400, { error: "Fixed-price listings do not accept counteroffers" });
 
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
@@ -724,28 +782,45 @@ describe("marketplace enquiry and reservation routes", () => {
       quantity: 1,
       unitPriceMinor: 18000,
       currency: "BAD",
-      fulfilmentMethod: "MEETUP",
     }), sellerToken).expect(400);
 
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ status: "RESERVED", listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: 18000,
-      currency: "SGD",
-      fulfilmentMethod: "MEETUP",
-    }), sellerToken).expect(400);
+    }), sellerToken).expect(400, { error: "Cannot apply SELLER_COUNTER from RESERVED" });
 
-    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [] }));
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [], listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/accept"), sellerToken)
-      .expect(400, { error: "No offer to accept" });
+      .expect(400, { error: "OBO enquiries need an offer before acceptance" });
 
-    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [offer({ proposedByUserId: "seller_1" })] }));
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ status: "PENDING_SELLER", offers: [offer({ proposedByUserId: "seller_1" })], listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/accept"))
+      .expect(400, { error: "Cannot apply BUYER_ACCEPT from PENDING_SELLER" });
+
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ status: "AWAITING_BUYER", listing: marketplaceListing({ pricingMode: "FIXED" }) }));
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/accept"))
+      .expect(400, { error: "Only the seller can accept fixed-price enquiries" });
+
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [], listing: marketplaceListing({ pricingMode: "FIXED", askingPriceMinor: null, customPrice: null, card: card({ displayPrice: null }) }) }));
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/accept"), sellerToken)
+      .expect(400, { error: "Fixed-price listing needs a price before acceptance" });
+
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ offers: [offer({ proposedByUserId: "seller_1" })], listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/accept"), sellerToken)
       .expect(400, { error: "Cannot accept your own offer" });
 
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ status: "RESERVED" }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/decline"), sellerToken)
       .expect(400);
+
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry());
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/decline"))
+      .expect(400, { error: "seller action requires seller actor: SELLER_DECLINE" });
+
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry());
+    await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/withdraw"), sellerToken)
+      .expect(400, { error: "buyer action requires buyer actor: BUYER_WITHDRAW" });
 
     prismaMock.marketplaceReservation.findUnique.mockResolvedValueOnce({ ...reservation({ status: "COMPLETED" }), enquiry: enquiry() });
     await auth(request(app).post("/api/marketplace/reservations/reservation_1/cancel"))
@@ -780,16 +855,12 @@ describe("marketplace enquiry and reservation routes", () => {
       status: "AWAITING_BUYER",
       listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }),
     }));
-    prismaMock.enquiryOffer.create.mockResolvedValueOnce(offer({ id: "buyer_counter", proposedByUserId: "buyer_1", fulfilmentMethod: "DOMESTIC_SHIPPING", buyerCountryCode: null, shippingPriceMinor: undefined, proposedByUser: undefined }));
+    prismaMock.enquiryOffer.create.mockResolvedValueOnce(offer({ id: "buyer_counter", proposedByUserId: "buyer_1", proposedByUser: undefined }));
     prismaMock.marketplaceEnquiry.update.mockResolvedValueOnce({});
     prismaMock.notification.create.mockResolvedValueOnce({});
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: 16000,
-      shippingPriceMinor: undefined,
-      currency: "SGD",
-      fulfilmentMethod: "DOMESTIC_SHIPPING",
-      buyerCountryCode: "  ",
     }))
       .expect(201)
       .expect((res) => {
@@ -800,6 +871,7 @@ describe("marketplace enquiry and reservation routes", () => {
   it("covers buyer acceptance plus decline, withdraw, authorization, and missing reservation paths", async () => {
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({
       status: "AWAITING_BUYER",
+      listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }),
       offers: [offer({ proposedByUserId: "seller_1", shippingPriceMinor: undefined, buyerCountryCode: undefined })],
     }));
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 3 });
@@ -841,27 +913,22 @@ describe("marketplace enquiry and reservation routes", () => {
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1.5,
       unitPriceMinor: 18000,
-      currency: "SGD",
-      fulfilmentMethod: "MEETUP",
     }), sellerToken).expect(400, { error: "quantity must be a positive integer" });
 
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: -1,
-      currency: "SGD",
-      fulfilmentMethod: "MEETUP",
     }), sellerToken).expect(400, { error: "unitPriceMinor must be a non-negative integer minor-unit amount" });
 
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }) }));
     await auth(request(app).post("/api/marketplace/enquiries/enquiry_1/offers").send({
       quantity: 1,
       unitPriceMinor: 18000,
-      currency: "SGD",
       fulfilmentMethod: "INTERNATIONAL_SHIPPING",
-    }), sellerToken).expect(201);
+    }), sellerToken).expect(400, { error: "shipping, fulfilment, and buyer country are handled in chat for now" });
 
-    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ status: "AWAITING_BUYER", offers: [offer({ proposedByUserId: "seller_1" })] }));
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(enquiry({ status: "AWAITING_BUYER", listing: marketplaceListing({ pricingMode: "ACCEPTS_OFFERS" }), offers: [offer({ proposedByUserId: "seller_1" })] }));
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 0, foilQuantity: 0, holofoilQuantity: 0 });
     prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
     prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);

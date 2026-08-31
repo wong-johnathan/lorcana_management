@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ExtraForSaleListing, ListingCurrency } from "../../types";
+import type { ExtraForSaleListing, ListingCurrency, MarketplacePricingMode } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, formatCustomPrice, LISTING_CURRENCIES } from "./extrasUi";
 
@@ -7,6 +7,7 @@ interface ListingEdit {
   note: string | null;
   customPrice: number | null;
   customPriceCurrency: ListingCurrency;
+  pricingMode: MarketplacePricingMode;
 }
 
 interface ActiveExtrasListingsPanelProps {
@@ -22,6 +23,7 @@ export default function ActiveExtrasListingsPanel({ listings, onStatusChange, on
   const [editNote, setEditNote] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editCurrency, setEditCurrency] = useState<ListingCurrency>("SGD");
+  const [editPricingMode, setEditPricingMode] = useState<MarketplacePricingMode>("FIXED");
   const filteredListings = listings.filter((listing) => cardMatchesFilters(listing.card, filters));
   const filterOptions = deriveExtrasFilterOptions(listings.map((listing) => listing.card));
 
@@ -30,6 +32,7 @@ export default function ActiveExtrasListingsPanel({ listings, onStatusChange, on
     setEditNote(listing.note ?? "");
     setEditPrice(listing.customPrice != null ? String(listing.customPrice) : "");
     setEditCurrency(listing.customPriceCurrency ?? "SGD");
+    setEditPricingMode(listing.pricingMode ?? "FIXED");
   };
 
   const saveEdit = (listing: ExtraForSaleListing) => {
@@ -37,6 +40,7 @@ export default function ActiveExtrasListingsPanel({ listings, onStatusChange, on
       note: editNote.trim() || null,
       customPrice: editPrice.trim() === "" ? null : Number(editPrice),
       customPriceCurrency: editCurrency,
+      pricingMode: editPricingMode,
     });
     setEditingId(null);
   };

@@ -18,6 +18,14 @@ function tokenFromRequest(req: AuthRequest): string | null {
   return authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 }
 
+export function verifyAuthToken(token: string): AuthPayload | null {
+  try {
+    return jwt.verify(token, JWT_SECRET) as AuthPayload;
+  } catch {
+    return null;
+  }
+}
+
 export function authenticateToken(
   req: AuthRequest,
   res: Response,
@@ -31,7 +39,8 @@ export function authenticateToken(
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = verifyAuthToken(token);
+    if (!payload) throw new Error("invalid token");
     req.user = payload;
     next();
   } catch {
@@ -51,7 +60,8 @@ export function authenticateOptional(
   }
 
   try {
-    req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const payload = verifyAuthToken(token);
+    if (payload) req.user = payload;
   } catch {
     // Marketplace browsing stays public; an invalid optional token simply means anonymous browsing.
   }

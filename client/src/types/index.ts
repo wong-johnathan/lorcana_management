@@ -363,8 +363,6 @@ export interface MarketplaceCardOffersResponse {
 export interface MarketplaceEnquiryOfferSummary {
   quantity: number;
   unitPrice: MarketplaceMoney;
-  shippingPrice?: MarketplaceMoney | null;
-  fulfilmentMethod: MarketplaceFulfilmentMethod;
 }
 
 export interface MarketplaceEnquirySummary {
@@ -376,6 +374,8 @@ export interface MarketplaceEnquirySummary {
   card: Card;
   variant: InventoryVariant;
   quantity: number;
+  pricingMode: MarketplacePricingMode;
+  askingPrice: MarketplaceMoney | null;
   lastActivityAt: string;
   unreadCount: number;
   latestOffer?: MarketplaceEnquiryOfferSummary | null;
@@ -398,7 +398,6 @@ export interface MarketplaceEnquiryOffer extends MarketplaceEnquiryOfferSummary 
   enquiryId: string;
   proposedBy: User;
   createdAt: string;
-  buyerCountryCode?: string | null;
 }
 
 export interface MarketplaceReservation {
@@ -408,10 +407,7 @@ export interface MarketplaceReservation {
   acceptedOfferId?: string | null;
   quantity: number;
   unitPriceMinor: number;
-  shippingPriceMinor: number;
   currency: ListingCurrency;
-  fulfilmentMethod: MarketplaceFulfilmentMethod;
-  buyerCountryCode?: string | null;
   expiresAt: string;
   status: "RESERVED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "DISPUTED" | "AWAITING_BUYER_CONFIRMATION";
   createdAt: string;
@@ -432,18 +428,11 @@ export interface MarketplaceCreateEnquiryPayload {
   quantity: number;
   message?: string;
   unitPriceMinor?: number;
-  currency?: ListingCurrency;
-  fulfilmentMethod?: MarketplaceFulfilmentMethod;
-  buyerCountryCode?: string;
 }
 
 export interface MarketplaceCreateOfferPayload {
   quantity: number;
   unitPriceMinor: number;
-  shippingPriceMinor?: number;
-  currency: ListingCurrency;
-  fulfilmentMethod: MarketplaceFulfilmentMethod;
-  buyerCountryCode: string;
 }
 
 export interface PillarScore {

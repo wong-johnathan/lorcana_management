@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { User, MarketplaceCardOffer } from "../../types";
 import { formatMarketplaceMoney, variantLabel } from "./marketplaceDisplay";
@@ -8,13 +8,38 @@ interface MarketplaceOfferCardProps {
   offer: MarketplaceCardOffer;
   user: User | null;
   saving?: boolean;
-  onEnquire: (listingId: string, message?: string) => void;
+  onEnquire: (listingId: string, input: { quantity: number; message?: string; unitPriceMinor?: number }) => void;
+}
+
+function dollarsToMinor(value: string) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100);
 }
 
 export default function MarketplaceOfferCard({ offer, user, saving = false, onEnquire }: MarketplaceOfferCardProps) {
   const verifiedBuyer = Boolean(user?.emailVerifiedAt);
+  const acceptsOffers = offer.pricingMode === "ACCEPTS_OFFERS";
+  const [quantity, setQuantity] = useState("");
   const [message, setMessage] = useState("");
+  const [offerPrice, setOfferPrice] = useState("");
+  const quantityId = `enquiry-quantity-${offer.listingId}`;
   const messageId = `enquiry-message-${offer.listingId}`;
+  const offerPriceId = `enquiry-offer-${offer.listingId}`;
+  const parsedQuantity = useMemo(() => Number(quantity), [quantity]);
+  const validQuantity = Number.isInteger(parsedQuantity) && parsedQuantity >= 1 && parsedQuantity <= offer.availableQuantity;
+  const parsedOfferPrice = offerPrice.trim() ? dollarsToMinor(offerPrice) : undefined;
+  const validOfferPrice = !offerPrice.trim() || parsedOfferPrice !== null;
+
+  const submit = () => {
+    if (!validQuantity || !validOfferPrice) return;
+    const trimmedMessage = message.trim();
+    onEnquire(offer.listingId, {
+      quantity: parsedQuantity,
+      ...(trimmedMessage ? { message: trimmedMessage } : {}),
+      ...(acceptsOffers && parsedOfferPrice != null ? { unitPriceMinor: parsedOfferPrice } : {}),
+    });
+  };
 
   return (
     <article className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-4">
@@ -27,6 +52,7 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
         </div>
         <div className="text-right">
           <p className="text-xl font-semibold text-amber-300">{formatMarketplaceMoney(offer.askingPrice)}</p>
+          <p className="mt-1 text-xs text-gray-400">{acceptsOffers ? "Open to offers" : "Fixed price"}</p>
           {offer.approximateConvertedPrice && (
             <p className="text-sm text-gray-400">≈ {formatMarketplaceMoney(offer.approximateConvertedPrice)}</p>
           )}
@@ -52,20 +78,50 @@ export default function MarketplaceOfferCard({ offer, user, saving = false, onEn
           Log in to send enquiry
         </Link>
       ) : verifiedBuyer ? (
-        <div className="space-y-2">
-          <label htmlFor={messageId} className="block text-sm text-gray-300">Message (optional)</label>
-          <textarea
-            id={messageId}
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Add a message for the seller"
-            rows={2}
-            className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
-          />
+        <div className="space-y-3">
+          <label htmlFor={quantityId} className="block text-sm text-gray-300">
+            Quantity wanted
+            <input
+              id={quantityId}
+              type="number"
+              min={1}
+              max={offer.availableQuantity}
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+              placeholder="Enter quantity"
+              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
+            />
+          </label>
+          <label htmlFor={messageId} className="block text-sm text-gray-300">
+            Message (optional)
+            <textarea
+              id={messageId}
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Ask logistics in chat, e.g. meetup or delivery"
+              rows={2}
+              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
+            />
+          </label>
+          {acceptsOffers && (
+            <label htmlFor={offerPriceId} className="block text-sm text-gray-300">
+              Offer unit price (optional)
+              <input
+                id={offerPriceId}
+                type="number"
+                min={0}
+                step="0.01"
+                value={offerPrice}
+                onChange={(event) => setOfferPrice(event.target.value)}
+                placeholder="Leave blank to enquire only"
+                className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-gray-100"
+              />
+            </label>
+          )}
           <button
             type="button"
-            onClick={() => onEnquire(offer.listingId, message.trim())}
-            disabled={saving}
+            onClick={submit}
+            disabled={saving || !validQuantity || !validOfferPrice}
             className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
           >
             {saving ? "Sending..." : "Send enquiry"}
