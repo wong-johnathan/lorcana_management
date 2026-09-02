@@ -35,6 +35,11 @@ import type {
   MarketplaceReputationSummary,
   InventoryRemoveExtrasSummary,
   ExtrasForSaleBulkRemoveSummary,
+  AppNotification,
+  NotificationsResponse,
+  NotificationUnreadCountResponse,
+  NotificationMarkReadResponse,
+  NotificationMarkAllReadResponse,
 } from "../types";
 
 const API_BASE = "/api";
@@ -264,6 +269,14 @@ export const marketplace = {
     request<{ reservation: MarketplaceReservation }>(`/marketplace/reservations/${id}/cancel`, { method: "POST" }),
   userReputation: (userId: string) =>
     request<MarketplaceReputationSummary>(`/marketplace/users/${userId}/reputation`),
+};
+
+export const notifications = {
+  list: () => request<NotificationsResponse>("/notifications"),
+  unreadCount: () => request<NotificationUnreadCountResponse>("/notifications/unread-count"),
+  markRead: (id: AppNotification["id"]) =>
+    request<NotificationMarkReadResponse>(`/notifications/${id}/read`, { method: "POST" }),
+  markAllRead: () => request<NotificationMarkAllReadResponse>("/notifications/read-all", { method: "POST" }),
 };
 
 export const analysis = {

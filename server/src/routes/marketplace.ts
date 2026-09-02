@@ -694,7 +694,7 @@ marketplaceRouter.post("/enquiries/:id/accept", authenticateToken, async (req: A
         },
       });
       await tx.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { status: "RESERVED", lastActivityAt: new Date() } });
-      await tx.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_RESERVATION_CREATED", relatedType: "MarketplaceReservation", relatedId: reservation.id } });
+      await tx.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_RESERVATION_CREATED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id } });
       return { status: 201, body: { reservation: serializeReservation(reservation) } };
     });
     res.status(result.status).json(result.body);
@@ -793,7 +793,7 @@ marketplaceRouter.post("/reservations/:id/cancel", authenticateToken, async (req
     }
     const updated = await prisma.marketplaceReservation.update({ where: { id: reservation.id }, data: { status: "CANCELLED" } });
     await prisma.marketplaceEnquiry.update({ where: { id: enquiry.id }, data: { status: "CANCELLED", lastActivityAt: new Date() } });
-    await prisma.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_RESERVATION_CANCELLED", relatedType: "MarketplaceReservation", relatedId: reservation.id } });
+    await prisma.notification.create({ data: { userId: counterpartyUserId(enquiry, actorUserId), type: "MARKETPLACE_RESERVATION_CANCELLED", relatedType: "MarketplaceEnquiry", relatedId: enquiry.id } });
     broadcastMarketplaceEvent({ type: "reservation.cancelled", enquiryId: enquiry.id, payload: { id: reservation.id } });
     broadcastMarketplaceEvent({ type: "enquiry.status_changed", enquiryId: enquiry.id, payload: { status: "CANCELLED" } });
     res.json({ reservation: serializeReservation(updated) });
