@@ -16,6 +16,13 @@ const NAV_ICONS = {
   login: "M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1",
 };
 
+interface NavItem {
+  to: string;
+  label: string;
+  shortLabel?: string;
+  icon: string;
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const [showTop, setShowTop] = useState(false);
@@ -40,14 +47,14 @@ export default function Layout() {
 
   const scrollToTop = () => mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
-  const navItems = user
+  const navItems: NavItem[] = user
     ? [
         { to: "/inventory", label: "Inventory", icon: NAV_ICONS.inventory },
         { to: "/extras-for-sale", label: "Extras", icon: NAV_ICONS.extras },
         { to: "/database", label: "Database", icon: NAV_ICONS.database },
-        { to: "/marketplace", label: "Marketplace", icon: NAV_ICONS.marketplace },
+        { to: "/marketplace", label: "Marketplace", shortLabel: "Market", icon: NAV_ICONS.marketplace },
         { to: "/marketplace/enquiries", label: "Messages", icon: NAV_ICONS.messages },
-        { to: "/master-set", label: "Master Set", icon: NAV_ICONS.masterSet },
+        { to: "/master-set", label: "Master Set", shortLabel: "Master", icon: NAV_ICONS.masterSet },
       ]
     : [
         { to: "/database", label: "Database", icon: NAV_ICONS.database },
@@ -56,16 +63,16 @@ export default function Layout() {
         { to: "/login", label: "Sign In", icon: NAV_ICONS.login },
       ];
 
-  const navLinks = navItems.map(({ to, label, icon }) => (
+  const navLinks = navItems.map(({ to, label, shortLabel, icon }) => (
     <NavLink
       key={to}
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-1.5 py-2 px-3 text-xs transition-colors ${
+        `flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 py-1.5 px-1 text-[10px] leading-none transition-colors ${
           isActive
             ? "text-amber-400"
             : "text-gray-400 hover:text-gray-200"
-        } md:flex-row md:text-sm`
+        } md:flex-none md:flex-row md:gap-1.5 md:px-3 md:text-sm md:leading-normal`
       }
     >
       <svg
@@ -77,7 +84,8 @@ export default function Layout() {
       >
         <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
       </svg>
-      <span className="md:inline">{label}</span>
+      <span className="max-w-full truncate md:hidden">{shortLabel ?? label}</span>
+      <span className="hidden max-w-full truncate md:inline">{label}</span>
     </NavLink>
   ));
 
@@ -140,7 +148,7 @@ export default function Layout() {
 
       {/* Mobile bottom nav */}
       <nav className="shrink-0 bg-gray-900 border-t border-gray-800 md:hidden">
-        <div className="flex justify-around max-w-lg mx-auto">
+        <div className="flex max-w-lg mx-auto">
           {navLinks}
         </div>
       </nav>
