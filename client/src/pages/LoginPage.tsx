@@ -90,7 +90,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-full flex items-center justify-center p-4">
       <div className="bg-gray-900 rounded-xl p-8 w-full max-w-md border border-gray-800">
         <h1 className="text-3xl font-bold text-amber-400 text-center mb-2">
           Lorcana Inventory

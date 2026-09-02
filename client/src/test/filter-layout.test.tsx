@@ -1,5 +1,5 @@
 import { MemoryRouter } from "react-router-dom";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import FilterBar from "../components/FilterBar";
@@ -115,10 +115,12 @@ describe("Layout", () => {
     expect(screen.getAllByText("Master Set")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Sign In")[0]).toBeInTheDocument();
 
-    Object.defineProperty(window, "scrollY", { value: 500, configurable: true });
-    act(() => window.dispatchEvent(new Event("scroll")));
+    Object.defineProperty(screen.getByRole("main"), "scrollTop", { value: 500, configurable: true });
+    const scrollTo = vi.fn();
+    Object.defineProperty(screen.getByRole("main"), "scrollTo", { value: scrollTo, configurable: true });
+    fireEvent.scroll(screen.getByRole("main"));
     await userEvent.click(await screen.findByLabelText("Back to top"));
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
 
   it("renders authenticated navigation and logs out", async () => {
