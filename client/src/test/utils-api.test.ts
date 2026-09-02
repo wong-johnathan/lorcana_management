@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { availableInventoryVariants, isInventoryVariantAvailable, totalInventoryCount } from "../utils/cardVariants";
 import { formatTimeAgo } from "../utils/format";
-import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi, extrasForSale, marketplace } from "../services/api";
+import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi, extrasForSale, marketplace, notifications } from "../services/api";
 
 describe("client utility helpers", () => {
   it("derives inventory variants from foilTypes and totals quantities", () => {
@@ -128,6 +128,10 @@ describe("API client wrapper", () => {
       marketplace.withdrawEnquiry("enquiry_1"),
       marketplace.cancelReservation("reservation_1"),
       marketplace.userReputation("seller_1"),
+      notifications.list(),
+      notifications.unreadCount(),
+      notifications.markRead("notification_1"),
+      notifications.markAllRead(),
       sync.refresh(),
       sync.refreshStatus(),
       sync.prices(),
@@ -181,5 +185,9 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/withdraw", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/reservations/reservation_1/cancel", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/users/seller_1/reputation", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/notifications", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/notifications/unread-count", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/notifications/notification_1/read", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/notifications/read-all", expect.objectContaining({ method: "POST" }));
   });
 });

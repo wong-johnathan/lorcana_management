@@ -56,7 +56,9 @@ export const prismaMock = {
   notification: {
     create: vi.fn(),
     findMany: vi.fn(),
+    count: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   fxRate: {
     findUnique: vi.fn(),

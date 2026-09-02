@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NotificationBell from "./notifications/NotificationBell";
+import NotificationToast from "./notifications/NotificationToast";
+import { useNotifications } from "../hooks/useNotifications";
 
 const NAV_ICONS = {
   inventory: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
@@ -16,6 +19,15 @@ const NAV_ICONS = {
 export default function Layout() {
   const { user, logout } = useAuth();
   const [showTop, setShowTop] = useState(false);
+  const {
+    notifications,
+    unreadCount,
+    loading: notificationsLoading,
+    toastNotification,
+    markAsRead,
+    markAllAsRead,
+    clearToast,
+  } = useNotifications({ enabled: Boolean(user) });
 
   useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 400);
@@ -76,6 +88,13 @@ export default function Layout() {
           {navLinks}
           {user && (
             <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-700">
+              <NotificationBell
+                notifications={notifications}
+                unreadCount={unreadCount}
+                loading={notificationsLoading}
+                onMarkAsRead={markAsRead}
+                onMarkAllAsRead={markAllAsRead}
+              />
               <Link to="/profile" className="text-sm text-gray-400 hover:text-amber-300 transition-colors">
                 {user.username}
               </Link>
@@ -92,6 +111,13 @@ export default function Layout() {
         {/* Mobile: just show user/logout */}
         {user && (
           <div className="flex md:hidden items-center gap-3">
+            <NotificationBell
+              notifications={notifications}
+              unreadCount={unreadCount}
+              loading={notificationsLoading}
+              onMarkAsRead={markAsRead}
+              onMarkAllAsRead={markAllAsRead}
+            />
             <Link to="/profile" className="text-sm text-gray-400 hover:text-amber-300 transition-colors">
               {user.username}
             </Link>
@@ -115,6 +141,12 @@ export default function Layout() {
           {navLinks}
         </div>
       </nav>
+
+      <NotificationToast
+        notification={toastNotification}
+        onOpen={markAsRead}
+        onDismiss={clearToast}
+      />
 
       {showTop && (
         <button

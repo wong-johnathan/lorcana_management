@@ -9,6 +9,12 @@ import { useAuth } from "../context/AuthContext";
 
 vi.mock("../services/api", () => ({
   cards: { filters: vi.fn() },
+  notifications: {
+    list: vi.fn().mockResolvedValue({ notifications: [], unreadCount: 0 }),
+    unreadCount: vi.fn().mockResolvedValue({ unreadCount: 0 }),
+    markRead: vi.fn().mockResolvedValue({ updated: 1, readAt: "2026-09-02T00:00:00.000Z" }),
+    markAllRead: vi.fn().mockResolvedValue({ updated: 0 }),
+  },
 }));
 
 vi.mock("../context/AuthContext", () => ({

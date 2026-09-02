@@ -477,6 +477,37 @@ export interface SyncStatus {
   completedAt: string | null;
 }
 
+export interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  actionUrl: string;
+  relatedType: string | null;
+  relatedId: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationsResponse {
+  notifications: AppNotification[];
+  unreadCount: number;
+}
+
+export interface NotificationUnreadCountResponse {
+  unreadCount: number;
+}
+
+export interface NotificationMarkReadResponse {
+  updated: number;
+  readAt: string;
+}
+
+export interface NotificationMarkAllReadResponse {
+  updated: number;
+}
+
 
 export type MasterSetPriceField = "lowPrice" | "midPrice" | "highPrice" | "marketPrice";
 
