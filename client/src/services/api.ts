@@ -33,6 +33,8 @@ import type {
   MarketplaceEnquiryOffer,
   MarketplaceReservation,
   MarketplaceReputationSummary,
+  InventoryRemoveExtrasSummary,
+  ExtrasForSaleBulkRemoveSummary,
 } from "../types";
 
 const API_BASE = "/api";
@@ -136,6 +138,7 @@ export const inventory = {
       body: JSON.stringify(data),
     }),
   getExtras: () => request<InventoryExtrasResponse>("/inventory/extras"),
+  removeExtras: () => request<InventoryRemoveExtrasSummary>("/inventory/remove-extras", { method: "POST" }),
   listRetentionOverrides: () => request<{ overrides: CardRetentionOverrideListItem[] }>("/inventory/retention"),
   getRetentionOverride: (cardId: string) => request<{ override: CardRetentionOverride | null }>(`/inventory/retention/${cardId}`),
   updateRetentionOverride: (cardId: string, data: Partial<CardRetentionOverride>) =>
@@ -149,6 +152,7 @@ export const inventory = {
 export const extrasForSale = {
   list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
   listAll: () => request<{ created: number; skipped: number }>("/extras-for-sale/list-all", { method: "POST" }),
+  removeAll: () => request<ExtrasForSaleBulkRemoveSummary>("/extras-for-sale", { method: "DELETE" }),
   create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency; marketplaceVisible?: boolean; pricingMode?: string; askingPriceMinor?: number | null; currency?: ListingCurrency | null; condition?: string | null; cardLanguage?: string | null }) =>
     request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
       method: "POST",

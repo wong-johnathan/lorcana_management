@@ -41,7 +41,8 @@ The API is mounted under `/api`:
 
 - `/api/auth` — register/login/config.
 - `/api/cards` — card database, filters, card detail, master-set estimates, market analysis.
-- `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe.
+- `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, extras suggestions, keep policy/overrides, and bulk trim of extra copies.
+- `/api/extras-for-sale` — authenticated owner Extras for Sale listing CRUD plus bulk list/remove helpers.
 - `/api/sync` — authenticated card sync and price sync, with progress/status endpoints.
 - `/api/settings` — authenticated profile settings, currently public collection visibility.
 - `/api/public` — read-only public collection endpoint.
@@ -68,6 +69,9 @@ The API is mounted under `/api`:
 - `/inventory` — the user's collection.
   - Supports filters, stats, total value, missing-price count, per-set breakdown, CSV export, wipe, and item removal.
   - Supports both rows and grid views; the selected view is stored in localStorage.
+  - Bulk remove extras action trims owned normal/foil/holofoil counts down to the current keep policy/overrides and removes active/paused Extras listings.
+- `/extras-for-sale` — owner management for computed extras and explicit sale listings.
+  - Supports bulk list all extras, bulk remove all listings, and per-card/variant listing/edit/remove actions.
 - `/settings` — profile settings.
   - Public collection toggle and copyable public URL.
 - Auth flows:

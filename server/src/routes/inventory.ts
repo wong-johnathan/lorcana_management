@@ -100,12 +100,18 @@ function serializePolicy(policy: InventoryPolicyLike) {
   };
 }
 
-async function getOrCreateInventoryPolicy(userId: string) {
-  return prisma.userInventoryPolicy.upsert({
+async function getOrCreateInventoryPolicy(userId: string, db: any = prisma) {
+  return db.userInventoryPolicy.upsert({
     where: { userId },
     create: { userId, ...DEFAULT_INVENTORY_POLICY },
     update: {},
   });
+}
+
+function addRemovedCounts(total: ReturnType<typeof emptyCounts>, removed: ReturnType<typeof emptyCounts>) {
+  total.quantity += removed.quantity;
+  total.foilQuantity += removed.foilQuantity;
+  total.holofoilQuantity += removed.holofoilQuantity;
 }
 
 function parseKeepQuantity(value: unknown, allowNull = false): number | null | undefined {
@@ -402,6 +408,71 @@ inventoryRouter.delete("/retention/:cardId", async (req: AuthRequest, res: Respo
     res.status(204).send();
   } catch (error) {
     console.error("Retention override delete error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+inventoryRouter.post("/remove-extras", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    if (await hasActiveReservationsForUserListings(prisma, userId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const [policy, overrides, entries] = await Promise.all([
+        getOrCreateInventoryPolicy(userId, tx),
+        tx.cardRetentionOverride.findMany({ where: { userId } }),
+        tx.inventoryEntry.findMany({ where: { userId } }),
+      ]);
+
+      const overrideByCardId = new Map(overrides.map((override) => [override.cardId, override]));
+      const removedCopies = emptyCounts();
+      let updatedEntries = 0;
+      let deletedEntries = 0;
+
+      for (const entry of entries) {
+        const owned = countsFromEntry(entry);
+        const keep = resolveKeepCounts(policy, overrideByCardId.get(entry.cardId));
+        const next = {
+          quantity: Math.min(owned.quantity, keep.quantity),
+          foilQuantity: Math.min(owned.foilQuantity, keep.foilQuantity),
+          holofoilQuantity: Math.min(owned.holofoilQuantity, keep.holofoilQuantity),
+        };
+        const removed = {
+          quantity: owned.quantity - next.quantity,
+          foilQuantity: owned.foilQuantity - next.foilQuantity,
+          holofoilQuantity: owned.holofoilQuantity - next.holofoilQuantity,
+        };
+        if (removed.quantity + removed.foilQuantity + removed.holofoilQuantity <= 0) continue;
+
+        addRemovedCounts(removedCopies, removed);
+        if (next.quantity + next.foilQuantity + next.holofoilQuantity === 0) {
+          await tx.inventoryEntry.delete({ where: { id: entry.id } });
+          deletedEntries += 1;
+        } else {
+          await tx.inventoryEntry.update({ where: { id: entry.id }, data: next });
+          updatedEntries += 1;
+        }
+      }
+
+      const removedListings = await tx.extraForSaleListing.updateMany({
+        where: { userId, status: { in: ["active", "paused"] } },
+        data: { status: "removed" },
+      });
+
+      return {
+        updatedEntries,
+        deletedEntries,
+        removedCopies,
+        removedListings: removedListings.count,
+      };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error("Inventory remove extras error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

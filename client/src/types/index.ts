@@ -134,6 +134,17 @@ export interface InventoryExtrasResponse {
   cards: InventoryExtrasCard[];
 }
 
+export interface InventoryRemoveExtrasSummary {
+  updatedEntries: number;
+  deletedEntries: number;
+  removedCopies: InventoryCountSet;
+  removedListings: number;
+}
+
+export interface ExtrasForSaleBulkRemoveSummary {
+  removed: number;
+}
+
 export interface ExtraForSaleListing {
   id: string;
   cardId: string;

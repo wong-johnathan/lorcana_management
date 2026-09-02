@@ -442,6 +442,25 @@ extrasForSaleRouter.post("/list-all", async (req: AuthRequest, res: Response) =>
   }
 });
 
+extrasForSaleRouter.delete("/", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    if (await hasActiveReservationsForUserListings(prisma, userId)) {
+      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
+      return;
+    }
+
+    const result = await prisma.extraForSaleListing.updateMany({
+      where: { userId, status: { in: ["active", "paused"] } },
+      data: { status: "removed" },
+    });
+    res.json({ removed: result.count });
+  } catch (error) {
+    console.error("Extras for sale bulk delete error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
