@@ -146,7 +146,7 @@ export default function MarketplaceEnquiryPage() {
   if (!enquiry || !counterparty) return <div className="py-12 text-center text-gray-500">Chat not found.</div>;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
+    <div data-testid="marketplace-enquiry-chat" className="flex min-h-0 flex-1 flex-col bg-gray-950">
       <div className="flex items-center gap-3 border-b border-gray-800 bg-gray-900 px-3 py-2.5">
         <Link to="/marketplace/enquiries" className="px-1 text-xl leading-none text-amber-300 hover:text-amber-200" aria-label="Back to messages">←</Link>
         <img src={enquiry.card.imageUrl} alt={cardTitle(enquiry.card)} className="h-11 w-8 rounded object-cover bg-gray-800" />

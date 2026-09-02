@@ -36,6 +36,12 @@ vi.mock("../services/api", () => ({
     withdrawEnquiry: apiMocks.marketplaceWithdrawEnquiry,
     cancelReservation: apiMocks.marketplaceCancelReservation,
   },
+  notifications: {
+    list: vi.fn().mockResolvedValue({ notifications: [], unreadCount: 0 }),
+    unreadCount: vi.fn().mockResolvedValue({ unreadCount: 0 }),
+    markRead: vi.fn().mockResolvedValue({ updated: 1, readAt: "2026-09-02T00:00:00.000Z" }),
+    markAllRead: vi.fn().mockResolvedValue({ updated: 0 }),
+  },
 }));
 
 vi.mock("../context/AuthContext", () => ({
@@ -46,6 +52,7 @@ import MarketplacePage from "../pages/MarketplacePage";
 import MarketplaceCardPage from "../pages/MarketplaceCardPage";
 import MarketplaceEnquiriesPage from "../pages/MarketplaceEnquiriesPage";
 import MarketplaceEnquiryPage from "../pages/MarketplaceEnquiryPage";
+import Layout from "../components/Layout";
 
 function EnquiryProbe() {
   const { enquiryId } = useParams<{ enquiryId: string }>();
@@ -342,6 +349,29 @@ describe("marketplace discovery pages", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /anna/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_1");
     expect(screen.getByRole("link", { name: /Mickey Mouse/i })).toHaveAttribute("href", "/marketplace/enquiries/enquiry_2");
+  });
+
+  it("keeps the app navigation visible around the chat thread", async () => {
+    apiMocks.marketplaceGetEnquiry.mockResolvedValue(enquiryDetailResponse);
+    authMocks.useAuth.mockReturnValue({ user: { id: "buyer_1", username: "jw", emailVerifiedAt: "2026-01-01T00:00:00Z" } } as any);
+
+    render(
+      <MemoryRouter initialEntries={["/marketplace/enquiries/enquiry_2"]}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/marketplace/enquiries/:enquiryId" element={<MarketplaceEnquiryPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Mickey Mouse - Brave Little Tailor · Normal")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Lorcana Inventory" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Messages/i }).length).toBeGreaterThan(0);
+    const chat = screen.getByTestId("marketplace-enquiry-chat");
+    expect(chat).not.toHaveClass("fixed");
+    expect(chat).not.toHaveClass("inset-0");
+    expect(chat).not.toHaveClass("z-50");
   });
 
   it("renders a chat thread with messages, offers, and deal actions", async () => {
