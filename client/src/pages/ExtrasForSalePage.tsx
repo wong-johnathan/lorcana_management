@@ -194,6 +194,47 @@ export default function ExtrasForSalePage() {
     }
   };
 
+  const removeAllListings = async () => {
+    if (!window.confirm("Remove all Extras for Sale listings? Your inventory counts will not change.")) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await extrasApi.removeAll();
+      setSuccess(`Removed ${result.removed} Extras for Sale listing${result.removed === 1 ? "" : "s"}`);
+      setTab("listings");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Failed to remove all listings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeExtraInventoryCopies = async () => {
+    const confirmed = window.confirm(
+      "Remove all extra inventory copies according to your current keep rules? This changes your collection counts and also removes Extras for Sale listings."
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await inventoryApi.removeExtras();
+      const { quantity, foilQuantity, holofoilQuantity } = result.removedCopies;
+      setSuccess(
+        `Removed ${quantity} normal, ${foilQuantity} foil, and ${holofoilQuantity} holofoil extra copies` +
+        (result.removedListings ? `; removed ${result.removedListings} listing${result.removedListings === 1 ? "" : "s"}` : "")
+      );
+      setTab("suggested");
+      await load();
+    } catch (err: any) {
+      setError(err?.message || "Failed to remove extra inventory copies");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const tabButton = (value: ExtrasTab, label: string) => (
     <button
       type="button"
@@ -215,14 +256,32 @@ export default function ExtrasForSalePage() {
           <h2 className="text-xl font-semibold text-gray-100">Extras for Sale</h2>
           <p className="mt-1 text-sm text-gray-400">Suggested Extras stay private. Only explicit listings can appear publicly.</p>
         </div>
-        <button
-          type="button"
-          onClick={listAll}
-          disabled={saving || !canListExtras}
-          className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
-        >
-          {saving ? "Listing..." : canListExtras ? "List all extras" : "Verify email to list"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={listAll}
+            disabled={saving || !canListExtras}
+            className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
+          >
+            {saving ? "Listing..." : canListExtras ? "List all extras" : "Verify email to list"}
+          </button>
+          <button
+            type="button"
+            onClick={removeAllListings}
+            disabled={saving}
+            className="rounded border border-red-800 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-950/40 disabled:opacity-60"
+          >
+            Remove all listings
+          </button>
+          <button
+            type="button"
+            onClick={removeExtraInventoryCopies}
+            disabled={saving}
+            className="rounded bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-60"
+          >
+            Remove extra inventory copies
+          </button>
+        </div>
       </div>
       {!canListExtras && (
         <div className="rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-200">

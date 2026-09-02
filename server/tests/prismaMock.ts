@@ -36,6 +36,7 @@ export const prismaMock = {
     findFirst: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   marketplaceEnquiry: {
     findFirst: vi.fn(),

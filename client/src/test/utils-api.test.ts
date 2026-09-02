@@ -106,11 +106,13 @@ describe("API client wrapper", () => {
       inventory.getPolicy(),
       inventory.updatePolicy({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true }),
       inventory.getExtras(),
+      inventory.removeExtras(),
       inventory.getRetentionOverride("card_1"),
       inventory.updateRetentionOverride("card_1", { keepNormalQuantity: 8 }),
       inventory.deleteRetentionOverride("card_1"),
       extrasForSale.list(),
       extrasForSale.listAll(),
+      extrasForSale.removeAll(),
       extrasForSale.create({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: null }),
       extrasForSale.update("listing_1", { status: "paused" }),
       extrasForSale.remove("listing_1"),
@@ -165,7 +167,9 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/me", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ confirmUsername: "jw", confirmText: "DELETE" }) }));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1?rarity=Common", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1/extras", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/inventory/remove-extras", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale/list-all", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale", expect.objectContaining({ method: "DELETE" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace?search=Elsa&shipsTo=SG", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/cards/card_elsa/offers?shipsTo=SG", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/listings/listing_1/enquiries", expect.objectContaining({ method: "POST" }));

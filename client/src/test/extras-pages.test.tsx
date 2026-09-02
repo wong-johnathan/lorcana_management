@@ -17,11 +17,13 @@ const apiMocks = vi.hoisted(() => ({
   inventoryGetPolicy: vi.fn(),
   inventoryUpdatePolicy: vi.fn(),
   inventoryGetExtras: vi.fn(),
+  inventoryRemoveExtras: vi.fn(),
   inventoryListRetentionOverrides: vi.fn(),
   inventoryUpdateRetentionOverride: vi.fn(),
   inventoryDeleteRetentionOverride: vi.fn(),
   extrasList: vi.fn(),
   extrasListAll: vi.fn(),
+  extrasRemoveAll: vi.fn(),
   extrasCreate: vi.fn(),
   extrasUpdate: vi.fn(),
   extrasRemove: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock("../services/api", () => ({
     getPolicy: apiMocks.inventoryGetPolicy,
     updatePolicy: apiMocks.inventoryUpdatePolicy,
     getExtras: apiMocks.inventoryGetExtras,
+    removeExtras: apiMocks.inventoryRemoveExtras,
     listRetentionOverrides: apiMocks.inventoryListRetentionOverrides,
     updateRetentionOverride: apiMocks.inventoryUpdateRetentionOverride,
     deleteRetentionOverride: apiMocks.inventoryDeleteRetentionOverride,
@@ -52,6 +55,7 @@ vi.mock("../services/api", () => ({
   extrasForSale: {
     list: apiMocks.extrasList,
     listAll: apiMocks.extrasListAll,
+    removeAll: apiMocks.extrasRemoveAll,
     create: apiMocks.extrasCreate,
     update: apiMocks.extrasUpdate,
     remove: apiMocks.extrasRemove,
@@ -242,6 +246,69 @@ describe("extras for sale pages", () => {
     expect(apiMocks.extrasListAll).toHaveBeenCalled();
     expect(await screen.findByText("Listed 3 extras for sale (1 already listed)")).toBeInTheDocument();
     expect(await screen.findByText("No Extras for Sale listings yet. List cards from Suggested Extras.")).toBeInTheDocument();
+  });
+
+  it("bulk-removes all owner listings after confirmation", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+    apiMocks.extrasRemoveAll.mockResolvedValue({ removed: 2 });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove all listings" }));
+    expect(confirm).toHaveBeenCalledWith("Remove all Extras for Sale listings? Your inventory counts will not change.");
+    expect(apiMocks.extrasRemoveAll).toHaveBeenCalled();
+    expect(await screen.findByText("Removed 2 Extras for Sale listings")).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("trims extra inventory copies after confirmation", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+    apiMocks.inventoryRemoveExtras.mockResolvedValue({
+      updatedEntries: 1,
+      deletedEntries: 0,
+      removedCopies: { quantity: 6, foilQuantity: 1, holofoilQuantity: 0 },
+      removedListings: 2,
+    });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove extra inventory copies" }));
+    expect(apiMocks.inventoryRemoveExtras).toHaveBeenCalled();
+    expect(await screen.findByText("Removed 6 normal, 1 foil, and 0 holofoil extra copies; removed 2 listings")).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it("does not run destructive bulk actions when confirmation is cancelled", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    apiMocks.inventoryGetExtras.mockResolvedValue({ policy, cards: [] });
+    apiMocks.extrasList.mockResolvedValue({ listings: [] });
+
+    render(
+      <MemoryRouter>
+        <ExtrasForSalePage />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Extras for Sale" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove all listings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove extra inventory copies" }));
+    expect(apiMocks.extrasRemoveAll).not.toHaveBeenCalled();
+    expect(apiMocks.inventoryRemoveExtras).not.toHaveBeenCalled();
+    confirm.mockRestore();
   });
 
   it("surfaces list-all failures", async () => {

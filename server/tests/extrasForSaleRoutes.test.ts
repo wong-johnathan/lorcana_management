@@ -230,6 +230,27 @@ describe("extras for sale private routes", () => {
     await auth(request(app).post("/api/extras-for-sale/list-all")).expect(500, { error: "Internal server error" });
   });
 
+  it("bulk-removes all active and paused listings for the owner", async () => {
+    prismaMock.extraForSaleListing.updateMany.mockResolvedValueOnce({ count: 2 });
+
+    await auth(request(app).delete("/api/extras-for-sale"))
+      .expect(200, { removed: 2 });
+
+    expect(prismaMock.extraForSaleListing.updateMany).toHaveBeenCalledWith({
+      where: { userId: "user_1", status: { in: ["active", "paused"] } },
+      data: { status: "removed" },
+    });
+  });
+
+  it("blocks bulk listing removal while active reservations exist", async () => {
+    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
+
+    await auth(request(app).delete("/api/extras-for-sale"))
+      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
+
+    expect(prismaMock.extraForSaleListing.updateMany).not.toHaveBeenCalled();
+  });
+
   it("updates notes, custom prices, status, and removes listings scoped to the owner", async () => {
     prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 6 }));
