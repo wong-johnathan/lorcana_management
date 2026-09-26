@@ -28,6 +28,7 @@ vi.mock("../src/services/cardSync.js", () => ({
 
 vi.mock("../src/services/priceSync.js", () => ({
   fetchPriceGroups: vi.fn(),
+  getLatestPriceSnapshotRun: vi.fn(),
   syncGroupPrices: vi.fn(),
 }));
 
@@ -36,7 +37,7 @@ import { signToken } from "../src/middleware/auth.js";
 import { prismaMock, resetPrismaMock } from "./prismaMock";
 import { analyzeCardMarket } from "../src/services/analysis.js";
 import { fetchAndSaveRemote, seedFromLocal, upsertCards } from "../src/services/cardSync.js";
-import { fetchPriceGroups, syncGroupPrices } from "../src/services/priceSync.js";
+import { fetchPriceGroups, getLatestPriceSnapshotRun, syncGroupPrices } from "../src/services/priceSync.js";
 import { resetSyncStatuses } from "../src/routes/sync.js";
 import { compareInventoryEntryByCardIndex, compareNullableNumber } from "../src/routes/inventory.js";
 import { deleteProfileImage } from "../src/services/objectStorage.js";
@@ -384,6 +385,53 @@ describe("cards routes", () => {
     await request(app).get("/api/cards/card_1").expect(200).expect((res) => expect(res.body.id).toBe("card_1"));
     prismaMock.card.findUnique.mockResolvedValueOnce(null);
     await request(app).get("/api/cards/missing").expect(404, { error: "Card not found" });
+  });
+
+  it("returns card price history by tcgPlayerId, variant, and day window", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card_1", tcgPlayerId: 100 });
+    prismaMock.tcgcsvPriceSnapshot.findMany.mockResolvedValueOnce([
+      {
+        productId: 100,
+        variant: "Normal",
+        lowPrice: { toNumber: () => 1.5 },
+        midPrice: "2.5",
+        highPrice: 3.5,
+        marketPrice: 2.75,
+        directLowPrice: null,
+        run: { sourceUpdatedAt: new Date("2026-09-25T20:05:42Z") },
+      },
+    ]);
+
+    await request(app)
+      .get("/api/cards/card_1/price-history")
+      .query({ variant: "Normal", days: "365" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body).toEqual({
+          cardId: "card_1",
+          tcgPlayerId: 100,
+          variant: "Normal",
+          currency: "USD",
+          points: [{
+            sourceUpdatedAt: "2026-09-25T20:05:42.000Z",
+            lowPrice: 1.5,
+            midPrice: 2.5,
+            highPrice: 3.5,
+            marketPrice: 2.75,
+            directLowPrice: null,
+          }],
+        });
+      });
+    expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ productId: 100, variant: "Normal" }),
+      orderBy: { run: { sourceUpdatedAt: "asc" } },
+    }));
+
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card_2", tcgPlayerId: null });
+    await request(app).get("/api/cards/card_2/price-history").expect(200).expect((res) => {
+      expect(res.body.points).toEqual([]);
+      expect(res.body.reason).toBe("no_tcgplayer_id");
+    });
   });
 
   it("serves analysis states and handles legacy markdown", async () => {
@@ -938,7 +986,10 @@ describe("settings, public collection, and sync routes", () => {
     vi.mocked(fetchPriceGroups).mockResolvedValueOnce([{ groupId: 7, name: "Set 7" }]);
     vi.mocked(syncGroupPrices).mockResolvedValueOnce({ groups: 1, matched: 1, unmatched: 0 });
     await auth(request(app).post("/api/sync/prices")).expect(200).expect((res) => expect(res.body.total).toBe(1));
-    await auth(request(app).get("/api/sync/prices/status")).expect(200);
+    vi.mocked(getLatestPriceSnapshotRun).mockResolvedValueOnce({ id: 1, status: "COMPLETED", rowCount: 3 });
+    await auth(request(app).get("/api/sync/prices/status")).expect(200).expect((res) => {
+      expect(res.body.latestSnapshotRun).toEqual({ id: 1, status: "COMPLETED", rowCount: 3 });
+    });
   });
 
   it("returns sync conflicts and fetch errors", async () => {

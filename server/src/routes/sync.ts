@@ -8,6 +8,7 @@ import {
 } from "../services/cardSync.js";
 import {
   fetchPriceGroups,
+  getLatestPriceSnapshotRun,
   syncGroupPrices,
   TcgcsvGroup,
 } from "../services/priceSync.js";
@@ -166,8 +167,14 @@ syncRouter.post("/seed", async (_req: AuthRequest, res: Response) => {
   }
 });
 
-syncRouter.get("/prices/status", (_req: AuthRequest, res: Response) => {
-  res.json(priceSyncStatus);
+syncRouter.get("/prices/status", async (_req: AuthRequest, res: Response) => {
+  try {
+    const latestSnapshotRun = await getLatestPriceSnapshotRun();
+    res.json({ ...priceSyncStatus, latestSnapshotRun });
+  } catch (error) {
+    console.error("Price sync status error", error);
+    res.status(500).json({ error: "Failed to fetch price sync status" });
+  }
 });
 
 syncRouter.post("/prices", async (_req: AuthRequest, res: Response) => {

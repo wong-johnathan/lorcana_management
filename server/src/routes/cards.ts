@@ -473,6 +473,77 @@ cardsRouter.post("/analyze-batch", async (req: Request, res: Response) => {
   }
 });
 
+function numericPrice(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "object" && "toNumber" in value && typeof value.toNumber === "function") {
+    return value.toNumber();
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
+  try {
+    const cardId = req.params.id as string;
+    const variant = typeof req.query.variant === "string" && req.query.variant.trim()
+      ? req.query.variant.trim()
+      : "Normal";
+    const daysParam = typeof req.query.days === "string" ? Number.parseInt(req.query.days, 10) : 90;
+    const days = Math.min(730, Math.max(1, Number.isFinite(daysParam) ? daysParam : 90));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const card = await prisma.card.findUnique({
+      where: { id: cardId },
+      select: { id: true, tcgPlayerId: true },
+    });
+    if (!card) {
+      res.status(404).json({ error: "Card not found" });
+      return;
+    }
+
+    if (card.tcgPlayerId == null) {
+      res.json({
+        cardId,
+        tcgPlayerId: null,
+        variant,
+        currency: "USD",
+        points: [],
+        reason: "no_tcgplayer_id",
+      });
+      return;
+    }
+
+    const rows = await prisma.tcgcsvPriceSnapshot.findMany({
+      where: {
+        productId: card.tcgPlayerId,
+        variant,
+        run: { sourceUpdatedAt: { gte: since } },
+      },
+      include: { run: { select: { sourceUpdatedAt: true } } },
+      orderBy: { run: { sourceUpdatedAt: "asc" } },
+    });
+
+    res.json({
+      cardId,
+      tcgPlayerId: card.tcgPlayerId,
+      variant,
+      currency: "USD",
+      points: rows.map((row) => ({
+        sourceUpdatedAt: row.run.sourceUpdatedAt.toISOString(),
+        lowPrice: numericPrice(row.lowPrice),
+        midPrice: numericPrice(row.midPrice),
+        highPrice: numericPrice(row.highPrice),
+        marketPrice: numericPrice(row.marketPrice),
+        directLowPrice: numericPrice(row.directLowPrice),
+      })),
+    });
+  } catch (error) {
+    console.error("Price history error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 cardsRouter.get("/:id/analysis", async (req: Request, res: Response) => {
   try {
     const cardId = req.params.id as string;
