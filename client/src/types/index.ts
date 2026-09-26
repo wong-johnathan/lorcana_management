@@ -475,6 +475,37 @@ export interface SyncStatus {
   currentItem: string | null;
   startedAt: string | null;
   completedAt: string | null;
+  latestSnapshotRun?: {
+    id: number;
+    categoryId: number;
+    sourceUpdatedAt: string;
+    status: "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED";
+    groupCount: number;
+    successfulGroups: number;
+    failedGroups: number;
+    rowCount: number;
+    startedAt: string;
+    completedAt: string | null;
+    errorSummary: unknown;
+  } | null;
+}
+
+export interface CardPriceHistoryPoint {
+  sourceUpdatedAt: string;
+  lowPrice: number | null;
+  midPrice: number | null;
+  highPrice: number | null;
+  marketPrice: number | null;
+  directLowPrice: number | null;
+}
+
+export interface CardPriceHistory {
+  cardId: string;
+  tcgPlayerId: number | null;
+  variant: string;
+  currency: "USD";
+  points: CardPriceHistoryPoint[];
+  reason?: "no_tcgplayer_id";
 }
 
 export interface AppNotification {

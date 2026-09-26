@@ -28,7 +28,13 @@ import {
   upsertCards,
   type LorcanaData,
 } from "../src/services/cardSync.js";
-import { fetchPriceGroups, syncGroupPrices } from "../src/services/priceSync.js";
+import {
+  fetchPriceGroups,
+  fetchPriceSourceUpdatedAt,
+  getLatestPriceSnapshotRun,
+  parseTcgcsvTimestamp,
+  syncGroupPrices,
+} from "../src/services/priceSync.js";
 import { prismaMock, resetPrismaMock } from "./prismaMock";
 
 const fetchMock = vi.fn();
@@ -208,8 +214,50 @@ describe("card and price sync services", () => {
     await expect(fetchPriceGroups()).rejects.toThrow("Failed to fetch groups: 503");
   });
 
+  it("parses tcgcsv last-updated timestamps into UTC dates", () => {
+    expect(parseTcgcsvTimestamp("2026-09-25T20:05:42+0000").toISOString()).toBe("2026-09-25T20:05:42.000Z");
+    expect(() => parseTcgcsvTimestamp("not-a-date")).toThrow("Invalid tcgcsv last-updated timestamp");
+  });
+
+  it("fetches price source timestamps and latest snapshot runs", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" });
+    await expect(fetchPriceSourceUpdatedAt()).resolves.toEqual(new Date("2026-09-25T20:05:42Z"));
+    expect(fetchMock).toHaveBeenCalledWith("https://tcgcsv.com/last-updated.txt", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(fetchPriceSourceUpdatedAt()).rejects.toThrow("Failed to fetch tcgcsv last-updated timestamp: 503");
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce({ id: 1, status: "COMPLETED" });
+    await expect(getLatestPriceSnapshotRun()).resolves.toEqual({ id: 1, status: "COMPLETED" });
+    expect(prismaMock.tcgcsvPriceSnapshotRun.findFirst).toHaveBeenCalledWith({ orderBy: { sourceUpdatedAt: "desc" } });
+  });
+
+  it("skips historical price sync when the tcgcsv source build is already completed", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" });
+    prismaMock.tcgcsvPriceSnapshotRun.findUnique.mockResolvedValueOnce({
+      id: 12,
+      categoryId: 71,
+      sourceUpdatedAt: new Date("2026-09-25T20:05:42Z"),
+      status: "COMPLETED",
+      rowCount: 99,
+    });
+
+    await expect(syncGroupPrices([{ groupId: 10, name: "A" }])).resolves.toEqual({
+      groups: 1,
+      matched: 0,
+      unmatched: 0,
+      rowCount: 99,
+      skipped: true,
+      status: "COMPLETED",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("https://tcgcsv.com/last-updated.txt", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
+  });
+
   it("syncs tcgcsv prices, replaces stale rows, clears missing product prices, skips unavailable groups, and counts unmatched products", async () => {
     fetchMock
+      .mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [
         { productId: 1, name: "Mickey" },
         { productId: 2, name: "Unmatched" },
@@ -217,11 +265,16 @@ describe("card and price sync services", () => {
         { productId: 4, name: "All null price" },
       ] }) })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [
-        { productId: 1, subTypeName: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
-        { productId: 1, subTypeName: "Cold Foil", lowPrice: 5, midPrice: 6, highPrice: 7, marketPrice: 8 },
-        { productId: 4, subTypeName: "Normal", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null },
+        { productId: 1, subTypeName: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4, directLowPrice: 0.9 },
+        { productId: 1, subTypeName: "Cold Foil", lowPrice: 5, midPrice: 6, highPrice: 7, marketPrice: 8, directLowPrice: null },
+        { productId: 4, subTypeName: "Normal", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null, directLowPrice: null },
       ] }) })
       .mockResolvedValueOnce({ ok: false, status: 404 });
+    prismaMock.tcgcsvPriceSnapshotRun.findUnique.mockResolvedValueOnce(null);
+    prismaMock.tcgcsvPriceSnapshotRun.create.mockResolvedValueOnce({ id: 99 });
+    prismaMock.tcgcsvPriceSnapshotRun.update.mockResolvedValue({});
+    prismaMock.tcgcsvPriceSnapshot.deleteMany.mockResolvedValue({});
+    prismaMock.tcgcsvPriceSnapshot.createMany.mockResolvedValue({ count: 3 });
     prismaMock.card.findMany
       .mockResolvedValueOnce([{ id: "card_1" }])
       .mockResolvedValueOnce([])
@@ -233,9 +286,15 @@ describe("card and price sync services", () => {
     const progress = vi.fn();
 
     await expect(syncGroupPrices([{ groupId: 10, name: "A" }, { groupId: 11, name: "B" }], progress))
-      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1 });
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://tcgcsv.com/tcgplayer/71/10/products", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://tcgcsv.com/tcgplayer/71/10/prices", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1, rowCount: 3, skipped: false, status: "PARTIAL" });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://tcgcsv.com/last-updated.txt", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "https://tcgcsv.com/tcgplayer/71/10/products", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "https://tcgcsv.com/tcgplayer/71/10/prices", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(prismaMock.tcgcsvPriceSnapshot.createMany).toHaveBeenCalledWith({ data: [
+      { runId: 99, groupId: 10, productId: 1, variant: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4, directLowPrice: 0.9 },
+      { runId: 99, groupId: 10, productId: 1, variant: "Cold Foil", lowPrice: 5, midPrice: 6, highPrice: 7, marketPrice: 8, directLowPrice: null },
+      { runId: 99, groupId: 10, productId: 4, variant: "Normal", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null, directLowPrice: null },
+    ], skipDuplicates: true });
     expect(prismaMock.cardPrice.deleteMany).toHaveBeenCalledWith({ where: { cardId: "card_1" } });
     expect(prismaMock.cardPrice.createMany).toHaveBeenCalledWith({ data: [
       { cardId: "card_1", variant: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
@@ -249,6 +308,72 @@ describe("card and price sync services", () => {
     expect(prismaMock.card.update).toHaveBeenCalledWith({ where: { id: "card_no_price" }, data: { displayPrice: null } });
     expect(prismaMock.cardPrice.deleteMany).toHaveBeenCalledWith({ where: { cardId: "card_all_null" } });
     expect(prismaMock.card.update).toHaveBeenCalledWith({ where: { id: "card_all_null" }, data: { displayPrice: null } });
+    expect(prismaMock.tcgcsvPriceSnapshotRun.update).toHaveBeenLastCalledWith({
+      where: { id: 99 },
+      data: expect.objectContaining({ status: "PARTIAL", successfulGroups: 1, failedGroups: 1, rowCount: 3 }),
+    });
     expect(progress).toHaveBeenLastCalledWith({ groupName: "B", groupIndex: 2, totalGroups: 2 });
+  });
+
+  it("marks historical price sync failed when every group price fetch fails without clearing current prices", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ productId: 1 }] }) })
+      .mockResolvedValueOnce({ ok: false, status: 503 });
+    prismaMock.tcgcsvPriceSnapshotRun.findUnique.mockResolvedValueOnce(null);
+    prismaMock.tcgcsvPriceSnapshotRun.create.mockResolvedValueOnce({ id: 100 });
+    prismaMock.tcgcsvPriceSnapshotRun.update.mockResolvedValue({});
+
+    await expect(syncGroupPrices([{ groupId: 10, name: "A" }])).resolves.toEqual({
+      groups: 1,
+      matched: 0,
+      unmatched: 0,
+      rowCount: 0,
+      skipped: false,
+      status: "FAILED",
+    });
+    expect(prismaMock.cardPrice.deleteMany).not.toHaveBeenCalled();
+    expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.tcgcsvPriceSnapshotRun.update).toHaveBeenLastCalledWith({
+      where: { id: 100 },
+      data: expect.objectContaining({
+        status: "FAILED",
+        successfulGroups: 0,
+        failedGroups: 1,
+        rowCount: 0,
+        errorSummary: [{ groupId: 10, name: "A", error: "Failed to fetch prices for group 10: 503" }],
+      }),
+    });
+  });
+
+  it("resumes an incomplete historical run and records an empty successful group", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [] }) });
+    prismaMock.tcgcsvPriceSnapshotRun.findUnique.mockResolvedValueOnce({ id: 77, status: "PARTIAL" });
+    prismaMock.tcgcsvPriceSnapshotRun.update
+      .mockResolvedValueOnce({ id: 77 })
+      .mockResolvedValue({});
+    prismaMock.tcgcsvPriceSnapshot.deleteMany.mockResolvedValue({});
+
+    await expect(syncGroupPrices([{ groupId: 10, name: "A" }])).resolves.toEqual({
+      groups: 1,
+      matched: 0,
+      unmatched: 0,
+      rowCount: 0,
+      skipped: false,
+      status: "COMPLETED",
+    });
+    expect(prismaMock.tcgcsvPriceSnapshot.deleteMany).toHaveBeenCalledWith({ where: { runId: 77, groupId: 10 } });
+    expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.tcgcsvPriceSnapshotRun.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 77 },
+      data: expect.objectContaining({ status: "RUNNING", groupCount: 1, completedAt: null }),
+    });
+    expect(prismaMock.tcgcsvPriceSnapshotRun.update).toHaveBeenLastCalledWith({
+      where: { id: 77 },
+      data: expect.objectContaining({ status: "COMPLETED", successfulGroups: 1, failedGroups: 0, rowCount: 0 }),
+    });
   });
 });

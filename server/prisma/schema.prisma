@@ -489,3 +489,41 @@ model CardPrice {
 
   @@unique([cardId, variant])
 }
+
+model TcgcsvPriceSnapshotRun {
+  id               Int       @id @default(autoincrement())
+  categoryId       Int       @default(71)
+  sourceUpdatedAt  DateTime
+  status           String
+  groupCount       Int       @default(0)
+  successfulGroups Int       @default(0)
+  failedGroups     Int       @default(0)
+  rowCount         Int       @default(0)
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+  errorSummary     Json?
+
+  prices TcgcsvPriceSnapshot[]
+
+  @@unique([categoryId, sourceUpdatedAt])
+  @@index([sourceUpdatedAt])
+  @@index([status])
+}
+
+model TcgcsvPriceSnapshot {
+  id             Int                    @id @default(autoincrement())
+  runId          Int
+  run            TcgcsvPriceSnapshotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  groupId        Int
+  productId      Int
+  variant        String
+  lowPrice       Decimal?               @db.Decimal(12, 2)
+  midPrice       Decimal?               @db.Decimal(12, 2)
+  highPrice      Decimal?               @db.Decimal(12, 2)
+  marketPrice    Decimal?               @db.Decimal(12, 2)
+  directLowPrice Decimal?               @db.Decimal(12, 2)
+
+  @@unique([runId, productId, variant])
+  @@index([productId, variant, runId])
+  @@index([runId, groupId])
+}

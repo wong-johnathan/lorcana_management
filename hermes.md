@@ -32,7 +32,7 @@ Browser React SPA
 
 External data paths:
   LorcanaJSON -> allCards.json -> Card table
-  tcgcsv.com  -> CardPrice table -> displayPrice on Card
+  tcgcsv.com  -> TcgcsvPriceSnapshot history + CardPrice current cache -> displayPrice on Card
   Search/SearXNG + DeepSeek -> CardAnalysis table
   Profile photos -> MinIO bucket -> https://minio.johnathanwwh.com/<bucket>/<key>
 ```
@@ -116,7 +116,8 @@ AI market analysis:
 Prisma models live in `server/prisma/schema.prisma`:
 
 - `Card` — Lorcana card metadata, image, LorcanaJSON external ID, optional TCGPlayer ID, display price, `foilTypes`, relations to prices/analysis/inventory.
-- `CardPrice` — per-card price rows by variant with low/mid/high/market prices.
+- `CardPrice` — current per-card price rows by variant with low/mid/high/market prices.
+- `TcgcsvPriceSnapshotRun` / `TcgcsvPriceSnapshot` — daily historical TCGCSV price snapshots keyed by source build timestamp, product ID, and variant. These preserve prices even before LorcanaJSON maps a card to `tcgPlayerId`.
 - `CardAnalysis` — per-card AI market analysis with status and timestamps.
 - `User` — username, password hash, public sharing flag.
 - `UserProfile` — optional public profile fields and profile image URL/object key.
@@ -135,7 +136,7 @@ High-level completed work in this repo:
 - Card database with rich filters, pagination, numeric set/card ordering, card detail modals, and price/analysis filters.
 - Personal inventory CRUD with normal/foil/holofoil counts, value stats, CSV export, and wipe support.
 - Variant-aware inventory controls based on LorcanaJSON `foilTypes`.
-- tcgcsv bulk price sync with scheduled daily refresh at 21:00 UTC.
+- tcgcsv bulk price sync with scheduled daily refresh at 21:00 UTC, startup freshness check, current-price cache updates, and daily historical snapshot storage.
 - AI per-card market analysis and admin batch analysis for selected rarities.
 - Public collection sharing with read-only database-style card grid.
 - Master-set cost calculator with variant/rarity selection, price-field selection, drilldown modals, and CSV export.

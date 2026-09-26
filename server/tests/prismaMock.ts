@@ -88,6 +88,17 @@ export const prismaMock = {
     deleteMany: vi.fn(),
     createMany: vi.fn(),
   },
+  tcgcsvPriceSnapshotRun: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  tcgcsvPriceSnapshot: {
+    findMany: vi.fn(),
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
   cardAnalysis: {
     findUnique: vi.fn(),
     upsert: vi.fn(),

@@ -9,6 +9,7 @@ import type {
   UserSettings,
   PublicCollection,
   CardAnalysis,
+  CardPriceHistory,
   MasterSetEstimate,
   SyncStatus,
   UserProfile,
@@ -111,6 +112,12 @@ export const cards = {
     return request<PaginatedCards>(`/cards${query}`);
   },
   get: (id: string) => request<Card>(`/cards/${id}`),
+  priceHistory: (id: string, params?: { variant?: string; days?: number }) => {
+    const query = params ? "?" + new URLSearchParams(Object.fromEntries(
+      Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])
+    )).toString() : "";
+    return request<CardPriceHistory>(`/cards/${id}/price-history${query}`);
+  },
   filters: () => request<FilterOptions>("/cards/filters"),
   masterSetEstimate: (params: Record<string, string>) =>
     request<MasterSetEstimate>(`/cards/master-set/estimate?${new URLSearchParams(params).toString()}`),

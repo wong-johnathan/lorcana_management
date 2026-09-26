@@ -11,6 +11,9 @@ const server = app.listen(PORT, () => {
 });
 attachMarketplaceRealtime(server);
 
+// Capture the latest tcgcsv build on startup so container/NAS downtime does not leave a gap.
+runPriceSync().catch((err) => console.error("Startup price sync failed", err));
+
 // Refresh Lorcana card prices daily at 21:00 UTC, after tcgcsv.com's own ~20:00 UTC refresh.
 cron.schedule("0 21 * * *", () => {
   runPriceSync().catch((err) => console.error("Scheduled price sync failed", err));
