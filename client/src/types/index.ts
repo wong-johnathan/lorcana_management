@@ -158,16 +158,7 @@ export interface ExtraForSaleListing {
   customPriceCurrency: ListingCurrency;
   note: string | null;
   status: "active" | "paused";
-  marketplaceVisible?: boolean;
   pricingMode?: MarketplacePricingMode;
-  askingPriceMinor?: number | null;
-  currency?: ListingCurrency | null;
-  condition?: MarketplaceCondition | null;
-  cardLanguage?: string | null;
-  originCountryCode?: string | null;
-  publicLocality?: string | null;
-  fulfilment?: MarketplaceFulfilmentCoverage | null;
-  eligibility?: MarketplaceListingEligibility;
 }
 
 export interface PublicExtraForSaleListing {
@@ -253,8 +244,6 @@ export interface PublicCollection {
 }
 
 export type MarketplacePricingMode = "FIXED" | "ACCEPTS_OFFERS";
-export type MarketplaceCondition = "MINT" | "NEAR_MINT" | "LIGHTLY_PLAYED" | "MODERATELY_PLAYED" | "HEAVILY_PLAYED" | "DAMAGED";
-export type MarketplaceFulfilmentMethod = "MEETUP" | "DOMESTIC_SHIPPING" | "INTERNATIONAL_SHIPPING";
 export type MarketplaceEnquiryStatus =
   | "PENDING_SELLER"
   | "AWAITING_BUYER"
@@ -272,50 +261,12 @@ export interface MarketplaceMoney {
   currency: ListingCurrency;
 }
 
-export interface MarketplaceApproximateMoney extends MarketplaceMoney {
-  rateSource?: string;
-  fetchedAt?: string;
-}
-
-export interface MarketplaceReputationSummary {
-  userId: string;
-  role: "buyer" | "seller";
-  ratingAverage: number | null;
-  reviewCount: number;
-  completedDeals: number;
-  uniqueCounterparties: number;
-  memberSince: string;
-  emailVerified: boolean;
-}
-
-export interface MarketplaceFulfilmentCoverage {
-  allowsMeetup: boolean;
-  shipsDomestically: boolean;
-  shipsInternationally: boolean;
-  shipsWorldwide: boolean;
-  destinationCountryCodes: string[];
-}
-
-export interface MarketplaceListingEligibility {
-  marketplaceVisible: boolean;
-  sellerEmailVerified: boolean;
-  active: boolean;
-  hasAskingPrice: boolean;
-  hasCondition: boolean;
-  hasCardLanguage: boolean;
-  hasFulfilmentCoverage: boolean;
-  availableQuantity: number;
-  eligible: boolean;
-  blockers: string[];
-}
-
 export interface MarketplaceCardResult {
   card: Card;
   variant: InventoryVariant;
   offersCount: number;
   availableQuantity: number;
   lowestPrice: MarketplaceMoney | null;
-  approximateConvertedPrice?: MarketplaceApproximateMoney | null;
   canFulfilToViewer: boolean;
   offers: MarketplaceCardOffer[];
 }
@@ -326,11 +277,6 @@ export interface MarketplaceListParams {
   rarity?: string;
   color?: string;
   variant?: InventoryVariant;
-  condition?: MarketplaceCondition;
-  language?: string;
-  sellerCountry?: string;
-  shipsTo?: string;
-  fulfilmentMethod?: MarketplaceFulfilmentMethod;
   availableOnly?: string;
   page?: string;
   limit?: string;
@@ -354,17 +300,9 @@ export interface MarketplaceCardOffer {
   availableQuantity: number;
   pricingMode: MarketplacePricingMode;
   askingPrice: MarketplaceMoney | null;
-  approximateConvertedPrice?: MarketplaceApproximateMoney | null;
-  condition: MarketplaceCondition | null;
-  cardLanguage: string | null;
-  originCountryCode: string | null;
-  publicLocality?: string | null;
-  fulfilment: MarketplaceFulfilmentCoverage;
-  reputation: MarketplaceReputationSummary;
   note?: string | null;
   referencePrice: number | null;
   referencePriceCurrency: "USD";
-  eligibility?: MarketplaceListingEligibility;
 }
 
 export interface MarketplaceCardOffersResponse {
@@ -538,7 +476,6 @@ export interface NotificationMarkReadResponse {
 export interface NotificationMarkAllReadResponse {
   updated: number;
 }
-
 
 export type MasterSetPriceField = "lowPrice" | "midPrice" | "highPrice" | "marketPrice";
 

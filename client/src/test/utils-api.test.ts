@@ -116,8 +116,8 @@ describe("API client wrapper", () => {
       extrasForSale.create({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: null }),
       extrasForSale.update("listing_1", { status: "paused" }),
       extrasForSale.remove("listing_1"),
-      marketplace.list({ search: "Elsa", shipsTo: "SG" }),
-      marketplace.cardOffers("card_elsa", { shipsTo: "SG" }),
+      marketplace.list({ search: "Elsa" }),
+      marketplace.cardOffers("card_elsa"),
       marketplace.createEnquiry("listing_1", { quantity: 1, message: "Is this available?" }),
       marketplace.listEnquiries({ status: "PENDING_SELLER" }),
       marketplace.getEnquiry("enquiry_1"),
@@ -127,7 +127,6 @@ describe("API client wrapper", () => {
       marketplace.declineEnquiry("enquiry_1"),
       marketplace.withdrawEnquiry("enquiry_1"),
       marketplace.cancelReservation("reservation_1"),
-      marketplace.userReputation("seller_1"),
       notifications.list(),
       notifications.unreadCount(),
       notifications.markRead("notification_1"),
@@ -174,8 +173,8 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/inventory/remove-extras", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale/list-all", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale", expect.objectContaining({ method: "DELETE" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace?search=Elsa&shipsTo=SG", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/cards/card_elsa/offers?shipsTo=SG", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace?search=Elsa", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/cards/card_elsa/offers", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/listings/listing_1/enquiries", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries?status=PENDING_SELLER", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/messages", expect.objectContaining({ method: "POST" }));
@@ -184,7 +183,6 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/decline", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/withdraw", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/reservations/reservation_1/cancel", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/users/seller_1/reputation", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/notifications", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/notifications/unread-count", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/notifications/notification_1/read", expect.objectContaining({ method: "POST" }));

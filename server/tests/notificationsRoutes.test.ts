@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../src/app.js";
 import { signToken } from "../src/middleware/auth.js";
+import { actionUrlForNotification, serializeNotification } from "../src/services/notifications.js";
 import { prismaMock, resetPrismaMock } from "./prismaMock";
 
 const app = createApp();
@@ -23,6 +24,30 @@ function notification(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+describe("notification serializers", () => {
+  it("falls back to the enquiries list and generic copy when the notification lacks enquiry context", () => {
+    const record = notification({
+      type: "UNKNOWN_NOTIFICATION",
+      relatedType: null,
+      relatedId: null,
+      readAt: "2026-09-02T01:05:00.000Z",
+      createdAt: "2026-09-02T01:00:00.000Z",
+    });
+
+    expect(actionUrlForNotification(record)).toBe("/marketplace/enquiries");
+    expect(serializeNotification(record)).toEqual(expect.objectContaining({
+      title: "Notification",
+      body: "You have a new update.",
+      actionUrl: "/marketplace/enquiries",
+      relatedType: null,
+      relatedId: null,
+      isRead: true,
+      readAt: "2026-09-02T01:05:00.000Z",
+      createdAt: "2026-09-02T01:00:00.000Z",
+    }));
+  });
+});
 
 describe("notification routes", () => {
   beforeEach(() => {
