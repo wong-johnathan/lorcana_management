@@ -39,7 +39,6 @@ model Card {
   prices                 CardPrice[]
   retentionOverrides     CardRetentionOverride[]
   extraForSaleListings   ExtraForSaleListing[]
-  marketplaceTransactions MarketplaceTransaction[]
 
   @@index([name])
   @@index([color])
@@ -69,45 +68,10 @@ model User {
   inventoryPolicy        UserInventoryPolicy?
   cardRetentionOverrides CardRetentionOverride[]
   extraForSaleListings   ExtraForSaleListing[]
-  emailVerificationTokens EmailVerificationToken[]
-  passwordResetTokens     PasswordResetToken[]
   marketplaceEnquiries    MarketplaceEnquiry[] @relation("MarketplaceBuyerEnquiries")
   enquiryMessages         EnquiryMessage[] @relation("MarketplaceMessageSender")
   enquiryOffers           EnquiryOffer[] @relation("MarketplaceOfferProposer")
   notifications           Notification[]
-  marketplaceTransactionsAsSeller MarketplaceTransaction[] @relation("MarketplaceTransactionSeller")
-  marketplaceTransactionsAsBuyer  MarketplaceTransaction[] @relation("MarketplaceTransactionBuyer")
-  marketplaceReviewsAuthored MarketplaceReview[] @relation("MarketplaceReviewsAuthored")
-  marketplaceReviewsReceived MarketplaceReview[] @relation("MarketplaceReviewsReceived")
-  marketplaceReports     MarketplaceReport[] @relation("MarketplaceReportsByUser")
-  blocksCreated          UserBlock[] @relation("UserBlocksCreated")
-  blocksReceived         UserBlock[] @relation("UserBlocksReceived")
-}
-
-model EmailVerificationToken {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String    @unique
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-model PasswordResetToken {
-  id         String    @id @default(cuid())
-  userId     String
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash  String    @unique
-  expiresAt  DateTime
-  consumedAt DateTime?
-  createdAt  DateTime  @default(now())
-
-  @@index([userId])
-  @@index([expiresAt])
 }
 
 model UserInventoryPolicy {
@@ -152,23 +116,11 @@ model ExtraForSaleListing {
   note                String?
   customPrice         Float?
   customPriceCurrency String  @default("SGD")
-  marketplaceVisible  Boolean @default(false)
   pricingMode         String  @default("FIXED")
-  askingPriceMinor    Int?
-  currency            String?
-  condition           String?
-  cardLanguage        String?
-  originCountryCode   String?
-  publicLocality      String?
-  allowsMeetup        Boolean @default(false)
-  shipsDomestically   Boolean @default(false)
-  shipsInternationally Boolean @default(false)
-  shipsWorldwide      Boolean @default(false)
   status              String  @default("active")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  destinationCountries ListingDestinationCountry[]
   marketplaceEnquiries MarketplaceEnquiry[]
   marketplaceReservations MarketplaceReservation[]
 
@@ -176,21 +128,6 @@ model ExtraForSaleListing {
   @@index([userId])
   @@index([cardId])
   @@index([status])
-  @@index([marketplaceVisible, status])
-  @@index([currency])
-  @@index([condition])
-  @@index([originCountryCode])
-}
-
-model ListingDestinationCountry {
-  id          String              @id @default(cuid())
-  listingId   String
-  listing     ExtraForSaleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  countryCode String
-  createdAt   DateTime            @default(now())
-
-  @@unique([listingId, countryCode])
-  @@index([countryCode])
 }
 
 model MarketplaceEnquiry {
@@ -237,10 +174,7 @@ model EnquiryOffer {
   proposedByUser     User               @relation("MarketplaceOfferProposer", fields: [proposedByUserId], references: [id], onDelete: Cascade)
   quantity           Int
   unitPriceMinor     Int
-  shippingPriceMinor Int                @default(0)
   currency           String
-  fulfilmentMethod   String?
-  buyerCountryCode   String?
   createdAt          DateTime           @default(now())
 
   reservation MarketplaceReservation?
@@ -259,129 +193,15 @@ model MarketplaceReservation {
   acceptedOffer      EnquiryOffer?       @relation(fields: [acceptedOfferId], references: [id], onDelete: SetNull)
   quantity           Int
   unitPriceMinor     Int
-  shippingPriceMinor Int                 @default(0)
   currency           String
-  fulfilmentMethod   String?
-  buyerCountryCode   String?
   expiresAt          DateTime
   status             String              @default("RESERVED")
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
-  transaction MarketplaceTransaction?
-
   @@index([listingId])
   @@index([status])
   @@index([expiresAt])
-}
-
-model MarketplaceTransaction {
-  id                        String                 @id @default(cuid())
-  reservationId             String                 @unique
-  reservation               MarketplaceReservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
-  sellerId                  String
-  seller                    User                   @relation("MarketplaceTransactionSeller", fields: [sellerId], references: [id], onDelete: Cascade)
-  buyerId                   String
-  buyer                     User                   @relation("MarketplaceTransactionBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
-  cardId                    String?
-  card                      Card?                  @relation(fields: [cardId], references: [id], onDelete: SetNull)
-  cardName                  String
-  cardSubtitle              String?
-  cardNumber                String
-  cardImageUrl              String?
-  variant                   String
-  quantity                  Int
-  agreedUnitPriceMinor      Int
-  agreedShippingPriceMinor  Int                    @default(0)
-  currency                  String
-  fulfilmentMethod          String
-  buyerCountryCode          String?
-  status                    String                 @default("AWAITING_BUYER_CONFIRMATION")
-  completedAt               DateTime?
-  reviewWindowEndsAt        DateTime?
-  disputedAt                DateTime?
-  createdAt                 DateTime               @default(now())
-  updatedAt                 DateTime               @updatedAt
-
-  reviews MarketplaceReview[]
-
-  @@index([sellerId])
-  @@index([buyerId])
-  @@index([cardId])
-  @@index([status])
-  @@index([completedAt])
-}
-
-model MarketplaceReview {
-  id               String   @id @default(cuid())
-  transactionId    String
-  transaction      MarketplaceTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  reviewerId       String
-  reviewer         User     @relation("MarketplaceReviewsAuthored", fields: [reviewerId], references: [id], onDelete: Cascade)
-  revieweeId       String
-  reviewee         User     @relation("MarketplaceReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
-  reviewerRole     String
-  rating           Int
-  comment          String?
-  status           String   @default("SEALED")
-  moderationStatus String   @default("VISIBLE")
-  submittedAt      DateTime @default(now())
-  revealedAt       DateTime?
-  frozenAt         DateTime?
-  hiddenAt         DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  tags MarketplaceReviewTag[]
-
-  @@unique([transactionId, reviewerId])
-  @@index([revieweeId])
-  @@index([reviewerId])
-  @@index([status])
-  @@index([moderationStatus])
-}
-
-model MarketplaceReviewTag {
-  id        String   @id @default(cuid())
-  reviewId  String
-  review    MarketplaceReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  tag       String
-  createdAt DateTime @default(now())
-
-  @@unique([reviewId, tag])
-  @@index([tag])
-}
-
-model MarketplaceReport {
-  id         String   @id @default(cuid())
-  reporterId String
-  reporter   User     @relation("MarketplaceReportsByUser", fields: [reporterId], references: [id], onDelete: Cascade)
-  targetType String
-  targetId   String
-  reason     String
-  details    String?
-  status     String   @default("PENDING")
-  resolvedByUserId String?
-  resolution String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([reporterId])
-  @@index([targetType, targetId])
-  @@index([status])
-}
-
-model UserBlock {
-  id        String   @id @default(cuid())
-  blockerId String
-  blocker   User     @relation("UserBlocksCreated", fields: [blockerId], references: [id], onDelete: Cascade)
-  blockedId String
-  blocked   User     @relation("UserBlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
-  reason    String?
-  createdAt DateTime @default(now())
-
-  @@unique([blockerId, blockedId])
-  @@index([blockedId])
 }
 
 model Notification {
@@ -397,19 +217,6 @@ model Notification {
   @@index([userId])
   @@index([readAt])
   @@index([createdAt])
-}
-
-model FxRate {
-  id            String   @id @default(cuid())
-  baseCurrency  String
-  quoteCurrency String
-  rate          Decimal  @db.Decimal(18, 8)
-  source        String
-  fetchedAt     DateTime
-  createdAt     DateTime @default(now())
-
-  @@unique([baseCurrency, quoteCurrency, source])
-  @@index([fetchedAt])
 }
 
 model UserProfile {

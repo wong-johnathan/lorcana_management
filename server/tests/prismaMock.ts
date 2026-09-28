@@ -60,20 +60,6 @@ export const prismaMock = {
     update: vi.fn(),
     updateMany: vi.fn(),
   },
-  fxRate: {
-    findUnique: vi.fn(),
-    upsert: vi.fn(),
-  },
-  emailVerificationToken: {
-    create: vi.fn(),
-    findFirst: vi.fn(),
-    update: vi.fn(),
-  },
-  passwordResetToken: {
-    create: vi.fn(),
-    findFirst: vi.fn(),
-    update: vi.fn(),
-  },
   card: {
     findMany: vi.fn(),
     findUnique: vi.fn(),
@@ -112,40 +98,12 @@ export const prismaMock = {
     delete: vi.fn(),
     deleteMany: vi.fn(),
   },
-  marketplaceTransaction: {
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  },
   marketplaceReservation: {
     findUnique: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
-  },
-  marketplaceReview: {
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-  },
-  marketplaceReviewTag: {
-    deleteMany: vi.fn(),
-    createMany: vi.fn(),
-  },
-  marketplaceReport: {
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  },
-  userBlock: {
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    delete: vi.fn(),
   },
 };
 

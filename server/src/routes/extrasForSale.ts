@@ -13,12 +13,6 @@ import {
   type InventoryVariant,
   type RetentionOverrideLike,
 } from "../services/extrasForSale.js";
-import {
-  MARKETPLACE_CONDITIONS,
-  MARKETPLACE_CURRENCIES,
-  MARKETPLACE_PRICING_MODES,
-  evaluateMarketplaceEligibility,
-} from "../services/marketplaceAvailability.js";
 import { requireVerifiedEmailForAction } from "../services/userVerification.js";
 import {
   ACTIVE_RESERVATION_CONFLICT_MESSAGE,
@@ -33,12 +27,8 @@ const LISTING_STATUSES = new Set(["active", "paused"]);
 const CUSTOM_PRICE_CURRENCIES = ["USD", "SGD", "MYR", "EUR", "GBP", "AUD", "CAD", "JPY"] as const;
 const DEFAULT_CUSTOM_PRICE_CURRENCY = "SGD";
 const REFERENCE_PRICE_CURRENCY = "USD";
-
-type MarketplacePublicationFields = {
-  data: Record<string, unknown>;
-  destinationCountryCodes?: string[];
-  touched: boolean;
-};
+const PRICING_MODES = ["FIXED", "ACCEPTS_OFFERS"] as const;
+type PricingMode = typeof PRICING_MODES[number];
 
 function parseCustomPrice(value: unknown): number | null | undefined {
   if (value === undefined) return undefined;
@@ -57,122 +47,14 @@ function parseCustomPriceCurrency(value: unknown): string | undefined {
   return value;
 }
 
-function parseOptionalBoolean(value: unknown, field: string): boolean | undefined {
+function parsePricingMode(value: unknown): PricingMode | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "boolean") throw new Error(`${field} must be a boolean`);
-  return value;
-}
-
-function parseOptionalString(value: unknown, field: string): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null || value === "") return null;
-  if (typeof value !== "string") throw new Error(`${field} must be a string`);
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-function parseOptionalCountryCode(value: unknown, field: string): string | null | undefined {
-  const parsed = parseOptionalString(value, field);
-  if (parsed === undefined || parsed === null) return parsed;
-  const normalized = parsed.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(normalized)) throw new Error(`${field} must be a two-letter ISO country code`);
-  return normalized;
-}
-
-function parseAskingPriceMinor(value: unknown): number | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null || value === "") return null;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new Error("askingPriceMinor must be a non-negative integer minor-unit amount");
+  if (typeof value !== "string") throw new Error(`pricingMode must be one of ${PRICING_MODES.join(", ")}`);
+  const normalized = value.toUpperCase();
+  if (!(PRICING_MODES as readonly string[]).includes(normalized)) {
+    throw new Error(`pricingMode must be one of ${PRICING_MODES.join(", ")}`);
   }
-  return value;
-}
-
-function parseMarketplaceEnum(value: unknown, field: string, allowed: readonly string[]): string | null | undefined {
-  const parsed = parseOptionalString(value, field);
-  if (parsed === undefined || parsed === null) return parsed;
-  const normalized = parsed.toUpperCase();
-  if (!allowed.includes(normalized)) throw new Error(`${field} must be one of ${allowed.join(", ")}`);
-  return normalized;
-}
-
-function parseDestinationCountries(value: unknown): string[] | undefined {
-  if (value === undefined) return undefined;
-  if (!Array.isArray(value)) throw new Error("destinationCountries must be an array of ISO country codes");
-  const normalized = value.map((item) => {
-    if (typeof item !== "string") throw new Error("destinationCountries must be an array of ISO country codes");
-    const code = item.trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(code)) throw new Error("destinationCountries must contain two-letter ISO country codes");
-    return code;
-  });
-  return [...new Set(normalized)];
-}
-
-function parseMarketplacePublicationFields(body: Record<string, unknown>): MarketplacePublicationFields {
-  const data: Record<string, unknown> = {};
-  const parsers: Array<[string, unknown, (value: unknown, field: string) => unknown]> = [
-    ["marketplaceVisible", body.marketplaceVisible, parseOptionalBoolean],
-    ["pricingMode", body.pricingMode, (value, field) => parseMarketplaceEnum(value, field, MARKETPLACE_PRICING_MODES)],
-    ["askingPriceMinor", body.askingPriceMinor, () => parseAskingPriceMinor(body.askingPriceMinor)],
-    ["currency", body.currency, (value, field) => parseMarketplaceEnum(value, field, MARKETPLACE_CURRENCIES)],
-    ["condition", body.condition, (value, field) => parseMarketplaceEnum(value, field, MARKETPLACE_CONDITIONS)],
-    ["cardLanguage", body.cardLanguage, (value, field) => parseOptionalString(value, field)?.toUpperCase() ?? null],
-    ["originCountryCode", body.originCountryCode, parseOptionalCountryCode],
-    ["publicLocality", body.publicLocality, parseOptionalString],
-    ["allowsMeetup", body.allowsMeetup, parseOptionalBoolean],
-    ["shipsDomestically", body.shipsDomestically, parseOptionalBoolean],
-    ["shipsInternationally", body.shipsInternationally, parseOptionalBoolean],
-    ["shipsWorldwide", body.shipsWorldwide, parseOptionalBoolean],
-  ];
-
-  for (const [field, value, parser] of parsers) {
-    if (value !== undefined) data[field] = parser(value, field);
-  }
-
-  const destinationCountryCodes = parseDestinationCountries(body.destinationCountries);
-  return { data, destinationCountryCodes, touched: Object.keys(data).length > 0 || destinationCountryCodes !== undefined };
-}
-
-function destinationCountryCodes(listing: any): string[] {
-  return (listing.destinationCountries ?? []).map((country: { countryCode: string } | string) => (
-    typeof country === "string" ? country : country.countryCode
-  ));
-}
-
-async function validateMarketplacePublication(input: {
-  userId: string;
-  listing: any;
-  updates: Record<string, unknown>;
-  destinationCountryCodes?: string[];
-  publicQuantity: number;
-  res: Response;
-}): Promise<boolean> {
-  const effectiveListing = {
-    ...input.listing,
-    ...input.updates,
-    destinationCountries: input.destinationCountryCodes ?? destinationCountryCodes(input.listing),
-  };
-  if (!effectiveListing.marketplaceVisible) return true;
-
-  const seller = await prisma.user.findUnique({
-    where: { id: input.userId },
-    select: { id: true, emailVerifiedAt: true },
-  });
-  if (!seller?.emailVerifiedAt) {
-    input.res.status(403).json({ error: "Seller email must be verified to publish marketplace listings" });
-    return false;
-  }
-
-  const eligibility = evaluateMarketplaceEligibility({
-    listing: effectiveListing,
-    seller,
-    availableQuantity: input.publicQuantity,
-  });
-  if (!eligibility.eligible) {
-    input.res.status(400).json({ error: "Marketplace listing is not eligible", reasons: eligibility.reasons });
-    return false;
-  }
-  return true;
+  return normalized as PricingMode;
 }
 
 function normalizeNote(value: unknown): string | null {
@@ -205,11 +87,7 @@ async function getOrCreateInventoryPolicy(userId: string) {
   });
 }
 
-function listingResponse(
-  listing: any,
-  publicQuantity: number,
-  referencePrice: number | null
-) {
+function listingResponse(listing: any, publicQuantity: number, referencePrice: number | null) {
   return {
     id: listing.id,
     cardId: listing.cardId,
@@ -222,19 +100,7 @@ function listingResponse(
     customPrice: listing.customPrice ?? null,
     customPriceCurrency: listing.customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
     note: listing.note ?? null,
-    marketplaceVisible: listing.marketplaceVisible ?? false,
     pricingMode: listing.pricingMode ?? "FIXED",
-    askingPriceMinor: listing.askingPriceMinor ?? null,
-    currency: listing.currency ?? null,
-    condition: listing.condition ?? null,
-    cardLanguage: listing.cardLanguage ?? null,
-    originCountryCode: listing.originCountryCode ?? null,
-    publicLocality: listing.publicLocality ?? null,
-    allowsMeetup: listing.allowsMeetup ?? false,
-    shipsDomestically: listing.shipsDomestically ?? false,
-    shipsInternationally: listing.shipsInternationally ?? false,
-    shipsWorldwide: listing.shipsWorldwide ?? false,
-    destinationCountries: destinationCountryCodes(listing),
     status: listing.status,
   };
 }
@@ -266,7 +132,7 @@ extrasForSaleRouter.get("/", async (req: AuthRequest, res: Response) => {
       prisma.inventoryEntry.findMany({ where: { userId } }),
       prisma.extraForSaleListing.findMany({
         where: { userId, status: { in: ["active", "paused"] } },
-        include: { card: { include: { prices: true } }, destinationCountries: true },
+        include: { card: { include: { prices: true } } },
       }),
     ]);
 
@@ -276,11 +142,7 @@ extrasForSaleRouter.get("/", async (req: AuthRequest, res: Response) => {
       const variant = parseVariant(listing.variant);
       const extraQuantity = currentExtraForVariant(entryByCardId.get(listing.cardId) ?? null, policy, overrideByCardId.get(listing.cardId), variant);
       const publicQuantity = listing.status === "active" ? publicQuantityForListing(listing.desiredQuantity, extraQuantity) : 0;
-      return listingResponse(
-        listing,
-        publicQuantity,
-        referencePriceForVariant(listing.card.prices, variant)
-      );
+      return listingResponse(listing, publicQuantity, referencePriceForVariant(listing.card.prices, variant));
     }).sort(compareCardContainerByIndex);
 
     res.json({ listings: responseListings });
@@ -304,13 +166,13 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
     let desiredQuantity: number;
     let customPrice: number | null | undefined;
     let customPriceCurrency: string | undefined;
-    let marketplaceFields: MarketplacePublicationFields;
+    let pricingMode: PricingMode | undefined;
     try {
       variant = parseVariant(req.body.variant);
       desiredQuantity = parseDesiredQuantity(req.body.desiredQuantity);
       customPrice = parseCustomPrice(req.body.customPrice);
       customPriceCurrency = parseCustomPriceCurrency(req.body.customPriceCurrency);
-      marketplaceFields = parseMarketplacePublicationFields(req.body);
+      pricingMode = parsePricingMode(req.body.pricingMode);
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
       return;
@@ -330,7 +192,7 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
       prisma.inventoryEntry.findFirst({ where: { userId, cardId } }),
       getOrCreateInventoryPolicy(userId),
       prisma.cardRetentionOverride.findUnique({ where: { userId_cardId: { userId, cardId } } }),
-      prisma.extraForSaleListing.findFirst({ where: { userId, cardId, variant }, include: { destinationCountries: true } }),
+      prisma.extraForSaleListing.findFirst({ where: { userId, cardId, variant } }),
     ]);
     const extraQuantity = currentExtraForVariant(entry, policy, override, variant);
     const nextDesiredQuantity = existingListing?.status === "active"
@@ -341,19 +203,6 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
       return;
     }
     const nextPublicQuantity = publicQuantityForListing(nextDesiredQuantity, extraQuantity);
-    const publicationOk = await validateMarketplacePublication({
-      userId,
-      listing: existingListing ?? { userId, cardId, variant, status: "active" },
-      updates: marketplaceFields.data,
-      destinationCountryCodes: marketplaceFields.destinationCountryCodes,
-      publicQuantity: nextPublicQuantity,
-      res,
-    });
-    if (!publicationOk) return;
-
-    const destinationCountryUpdate = marketplaceFields.destinationCountryCodes !== undefined
-      ? { destinationCountries: { deleteMany: {}, create: marketplaceFields.destinationCountryCodes.map((countryCode) => ({ countryCode })) } }
-      : {};
 
     const listing = existingListing
       ? await prisma.extraForSaleListing.update({
@@ -363,11 +212,10 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
           note: normalizeNote(note),
           ...(customPrice !== undefined && { customPrice }),
           customPriceCurrency: customPriceCurrency ?? existingListing.customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
-          ...marketplaceFields.data,
-          ...destinationCountryUpdate,
+          ...(pricingMode !== undefined && { pricingMode }),
           status: "active",
         },
-        include: { card: { include: { prices: true } }, destinationCountries: true },
+        include: { card: { include: { prices: true } } },
       })
       : await prisma.extraForSaleListing.create({
         data: {
@@ -378,13 +226,10 @@ extrasForSaleRouter.post("/", async (req: AuthRequest, res: Response) => {
           note: normalizeNote(note),
           customPrice: customPrice ?? null,
           customPriceCurrency: customPriceCurrency ?? DEFAULT_CUSTOM_PRICE_CURRENCY,
-          ...marketplaceFields.data,
-          ...(marketplaceFields.destinationCountryCodes !== undefined && {
-            destinationCountries: { create: marketplaceFields.destinationCountryCodes.map((countryCode) => ({ countryCode })) },
-          }),
+          ...(pricingMode !== undefined && { pricingMode }),
           status: "active",
         },
-        include: { card: { include: { prices: true } }, destinationCountries: true },
+        include: { card: { include: { prices: true } } },
       });
 
     const responseStatus = existingListing ? 200 : 201;
@@ -467,7 +312,7 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
     const id = req.params.id as string;
     const existing = await prisma.extraForSaleListing.findFirst({
       where: { id, userId },
-      include: { card: { include: { prices: true } }, destinationCountries: true },
+      include: { card: { include: { prices: true } } },
     });
     if (!existing) {
       res.status(404).json({ error: "Listing not found" });
@@ -477,7 +322,7 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
     let desiredQuantity: number | undefined;
     let customPrice: number | null | undefined;
     let customPriceCurrency: string | undefined;
-    let marketplaceFields: MarketplacePublicationFields;
+    let pricingMode: PricingMode | undefined;
     if (req.body.desiredQuantity !== undefined) {
       try {
         desiredQuantity = parseDesiredQuantity(req.body.desiredQuantity);
@@ -489,7 +334,7 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
     try {
       customPrice = parseCustomPrice(req.body.customPrice);
       customPriceCurrency = parseCustomPriceCurrency(req.body.customPriceCurrency);
-      marketplaceFields = parseMarketplacePublicationFields(req.body);
+      pricingMode = parsePricingMode(req.body.pricingMode);
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
       return;
@@ -520,19 +365,6 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
     const nextDesired = desiredQuantity ?? existing.desiredQuantity;
     const nextStatus = req.body.status ?? existing.status;
     const publicQuantity = nextStatus === "active" ? publicQuantityForListing(nextDesired, extraQuantity) : 0;
-    const publicationOk = await validateMarketplacePublication({
-      userId,
-      listing: { ...existing, status: nextStatus },
-      updates: marketplaceFields.data,
-      destinationCountryCodes: marketplaceFields.destinationCountryCodes,
-      publicQuantity,
-      res,
-    });
-    if (!publicationOk) return;
-
-    const destinationCountryUpdate = marketplaceFields.destinationCountryCodes !== undefined
-      ? { destinationCountries: { deleteMany: {}, create: marketplaceFields.destinationCountryCodes.map((countryCode) => ({ countryCode })) } }
-      : {};
 
     const listing = await prisma.extraForSaleListing.update({
       where: { id },
@@ -541,11 +373,10 @@ extrasForSaleRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
         ...(req.body.note !== undefined && { note: normalizeNote(req.body.note) }),
         ...(customPrice !== undefined && { customPrice }),
         ...(customPriceCurrency !== undefined && { customPriceCurrency }),
-        ...marketplaceFields.data,
-        ...destinationCountryUpdate,
+        ...(pricingMode !== undefined && { pricingMode }),
         ...(req.body.status !== undefined && { status: req.body.status }),
       },
-      include: { card: { include: { prices: true } }, destinationCountries: true },
+      include: { card: { include: { prices: true } } },
     });
     res.json({ listing: listingResponse(listing, publicQuantity, referencePriceForVariant(existing.card.prices, variant)) });
   } catch (error) {

@@ -20,13 +20,6 @@ import {
   type EnquiryAction,
   type MarketplaceActorRole,
 } from "../services/marketplaceTransitions.js";
-import {
-  PUBLIC_REVIEW_CONTEXT_LABEL,
-  planReviewSubmission,
-  serializeReview,
-} from "../services/marketplaceReviews.js";
-import { buildMarketplaceReputation } from "../services/marketplaceReputation.js";
-import { buildReviewReportModerationPlan } from "../services/marketplaceModeration.js";
 import { broadcastMarketplaceEvent } from "../services/marketplaceRealtime.js";
 import { compareCardContainerByIndex } from "../utils/cardSort.js";
 
@@ -46,11 +39,6 @@ function getVariantCount(counts: InventoryCounts, variant: InventoryVariant): nu
   return counts.holofoilQuantity;
 }
 
-function destinationCountryCodes(listing: any): string[] {
-  return (listing.destinationCountries ?? []).map((country: { countryCode: string } | string) => (
-    typeof country === "string" ? country : country.countryCode
-  ));
-}
 
 function sellerPayload(user: any) {
   return {
@@ -62,32 +50,9 @@ function sellerPayload(user: any) {
   };
 }
 
-function minimalReputation(user: any) {
-  return {
-    userId: user.id,
-    role: "seller",
-    ratingAverage: null,
-    reviewCount: 0,
-    completedDeals: 0,
-    uniqueCounterparties: 0,
-    memberSince: user.createdAt ?? new Date(0).toISOString(),
-    emailVerified: Boolean(user.emailVerifiedAt),
-  };
-}
 
-function canFulfilTo(listing: any, destinationCountry?: string | null): boolean {
-  if (!destinationCountry) return true;
-  const country = destinationCountry.toUpperCase();
-  if (listing.shipsWorldwide) return true;
-  if (listing.originCountryCode === country && (listing.shipsDomestically || listing.allowsMeetup)) return true;
-  if (listing.shipsInternationally && destinationCountryCodes(listing).includes(country)) return true;
-  return false;
-}
 
 function listingPrice(listing: any): { amountMinor: number; currency: string } | null {
-  if (typeof listing.askingPriceMinor === "number" && listing.currency) {
-    return { amountMinor: listing.askingPriceMinor, currency: listing.currency };
-  }
   if (typeof listing.customPrice === "number" && listing.customPriceCurrency) {
     return { amountMinor: Math.round(listing.customPrice * 100), currency: listing.customPriceCurrency };
   }
@@ -165,7 +130,6 @@ const ENQUIRY_INCLUDE = {
     include: {
       card: true,
       user: { select: { id: true, username: true, emailVerifiedAt: true, createdAt: true } },
-      destinationCountries: true,
     },
   },
   buyer: { select: { id: true, username: true, emailVerifiedAt: true, createdAt: true } },
@@ -192,9 +156,6 @@ function parseMinorAmount(value: unknown, field: string) {
 
 function parseOfferInput(body: any, listing: any) {
   if (body.currency !== undefined) throw new Error("currency is inherited from the listing");
-  if (body.shippingPriceMinor !== undefined || body.fulfilmentMethod !== undefined || body.buyerCountryCode !== undefined) {
-    throw new Error("shipping, fulfilment, and buyer country are handled in chat for now");
-  }
   const price = listingPrice(listing);
   if (!price) throw new Error("listing price or currency is unavailable");
   return {
@@ -240,7 +201,6 @@ function serializeReservation(reservation: any) {
 }
 
 function serializeOffer(listing: any, availableQuantity: number) {
-  const destinationCountries = destinationCountryCodes(listing);
   const variant = parseVariant(listing.variant);
   const referencePrice = variant ? referencePriceForVariant(listing.card?.prices ?? [], variant) : null;
   const price = listingPrice(listing);
@@ -250,37 +210,13 @@ function serializeOffer(listing: any, availableQuantity: number) {
     variant: listing.variant,
     availableQuantity,
     pricingMode: listing.pricingMode ?? "FIXED",
-    askingPriceMinor: price?.amountMinor ?? null,
-    currency: price?.currency ?? null,
     askingPrice: price,
-    approximateConvertedPrice: null,
-    condition: listing.condition ?? null,
-    cardLanguage: listing.cardLanguage ?? null,
-    originCountryCode: listing.originCountryCode ?? null,
-    publicLocality: listing.publicLocality ?? null,
-    allowsMeetup: listing.allowsMeetup ?? false,
-    shipsDomestically: listing.shipsDomestically ?? false,
-    shipsInternationally: listing.shipsInternationally ?? false,
-    shipsWorldwide: listing.shipsWorldwide ?? false,
-    destinationCountries,
-    fulfilment: {
-      allowsMeetup: listing.allowsMeetup ?? false,
-      shipsDomestically: listing.shipsDomestically ?? false,
-      shipsInternationally: listing.shipsInternationally ?? false,
-      shipsWorldwide: listing.shipsWorldwide ?? false,
-      destinationCountryCodes: destinationCountries,
-    },
     seller: sellerPayload(listing.user),
     sellerVerified: Boolean(listing.user?.emailVerifiedAt),
-    reputation: minimalReputation(listing.user),
     note: listing.note ?? null,
     referencePrice,
     referencePriceCurrency: "USD",
   };
-}
-
-function tagsCreateMany(tags: string[]) {
-  return tags.length ? { create: tags.map((tag) => ({ tag })) } : undefined;
 }
 
 async function availabilityForListing(listing: any, now = new Date(), db: any = prisma) {
@@ -333,33 +269,20 @@ function marketplaceListingWhere(query: Record<string, unknown>, cardId?: string
   if (Object.keys(cardWhere).length > 0) where.card = cardWhere;
 
   if (typeof query.variant === "string") where.variant = query.variant;
-  if (typeof query.condition === "string") where.condition = { in: query.condition.split(",").map((item) => item.toUpperCase()) };
-  if (typeof query.language === "string") where.cardLanguage = query.language.toUpperCase();
-  if (typeof query.sellerCountry === "string") where.originCountryCode = query.sellerCountry.toUpperCase();
-  if (query.fulfilmentMethod === "MEETUP") where.allowsMeetup = true;
-  if (query.fulfilmentMethod === "DOMESTIC_SHIPPING") where.shipsDomestically = true;
-  if (query.fulfilmentMethod === "INTERNATIONAL_SHIPPING") where.shipsInternationally = true;
   return where;
 }
 
 async function eligibleOffers(query: Record<string, unknown>, cardId?: string, excludeUserId?: string | null) {
-  const destinationCountry = typeof query.destinationCountry === "string"
-    ? query.destinationCountry.toUpperCase()
-    : typeof query.shipsTo === "string"
-      ? query.shipsTo.toUpperCase()
-      : null;
   const listings = await prisma.extraForSaleListing.findMany({
     where: marketplaceListingWhere(query, cardId, excludeUserId),
     include: {
       card: { include: { prices: true } },
       user: { select: { id: true, username: true, emailVerifiedAt: true, createdAt: true } },
-      destinationCountries: true,
     },
   }) as any[];
 
   const offers: Array<{ listing: any; availableQuantity: number }> = [];
   for (const listing of listings.sort(compareCardContainerByIndex)) {
-    if (!canFulfilTo(listing, destinationCountry)) continue;
     const availability = await availabilityForListing(listing);
     if (!availability.eligible) continue;
     offers.push({ listing, availableQuantity: availability.availableQuantity });
@@ -385,7 +308,6 @@ marketplaceRouter.get("/", authenticateOptional, async (req: AuthRequest, res: R
         fromPriceMinor: price?.amountMinor ?? null,
         currency: price?.currency ?? null,
         lowestPrice: price,
-        approximateConvertedPrice: null,
         canFulfilToViewer: true,
         offers: [],
       };
@@ -457,7 +379,6 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
       include: {
         card: true,
         user: { select: { id: true, username: true, emailVerifiedAt: true, createdAt: true } },
-        destinationCountries: true,
       },
     });
     if (!listing) {
@@ -466,10 +387,6 @@ marketplaceRouter.post("/listings/:listingId/enquiries", authenticateToken, asyn
     }
     if (listing.userId === buyerId) {
       res.status(400).json({ error: "Cannot enquire on your own listing" });
-      return;
-    }
-    if (req.body.shippingPriceMinor !== undefined || req.body.fulfilmentMethod !== undefined || req.body.buyerCountryCode !== undefined) {
-      res.status(400).json({ error: "shipping, fulfilment, and buyer country are handled in chat for now" });
       return;
     }
     if (req.body.currency !== undefined) {
@@ -803,141 +720,3 @@ marketplaceRouter.post("/reservations/:id/cancel", authenticateToken, async (req
   }
 });
 
-marketplaceRouter.post("/transactions/:id/reviews", authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const transactionId = req.params.id as string;
-    const actorUserId = req.user!.userId;
-    const now = new Date();
-    const transaction = await prisma.marketplaceTransaction.findUnique({
-      where: { id: transactionId },
-      include: { reviews: { include: { tags: true } } },
-    });
-    if (!transaction) {
-      res.status(404).json({ error: "Transaction not found" });
-      return;
-    }
-
-    const reviews = transaction.reviews ?? [];
-    const existingReview = reviews.find((review: any) => review.reviewerId === actorUserId) ?? null;
-    const counterpartReview = reviews.find((review: any) => review.reviewerId !== actorUserId && review.status === "SEALED") ?? null;
-    let plan;
-    try {
-      plan = planReviewSubmission({
-        transaction,
-        actorUserId,
-        existingReview,
-        counterpartReview,
-        now,
-        input: req.body,
-      });
-    } catch (error) {
-      res.status(400).json({ error: (error as Error).message });
-      return;
-    }
-
-    let review;
-    if (plan.mode === "update" && existingReview) {
-      await prisma.marketplaceReviewTag.deleteMany({ where: { reviewId: existingReview.id } });
-      review = await prisma.marketplaceReview.update({
-        where: { id: existingReview.id },
-        data: {
-          rating: plan.reviewData.rating,
-          comment: plan.reviewData.comment,
-          status: plan.reviewData.status,
-          moderationStatus: plan.reviewData.moderationStatus,
-          submittedAt: plan.reviewData.submittedAt,
-          revealedAt: plan.reviewData.revealedAt,
-          tags: tagsCreateMany(plan.tags),
-        },
-        include: { tags: true },
-      });
-    } else {
-      review = await prisma.marketplaceReview.create({
-        data: {
-          transactionId: plan.reviewData.transactionId,
-          reviewerId: plan.reviewData.reviewerId,
-          revieweeId: plan.reviewData.revieweeId,
-          reviewerRole: plan.reviewData.reviewerRole,
-          rating: plan.reviewData.rating,
-          comment: plan.reviewData.comment,
-          status: plan.reviewData.status,
-          moderationStatus: plan.reviewData.moderationStatus,
-          submittedAt: plan.reviewData.submittedAt,
-          revealedAt: plan.reviewData.revealedAt,
-          tags: tagsCreateMany(plan.tags),
-        },
-        include: { tags: true },
-      });
-    }
-
-    if (plan.revealReviewIds.length > 0) {
-      await prisma.marketplaceReview.updateMany({
-        where: { id: { in: plan.revealReviewIds } },
-        data: { status: "REVEALED", revealedAt: now },
-      });
-    }
-
-    res.status(plan.mode === "create" ? 201 : 200).json({
-      review: serializeReview(review),
-      publicContextLabel: PUBLIC_REVIEW_CONTEXT_LABEL,
-    });
-  } catch (error) {
-    console.error("Marketplace review submit error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-marketplaceRouter.get("/users/:userId/reputation", async (req, res: Response) => {
-  try {
-    const userId = req.params.userId as string;
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, createdAt: true, emailVerifiedAt: true },
-    });
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-    const [reviewsReceived, completedTransactions] = await Promise.all([
-      prisma.marketplaceReview.findMany({
-        where: { revieweeId: userId },
-        include: { tags: true, transaction: true },
-      }),
-      prisma.marketplaceTransaction.findMany({
-        where: { OR: [{ buyerId: userId }, { sellerId: userId }], status: "COMPLETED" },
-      }),
-    ]);
-    res.json(buildMarketplaceReputation({ user, reviewsReceived, completedTransactions, now: new Date() }));
-  } catch (error) {
-    console.error("Marketplace reputation error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-marketplaceRouter.post("/reviews/:id/report", authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const reviewId = req.params.id as string;
-    const reporterId = req.user!.userId;
-    const review = await prisma.marketplaceReview.findUnique({ where: { id: reviewId } });
-    if (!review) {
-      res.status(404).json({ error: "Review not found" });
-      return;
-    }
-    let plan;
-    try {
-      plan = buildReviewReportModerationPlan({ reporterId, reviewId, input: req.body });
-    } catch (error) {
-      res.status(400).json({ error: (error as Error).message });
-      return;
-    }
-    const report = await prisma.marketplaceReport.create({ data: plan.reportData });
-    await prisma.marketplaceReview.update({
-      where: { id: reviewId },
-      data: { moderationStatus: plan.reviewModerationStatus },
-    });
-    res.status(201).json({ report: { id: report.id, status: report.status } });
-  } catch (error) {
-    console.error("Marketplace report error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});

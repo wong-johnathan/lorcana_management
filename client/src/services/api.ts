@@ -33,7 +33,6 @@ import type {
   MarketplaceCreateOfferPayload,
   MarketplaceEnquiryOffer,
   MarketplaceReservation,
-  MarketplaceReputationSummary,
   InventoryRemoveExtrasSummary,
   ExtrasForSaleBulkRemoveSummary,
   AppNotification,
@@ -165,12 +164,12 @@ export const extrasForSale = {
   list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
   listAll: () => request<{ created: number; skipped: number }>("/extras-for-sale/list-all", { method: "POST" }),
   removeAll: () => request<ExtrasForSaleBulkRemoveSummary>("/extras-for-sale", { method: "DELETE" }),
-  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency; marketplaceVisible?: boolean; pricingMode?: string; askingPriceMinor?: number | null; currency?: ListingCurrency | null; condition?: string | null; cardLanguage?: string | null }) =>
+  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency; pricingMode?: string }) =>
     request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused"; customPrice?: number | null; customPriceCurrency?: ListingCurrency; marketplaceVisible?: boolean; pricingMode?: string; askingPriceMinor?: number | null; currency?: ListingCurrency | null; condition?: string | null; cardLanguage?: string | null }) =>
+  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused"; customPrice?: number | null; customPriceCurrency?: ListingCurrency; pricingMode?: string }) =>
     request<{ listing: ExtraForSaleListing }>(`/extras-for-sale/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
@@ -246,8 +245,8 @@ const marketplaceQuery = (params?: Record<string, string | undefined>) => {
 export const marketplace = {
   list: (params?: MarketplaceListParams) =>
     request<MarketplaceListResponse>(`/marketplace${marketplaceQuery(params as Record<string, string | undefined> | undefined)}`),
-  cardOffers: (cardId: string, params?: Pick<MarketplaceListParams, "shipsTo" | "sellerCountry" | "fulfilmentMethod">) =>
-    request<MarketplaceCardOffersResponse>(`/marketplace/cards/${cardId}/offers${marketplaceQuery(params as Record<string, string | undefined> | undefined)}`),
+  cardOffers: (cardId: string) =>
+    request<MarketplaceCardOffersResponse>(`/marketplace/cards/${cardId}/offers`),
   createEnquiry: (listingId: string, data: MarketplaceCreateEnquiryPayload) =>
     request<MarketplaceEnquiryDetailResponse>(`/marketplace/listings/${listingId}/enquiries`, {
       method: "POST",
@@ -274,8 +273,6 @@ export const marketplace = {
     request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}/withdraw`, { method: "POST" }),
   cancelReservation: (id: string) =>
     request<{ reservation: MarketplaceReservation }>(`/marketplace/reservations/${id}/cancel`, { method: "POST" }),
-  userReputation: (userId: string) =>
-    request<MarketplaceReputationSummary>(`/marketplace/users/${userId}/reputation`),
 };
 
 export const notifications = {

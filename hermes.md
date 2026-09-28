@@ -119,10 +119,14 @@ Prisma models live in `server/prisma/schema.prisma`:
 - `CardPrice` — current per-card price rows by variant with low/mid/high/market prices.
 - `TcgcsvPriceSnapshotRun` / `TcgcsvPriceSnapshot` — daily historical TCGCSV price snapshots keyed by source build timestamp, product ID, and variant. These preserve prices even before LorcanaJSON maps a card to `tcgPlayerId`.
 - `CardAnalysis` — per-card AI market analysis with status and timestamps.
-- `User` — username, password hash, public sharing flag.
+- `User` — username, optional password hash / Google identity, verified email timestamp, public sharing flag.
 - `UserProfile` — optional public profile fields and profile image URL/object key.
 - `UserReference` — user-managed visible references/links for public profiles.
 - `InventoryEntry` — one row per user/card with normal, foil, and holofoil counts.
+- `UserInventoryPolicy` / `CardRetentionOverride` — default and per-card keep quantities used to compute extras.
+- `ExtraForSaleListing` — active/paused/removed Extras listing with variant, desired quantity, note, custom price/currency, and seller pricing mode. Marketplace visibility is implicit: active Extras listings with available extra quantity appear in marketplace browse.
+- `MarketplaceEnquiry` / `EnquiryMessage` / `EnquiryOffer` / `MarketplaceReservation` — chat-first marketplace threads, optional OBO offers, and stock reservations. There are no separate transaction/review/report/FX/block tables in the simplified schema.
+- `Notification` — minimal in-app notifications with related target metadata.
 
 When schema changes, commit both `schema.prisma` and a matching migration directory under `server/prisma/migrations/`. CI/prod use `npx prisma migrate deploy`; a green TypeScript build does not prove migrations are correct.
 

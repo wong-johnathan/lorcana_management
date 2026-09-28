@@ -132,7 +132,6 @@ describe("extras for sale private routes", () => {
       .expect(201)
       .expect((res) => {
         expect(res.body.listing.publicQuantity).toBe(1);
-        expect(res.body.listing.marketplaceVisible).toBe(false);
       });
   });
 
@@ -279,26 +278,6 @@ describe("extras for sale private routes", () => {
     await auth(request(app).delete("/api/extras-for-sale/listing_1")).expect(204);
   });
 
-  it("blocks marketplace publication when the seller email is not verified", async () => {
-    prismaMock.extraForSaleListing.findFirst.mockResolvedValueOnce(listing());
-    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 6 }));
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
-    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw1005", emailVerifiedAt: null });
-
-    await auth(request(app).patch("/api/extras-for-sale/listing_1").send({
-      marketplaceVisible: true,
-      pricingMode: "FIXED",
-      askingPriceMinor: 1200,
-      currency: "SGD",
-      condition: "NEAR_MINT",
-      cardLanguage: "EN",
-      originCountryCode: "SG",
-      allowsMeetup: true,
-    })).expect(403, { error: "Seller email must be verified to publish marketplace listings" });
-
-    expect(prismaMock.extraForSaleListing.update).not.toHaveBeenCalled();
-  });
 
   it("requires a verified email before creating sell listings", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw1005", emailVerifiedAt: null });

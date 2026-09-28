@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateMarketplaceAvailability,
-  evaluateMarketplaceEligibility,
   sumActiveReservedQuantity,
 } from "../src/services/marketplaceAvailability.js";
 import {
@@ -9,13 +8,6 @@ import {
   assertReservationTransition,
   MarketplaceTransitionError,
 } from "../src/services/marketplaceTransitions.js";
-import {
-  createHashedToken,
-  createVerificationToken,
-  isTokenExpired,
-  normalizeEmail,
-  verifyTokenHash,
-} from "../src/services/emailVerification.js";
 
 describe("marketplace availability foundation", () => {
   it("calculates physical, listable, and available quantities from extras and reservations", () => {
@@ -31,111 +23,41 @@ describe("marketplace availability foundation", () => {
     });
   });
 
+  it("clamps marketplace availability when extras, desired quantity, or reservations are missing", () => {
+    expect(calculateMarketplaceAvailability({
+      ownedQuantity: 1,
+      keepQuantity: 3,
+      desiredQuantity: 5,
+    })).toEqual({
+      physicalExtra: 0,
+      listableQuantity: 0,
+      availableQuantity: 0,
+    });
+
+    expect(calculateMarketplaceAvailability({
+      ownedQuantity: 6,
+      keepQuantity: 1,
+      desiredQuantity: 2,
+      reservedQuantity: -4,
+    })).toEqual({
+      physicalExtra: 5,
+      listableQuantity: 2,
+      availableQuantity: 2,
+    });
+  });
+
   it("counts only non-expired active reservations against availability", () => {
     const now = new Date("2026-08-27T12:00:00.000Z");
 
     expect(sumActiveReservedQuantity([
       { quantity: 2, status: "RESERVED", expiresAt: new Date("2026-08-27T13:00:00.000Z") },
+      { quantity: 1, status: "RESERVED", expiresAt: "2026-08-27T13:00:00.000Z" },
+      { quantity: -2, status: "RESERVED", expiresAt: "2026-08-27T13:00:00.000Z" },
       { quantity: 5, status: "RESERVED", expiresAt: new Date("2026-08-27T11:00:00.000Z") },
       { quantity: 7, status: "CANCELLED", expiresAt: new Date("2026-08-27T13:00:00.000Z") },
-    ], now)).toBe(2);
+    ], now)).toBe(3);
   });
 
-  it("keeps existing listings out of global marketplace unless fully eligible", () => {
-    const baseListing = {
-      marketplaceVisible: false,
-      status: "active",
-      askingPriceMinor: null,
-      currency: null,
-      condition: null,
-      cardLanguage: null,
-      originCountryCode: null,
-      allowsMeetup: false,
-      shipsDomestically: false,
-      shipsInternationally: false,
-      shipsWorldwide: false,
-      destinationCountries: [],
-    };
-
-    const ineligible = evaluateMarketplaceEligibility({
-      listing: baseListing,
-      seller: { emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") },
-      availableQuantity: 1,
-    });
-
-    expect(ineligible.eligible).toBe(false);
-    expect(ineligible.reasons).toContain("marketplace publication is disabled");
-    expect(ineligible.reasons).toContain("asking price is required");
-
-    const eligible = evaluateMarketplaceEligibility({
-      listing: {
-        ...baseListing,
-        marketplaceVisible: true,
-        askingPriceMinor: 1200,
-        currency: "SGD",
-        condition: "NEAR_MINT",
-        cardLanguage: "EN",
-        originCountryCode: "SG",
-        shipsInternationally: true,
-        destinationCountries: ["MY"],
-      },
-      seller: { emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z") },
-      availableQuantity: 1,
-    });
-
-    expect(eligible).toEqual({ eligible: true, reasons: [] });
-  });
-
-  it("surfaces every marketplace eligibility blocker and fulfils via meetup/domestic/worldwide", () => {
-    const blocked = evaluateMarketplaceEligibility({
-      listing: {
-        marketplaceVisible: true,
-        status: "paused",
-        askingPriceMinor: -1,
-        currency: "ZZZ",
-        condition: "UNKNOWN",
-        cardLanguage: "",
-        originCountryCode: "",
-        allowsMeetup: false,
-        shipsDomestically: false,
-        shipsInternationally: true,
-        shipsWorldwide: false,
-        destinationCountries: [],
-      },
-      seller: { emailVerifiedAt: null },
-      availableQuantity: 0,
-    });
-
-    expect(blocked.eligible).toBe(false);
-    expect(blocked.reasons).toEqual(expect.arrayContaining([
-      "seller email is not verified",
-      "listing is not active",
-      "asking price must be a non-negative integer minor-unit amount",
-      "valid currency is required",
-      "condition is required",
-      "card language is required",
-      "origin country is required",
-      "fulfilment coverage is required",
-      "available quantity must be greater than zero",
-    ]));
-
-    const common = {
-      marketplaceVisible: true,
-      status: "active",
-      askingPriceMinor: 0,
-      currency: "USD",
-      condition: "MINT",
-      cardLanguage: "EN",
-      originCountryCode: "US",
-      shipsInternationally: false,
-      destinationCountries: [],
-    };
-    const seller = { emailVerifiedAt: "2026-08-27T00:00:00.000Z" };
-
-    expect(evaluateMarketplaceEligibility({ listing: { ...common, allowsMeetup: true }, seller, availableQuantity: 1 }).eligible).toBe(true);
-    expect(evaluateMarketplaceEligibility({ listing: { ...common, shipsDomestically: true }, seller, availableQuantity: 1 }).eligible).toBe(true);
-    expect(evaluateMarketplaceEligibility({ listing: { ...common, shipsWorldwide: true }, seller, availableQuantity: 1 }).eligible).toBe(true);
-  });
 });
 
 describe("marketplace state transition guards", () => {
@@ -167,37 +89,5 @@ describe("marketplace state transition guards", () => {
     expect(assertReservationTransition({ currentStatus: "AWAITING_BUYER_CONFIRMATION", action: "BUYER_DISPUTE", actorRole: "BUYER" })).toBe("DISPUTED");
     expect(() => assertReservationTransition({ currentStatus: "RESERVED", action: "BUYER_CONFIRM", actorRole: "SELLER" })).toThrow("buyer action requires buyer actor");
     expect(() => assertReservationTransition({ currentStatus: "RESERVED", action: "EXPIRE", actorRole: "SELLER" })).toThrow("system action requires system actor");
-  });
-});
-
-describe("email verification helpers", () => {
-  it("normalizes case and whitespace for unique email comparisons", () => {
-    expect(normalizeEmail("  Johnathan.Wong+lorcana@GMAIL.COM  ")).toBe("johnathan.wong+lorcana@gmail.com");
-  });
-
-  it("stores only token hashes and verifies candidate tokens", () => {
-    const token = "plain-token-from-email";
-    const hash = createHashedToken(token);
-
-    expect(hash).not.toBe(token);
-    expect(verifyTokenHash(token, hash)).toBe(true);
-    expect(verifyTokenHash("wrong", hash)).toBe(false);
-  });
-
-  it("detects expired verification tokens", () => {
-    const now = new Date("2026-08-27T12:00:00.000Z");
-    expect(isTokenExpired(new Date("2026-08-27T11:59:59.000Z"), now)).toBe(true);
-    expect(isTokenExpired(new Date("2026-08-27T12:00:01.000Z"), now)).toBe(false);
-  });
-
-  it("creates expiring opaque verification tokens without exposing the hash input", () => {
-    const now = new Date("2026-08-27T12:00:00.000Z");
-    const generated = createVerificationToken(60_000, now);
-
-    expect(generated.token).toEqual(expect.any(String));
-    expect(generated.tokenHash).toHaveLength(64);
-    expect(generated.tokenHash).not.toBe(generated.token);
-    expect(generated.expiresAt.toISOString()).toBe("2026-08-27T12:01:00.000Z");
-    expect(verifyTokenHash(generated.token, generated.tokenHash)).toBe(true);
   });
 });
