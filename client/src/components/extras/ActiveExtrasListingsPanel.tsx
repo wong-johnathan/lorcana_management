@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ExtraForSaleListing, ListingCurrency, MarketplacePricingMode } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, formatCustomPrice, LISTING_CURRENCIES } from "./extrasUi";
+import { cardImageUrl } from "../../utils/cardImages";
 
 interface ListingEdit {
   note: string | null;
@@ -63,7 +64,7 @@ export default function ActiveExtrasListingsPanel({ listings, onStatusChange, on
       ) : filteredListings.map((listing) => (
         <div key={listing.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
           <div className="flex gap-4">
-            <img src={listing.card.imageUrl} alt={listing.card.name} className="h-24 w-16 rounded object-cover" />
+            <img src={cardImageUrl(listing.card)} alt={listing.card.name} className="h-24 w-16 rounded object-cover" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

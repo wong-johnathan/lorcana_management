@@ -7,6 +7,7 @@ import {
   type InventoryCounts,
   totalInventoryCount,
 } from "../utils/cardVariants";
+import { cardImageUrl } from "../utils/cardImages";
 import CardPriceTable from "./CardPriceTable";
 import MarketplaceLink from "./MarketplaceLink";
 
@@ -82,7 +83,7 @@ export default function CardDetail({
           <div className="md:w-1/2">
             {card.imageUrl ? (
               <img
-                src={card.imageUrl}
+                src={cardImageUrl(card)}
                 alt={card.name}
                 className="w-full rounded-lg"
               />

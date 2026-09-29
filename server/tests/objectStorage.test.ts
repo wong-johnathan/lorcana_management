@@ -11,6 +11,12 @@ vi.mock("@aws-sdk/client-s3", () => ({
       this.input = input;
     }
   },
+  HeadObjectCommand: class HeadObjectCommand {
+    input: unknown;
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  },
   PutObjectCommand: class PutObjectCommand {
     input: unknown;
     constructor(input: unknown) {
@@ -23,8 +29,12 @@ vi.mock("@aws-sdk/client-s3", () => ({
 }));
 
 import {
+  cardImageExists,
+  cardImagePublicUrl,
   deleteProfileImage,
   LOCAL_UPLOAD_ROOT,
+  makeCardImageObjectKey,
+  uploadCardImage,
   uploadProfileImage,
 } from "../src/services/objectStorage.js";
 
@@ -34,6 +44,8 @@ afterEach(async () => {
   delete process.env.MINIO_BUCKET;
   delete process.env.S3_ENDPOINT;
   delete process.env.S3_PUBLIC_URL;
+  delete process.env.CARD_IMAGE_BUCKET;
+  delete process.env.S3_CARD_IMAGE_BUCKET;
   sendMock.mockReset();
   sendMock.mockResolvedValue({});
   vi.restoreAllMocks();
@@ -126,5 +138,58 @@ describe("object storage service", () => {
 
     expect(uploaded.objectKey).toMatch(/\.jpg$/);
     expect(uploaded.publicUrl).toContain("https://bucket.s3.us-east-1.amazonaws.com/profile-images/user_1/");
+  });
+
+  it("stores card images in the dedicated MinIO bucket with deterministic keys and public URLs", async () => {
+    process.env.OBJECT_STORAGE_DRIVER = "s3";
+    process.env.CARD_IMAGE_BUCKET = "lorcana-card-images";
+    process.env.S3_PUBLIC_URL = "https://minio.example.com";
+
+    const uploaded = await uploadCardImage({
+      cardId: "card_1",
+      sourceUrl: "https://cdn.example.com/cards/elsa.jpeg?width=600",
+      buffer: Buffer.from("image"),
+      contentType: "image/jpeg",
+    });
+
+    expect(uploaded.objectKey).toBe(makeCardImageObjectKey("card_1", "https://cdn.example.com/cards/elsa.jpeg?width=600", "image/jpeg"));
+    expect(uploaded.objectKey).toMatch(/^card-images\/card_1\/.+\.jpg$/);
+    expect(uploaded.publicUrl).toBe(`https://minio.example.com/lorcana-card-images/${uploaded.objectKey}`);
+    expect(uploaded.contentType).toBe("image/jpeg");
+    expect(sendMock.mock.calls[0][0].input).toMatchObject({
+      Bucket: "lorcana-card-images",
+      Key: uploaded.objectKey,
+      ContentType: "image/jpeg",
+      CacheControl: "public, max-age=31536000, immutable",
+    });
+  });
+
+  it("checks card image existence through MinIO HEAD and falls back to local storage in local mode", async () => {
+    process.env.OBJECT_STORAGE_DRIVER = "s3";
+    process.env.CARD_IMAGE_BUCKET = "lorcana-card-images";
+    delete process.env.S3_ENDPOINT;
+    delete process.env.S3_PUBLIC_URL;
+    expect(cardImagePublicUrl("card-images/card_1/image.jpg")).toBe("https://lorcana-card-images.s3.us-east-1.amazonaws.com/card-images/card_1/image.jpg");
+    sendMock.mockResolvedValueOnce({});
+    await expect(cardImageExists("card-images/card_1/image.jpg")).resolves.toBe(true);
+    expect(sendMock.mock.calls[0][0].input).toMatchObject({
+      Bucket: "lorcana-card-images",
+      Key: "card-images/card_1/image.jpg",
+    });
+
+    sendMock.mockRejectedValueOnce(new Error("missing"));
+    await expect(cardImageExists("card-images/card_1/missing.jpg")).resolves.toBe(false);
+
+    delete process.env.OBJECT_STORAGE_DRIVER;
+    const local = await uploadCardImage({
+      cardId: "card_2",
+      sourceUrl: "https://cdn.example.com/cards/mickey.webp",
+      buffer: Buffer.from("image"),
+      contentType: "image/webp",
+    });
+    await expect(cardImageExists(local.objectKey)).resolves.toBe(true);
+    await expect(cardImageExists("card-images/card_2/not-written.webp")).resolves.toBe(false);
+    await expect(cardImageExists("../outside.jpg")).resolves.toBe(false);
+    expect(cardImagePublicUrl(local.objectKey)).toBe(`/api/profile-images/${local.objectKey}`);
   });
 });

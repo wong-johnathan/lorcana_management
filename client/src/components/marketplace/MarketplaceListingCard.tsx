@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import type { Card, MarketplaceCardOffer } from "../../types";
 import { cardTitle, formatMarketplaceMoney, variantLabel } from "./marketplaceDisplay";
+import { cardImageUrl } from "../../utils/cardImages";
 
 interface MarketplaceListingCardProps {
   card: Card;
@@ -19,7 +20,7 @@ export default function MarketplaceListingCard({ card, offer, onChat, saving = f
     <article className="flex gap-3 rounded-xl border border-gray-800 bg-gray-900 p-3">
       <Link to={`/marketplace/card/${card.id}`} className="shrink-0" aria-label={`View ${cardTitle(card)} listings`}>
         <img
-          src={card.imageUrl}
+          src={cardImageUrl(card)}
           alt={cardTitle(card)}
           className="h-32 w-[88px] rounded-lg object-cover bg-gray-800"
         />

@@ -4,6 +4,7 @@ import { marketplace as marketplaceApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { MarketplaceEnquiryDetailResponse, MarketplaceMoney } from "../types";
 import { cardTitle, formatMarketplaceMoney, variantLabel } from "../components/marketplace/marketplaceDisplay";
+import { cardImageUrl } from "../utils/cardImages";
 
 function dollarsToMinor(value: string) {
   const amount = Number(value);
@@ -149,7 +150,7 @@ export default function MarketplaceEnquiryPage() {
     <div data-testid="marketplace-enquiry-chat" className="flex min-h-0 flex-1 flex-col bg-gray-950">
       <div className="flex items-center gap-3 border-b border-gray-800 bg-gray-900 px-3 py-2.5">
         <Link to="/marketplace/enquiries" className="px-1 text-xl leading-none text-amber-300 hover:text-amber-200" aria-label="Back to messages">←</Link>
-        <img src={enquiry.card.imageUrl} alt={cardTitle(enquiry.card)} className="h-11 w-8 rounded object-cover bg-gray-800" />
+        <img src={cardImageUrl(enquiry.card)} alt={cardTitle(enquiry.card)} className="h-11 w-8 rounded object-cover bg-gray-800" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-gray-100">{counterparty.username}</p>
           <p className="truncate text-xs text-gray-400">{cardTitle(enquiry.card)} · {variantLabel(enquiry.variant)}</p>
