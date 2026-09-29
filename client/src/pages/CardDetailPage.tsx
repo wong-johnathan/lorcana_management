@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import CardPriceTable from "../components/CardPriceTable";
 import MarketplaceLink from "../components/MarketplaceLink";
 import { formatTimeAgo } from "../utils/format";
+import { cardImageUrl } from "../utils/cardImages";
 
 export default function CardDetailPage() {
   const { cardId } = useParams<{ cardId: string }>();
@@ -93,7 +94,7 @@ export default function CardDetailPage() {
       <div className="flex flex-col md:flex-row gap-6 mb-8">
         <div className="md:w-1/3 shrink-0">
           {card.imageUrl ? (
-            <img src={card.imageUrl} alt={card.name} className="w-full rounded-xl shadow-lg" />
+            <img src={cardImageUrl(card)} alt={card.name} className="w-full rounded-xl shadow-lg" />
           ) : (
             <div className="w-full aspect-[2/3] bg-gray-800 rounded-xl flex items-center justify-center text-gray-500">No image</div>
           )}

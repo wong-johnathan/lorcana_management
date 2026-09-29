@@ -5,6 +5,7 @@ import {
   type InventoryVariant,
   totalInventoryCount,
 } from "../utils/cardVariants";
+import { cardImageUrl } from "../utils/cardImages";
 
 interface CardGridPriceContext {
   variant: string;
@@ -145,7 +146,7 @@ export default function CardGrid({
               <div className="relative">
                 {card.imageUrl ? (
                   <img
-                    src={card.imageUrl}
+                    src={cardImageUrl(card)}
                     alt={`${card.name} - ${card.subtitle}`}
                     className="w-full aspect-[2/3] object-cover"
                     loading="lazy"

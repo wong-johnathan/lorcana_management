@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { PublicExtraForSaleListing, PublicUserProfile } from "../../types";
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, formatCustomPrice } from "./extrasUi";
+import { cardImageUrl } from "../../utils/cardImages";
 
 interface PublicExtrasForSalePanelProps {
   listings: PublicExtraForSaleListing[];
@@ -45,7 +46,7 @@ export default function PublicExtrasForSalePanel({ listings, profile, username, 
           {filteredListings.map((listing) => (
             <div key={listing.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
               <div className="flex gap-4">
-                <img src={listing.card.imageUrl} alt={listing.card.name} className="h-32 w-24 rounded object-cover" />
+                <img src={cardImageUrl(listing.card)} alt={listing.card.name} className="h-32 w-24 rounded object-cover" />
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-gray-100">{listing.card.name}</h3>
                   {listing.card.subtitle && <p className="text-sm text-gray-400">{listing.card.subtitle}</p>}

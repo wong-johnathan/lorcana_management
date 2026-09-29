@@ -31,8 +31,11 @@ model Card {
   abilities       String   @default("")
   cardNumber      String   @default("")
   collectorNumber Int?
-  foilTypes       String[] @default([])
-  imageUrl        String   @default("")
+  foilTypes        String[]  @default([])
+  imageUrl         String    @default("")
+  imageObjectKey   String?
+  imageCachedAt    DateTime?
+  imageContentType String?
 
   inventoryEntries       InventoryEntry[]
   analysis               CardAnalysis?
@@ -48,6 +51,7 @@ model Card {
   @@index([rarity])
   @@index([tcgPlayerId])
   @@index([displayPrice])
+  @@index([imageObjectKey])
 }
 
 model User {

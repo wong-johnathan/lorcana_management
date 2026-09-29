@@ -4,6 +4,7 @@ import { marketplace as marketplaceApi } from "../services/api";
 import type { MarketplaceCardOffersResponse } from "../types";
 import MarketplaceListingCard from "../components/marketplace/MarketplaceListingCard";
 import { cardIdentifier, cardTitle } from "../components/marketplace/marketplaceDisplay";
+import { cardImageUrl } from "../utils/cardImages";
 
 export default function MarketplaceCardPage() {
   const { cardId } = useParams<{ cardId: string }>();
@@ -64,7 +65,7 @@ export default function MarketplaceCardPage() {
       <Link to="/marketplace" className="text-sm text-amber-300 hover:text-amber-200">← Back to marketplace</Link>
       <div className="grid gap-6 md:grid-cols-[200px,1fr]">
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-          <img src={data.card.imageUrl} alt={cardTitle(data.card)} className="w-full rounded-lg bg-gray-800" />
+          <img src={cardImageUrl(data.card)} alt={cardTitle(data.card)} className="w-full rounded-lg bg-gray-800" />
         </div>
         <div className="space-y-2 self-center">
           <h2 className="text-2xl font-semibold text-gray-100">{cardTitle(data.card)}</h2>

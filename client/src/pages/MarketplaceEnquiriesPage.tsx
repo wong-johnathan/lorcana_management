@@ -4,6 +4,7 @@ import { marketplace as marketplaceApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { MarketplaceEnquirySummary, MarketplaceEnquiriesResponse, User } from "../types";
 import { cardTitle, formatMarketplaceMoney, variantLabel } from "../components/marketplace/marketplaceDisplay";
+import { cardImageUrl } from "../utils/cardImages";
 
 function previewFor(enquiry: MarketplaceEnquirySummary, counterparty: User): string {
   if (enquiry.latestOffer) {
@@ -60,7 +61,7 @@ export default function MarketplaceEnquiriesPage() {
           const counterparty = enquiry.buyer.id === user?.id ? enquiry.seller : enquiry.buyer;
           return (
             <Link key={enquiry.id} to={`/marketplace/enquiries/${enquiry.id}`} className="flex items-center gap-3 p-3 hover:bg-gray-800/50">
-              <img src={enquiry.card.imageUrl} alt={cardTitle(enquiry.card)} className="h-14 w-10 shrink-0 rounded object-cover bg-gray-800" />
+              <img src={cardImageUrl(enquiry.card)} alt={cardTitle(enquiry.card)} className="h-14 w-10 shrink-0 rounded object-cover bg-gray-800" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-gray-100">{counterparty.username}</p>

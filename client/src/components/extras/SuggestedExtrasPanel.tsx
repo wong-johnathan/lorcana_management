@@ -3,6 +3,7 @@ import type { InventoryExtrasCard, InventoryVariant, ListingCurrency, Marketplac
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import RetentionOverrideDialog from "./RetentionOverrideDialog";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters, VARIANT_LABELS, formatReferencePrice, LISTING_CURRENCIES, variantQuantity } from "./extrasUi";
+import { cardImageUrl } from "../../utils/cardImages";
 
 const variants: InventoryVariant[] = ["normal", "foil", "holofoil"];
 
@@ -50,7 +51,7 @@ export default function SuggestedExtrasPanel({ cards, autoSuggestExtras, canList
           ) : filteredCards.map((item) => (
         <div key={item.card.id} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
           <div className="flex gap-4">
-            <img src={item.card.imageUrl} alt={item.card.name} className="h-28 w-20 rounded object-cover" />
+            <img src={cardImageUrl(item.card)} alt={item.card.name} className="h-28 w-20 rounded object-cover" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

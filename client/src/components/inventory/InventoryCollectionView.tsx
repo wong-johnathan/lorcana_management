@@ -8,6 +8,7 @@ import {
   type InventoryVariant,
   totalInventoryCount,
 } from "../../utils/cardVariants";
+import { cardImageUrl } from "../../utils/cardImages";
 
 export type InventoryViewMode = "grid" | "rows";
 
@@ -180,7 +181,7 @@ export default function InventoryCollectionView({
                 >
                   {card.imageUrl ? (
                     <img
-                      src={card.imageUrl}
+                      src={cardImageUrl(card)}
                       alt={card.name}
                       className="w-12 h-16 object-cover rounded cursor-pointer hover:ring-2 hover:ring-amber-400 transition-all"
                       loading="lazy"

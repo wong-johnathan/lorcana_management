@@ -28,19 +28,21 @@ Browser React SPA
   -> nginx / Vite dev proxy
   -> Express API on :3001
   -> PostgreSQL via Prisma
-  -> MinIO/S3-compatible object storage for public profile images
+  -> MinIO/S3-compatible object storage for public profile images and cached card artwork
 
 External data paths:
   LorcanaJSON -> allCards.json -> Card table
   tcgcsv.com  -> TcgcsvPriceSnapshot history + CardPrice current cache -> displayPrice on Card
   Search/SearXNG + DeepSeek -> CardAnalysis table
   Profile photos -> MinIO bucket -> https://minio.johnathanwwh.com/<bucket>/<key>
+  Card artwork -> /api/card-images/:cardId -> MinIO card-image bucket, with Card.imageUrl fallback
 ```
 
 The API is mounted under `/api`:
 
 - `/api/auth` — register/login/config.
 - `/api/cards` — card database, filters, card detail, master-set estimates, market analysis.
+- `/api/card-images/:cardId` — app-controlled card artwork URL; serves MinIO/S3 cached copies when present, otherwise fetches `Card.imageUrl`, stores the image, updates card cache metadata, and falls back to the original URL on cache failure.
 - `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, extras suggestions, keep policy/overrides, and bulk trim of extra copies.
 - `/api/extras-for-sale` — authenticated owner Extras for Sale listing CRUD plus bulk list/remove helpers.
 - `/api/sync` — authenticated card sync and price sync, with progress/status endpoints.
@@ -115,7 +117,7 @@ AI market analysis:
 
 Prisma models live in `server/prisma/schema.prisma`:
 
-- `Card` — Lorcana card metadata, image, LorcanaJSON external ID, optional TCGPlayer ID, display price, `foilTypes`, relations to prices/analysis/inventory.
+- `Card` — Lorcana card metadata, original `imageUrl`, optional MinIO/S3 card-image cache metadata (`imageObjectKey`, `imageCachedAt`, `imageContentType`), LorcanaJSON external ID, optional TCGPlayer ID, display price, `foilTypes`, relations to prices/analysis/inventory.
 - `CardPrice` — current per-card price rows by variant with low/mid/high/market prices.
 - `TcgcsvPriceSnapshotRun` / `TcgcsvPriceSnapshot` — daily historical TCGCSV price snapshots keyed by source build timestamp, product ID, and variant. These preserve prices even before LorcanaJSON maps a card to `tcgPlayerId`.
 - `CardAnalysis` — per-card AI market analysis with status and timestamps.

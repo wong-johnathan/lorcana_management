@@ -13,6 +13,10 @@ vi.mock("google-auth-library", () => ({
 
 vi.mock("../src/services/objectStorage.js", () => ({
   deleteProfileImage: vi.fn().mockResolvedValue(undefined),
+  cardImageExists: vi.fn().mockResolvedValue(false),
+  cardImagePublicUrl: vi.fn((key: string) => `/api/profile-images/${key}`),
+  makeCardImageObjectKey: vi.fn((cardId: string) => `card-images/${cardId}/mock.jpg`),
+  uploadCardImage: vi.fn().mockResolvedValue({ objectKey: "card-images/card_1/mock.jpg", publicUrl: "/api/profile-images/card-images/card_1/mock.jpg", contentType: "image/jpeg" }),
   LOCAL_UPLOAD_ROOT: "/tmp/lorcana-profile-test-uploads",
 }));
 

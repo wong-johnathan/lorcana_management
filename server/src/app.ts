@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { authRouter } from "./routes/auth.js";
 import { cardsRouter } from "./routes/cards.js";
+import { cardImagesRouter } from "./routes/cardImages.js";
 import { inventoryRouter } from "./routes/inventory.js";
 import { syncRouter } from "./routes/sync.js";
 import { settingsRouter } from "./routes/settings.js";
@@ -21,6 +22,7 @@ export function createApp() {
 
   app.use("/api/auth", authRouter);
   app.use("/api/cards", cardsRouter);
+  app.use("/api/card-images", cardImagesRouter);
   app.use("/api/inventory", inventoryRouter);
   app.use("/api/sync", syncRouter);
   app.use("/api/settings", settingsRouter);

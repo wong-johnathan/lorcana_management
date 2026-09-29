@@ -3,6 +3,7 @@ import type { CardRetentionOverrideListItem, InventoryPolicy } from "../../types
 import ExtrasFilterBar from "./ExtrasFilterBar";
 import RetentionOverrideDialog, { RetentionKeep } from "./RetentionOverrideDialog";
 import { cardMatchesFilters, deriveExtrasFilterOptions, EMPTY_EXTRAS_FILTERS, ExtrasFilters } from "./extrasUi";
+import { cardImageUrl } from "../../utils/cardImages";
 
 interface ManualOverridesPanelProps {
   overrides: CardRetentionOverrideListItem[];
@@ -40,7 +41,7 @@ export default function ManualOverridesPanel({ overrides, policy, onSave, onRemo
       ) : filtered.map((override) => (
         <div key={override.cardId} className="rounded-lg border border-gray-800 bg-gray-900 p-4">
           <div className="flex gap-4">
-            <img src={override.card.imageUrl} alt={override.card.name} className="h-24 w-16 rounded object-cover" />
+            <img src={cardImageUrl(override.card)} alt={override.card.name} className="h-24 w-16 rounded object-cover" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
