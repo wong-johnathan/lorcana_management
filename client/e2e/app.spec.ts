@@ -331,10 +331,12 @@ test("anonymous user browses database, opens card detail, and runs master-set es
   await expect(page.getByRole("link", { name: /sold/i })).toBeVisible();
 
   // Price history only offers windows the card has data for: 200 days -> no 1Y.
-  await expect(page.getByRole("button", { name: "90D" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "All" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "1Y" })).toHaveCount(0);
-  await expect(page.getByText("Change (90D)")).toBeVisible();
+  // Scope to the chart's own section: other filter bars also expose "All ..." buttons.
+  const priceHistory = page.locator("section").filter({ has: page.getByRole("heading", { name: "Price history" }) }).last();
+  await expect(priceHistory.getByRole("button", { name: "90D", exact: true })).toBeVisible();
+  await expect(priceHistory.getByRole("button", { name: "All", exact: true })).toBeVisible();
+  await expect(priceHistory.getByRole("button", { name: "1Y", exact: true })).toHaveCount(0);
+  await expect(priceHistory.getByText("Change (90D)")).toBeVisible();
 
   await page.goto("/master-set");
   await page.selectOption("select", "The First Chapter");
