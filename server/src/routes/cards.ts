@@ -13,6 +13,8 @@ const BATCH_RARITIES = ["Enchanted", "Special", "Iconic"];
 
 const PRICE_FIELDS = ["lowPrice", "midPrice", "highPrice", "marketPrice"] as const;
 type PriceField = (typeof PRICE_FIELDS)[number];
+const HISTORY_PRICE_FIELDS = ["lowPrice", "midPrice", "highPrice", "marketPrice", "directLowPrice"] as const;
+type HistoryPriceField = (typeof HISTORY_PRICE_FIELDS)[number];
 
 export function parseCsvParam(value: unknown): string[] {
   if (!value || typeof value !== "string") return [];
@@ -25,6 +27,12 @@ export function parseCsvParam(value: unknown): string[] {
 export function toPriceField(value: unknown): PriceField {
   return typeof value === "string" && (PRICE_FIELDS as readonly string[]).includes(value)
     ? (value as PriceField)
+    : "marketPrice";
+}
+
+export function toHistoryPriceField(value: unknown): HistoryPriceField {
+  return typeof value === "string" && (HISTORY_PRICE_FIELDS as readonly string[]).includes(value)
+    ? (value as HistoryPriceField)
     : "marketPrice";
 }
 
@@ -483,12 +491,47 @@ function numericPrice(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function roundMoney(value: number | null): number | null {
+  return value == null ? null : Math.round(value * 100) / 100;
+}
+
+function emptyPriceSummary() {
+  return {
+    current: null,
+    previous: null,
+    low: null,
+    high: null,
+    changeAmount: null,
+    changePercent: null,
+  };
+}
+
+function priceHistorySummary(points: { price: number | null }[]) {
+  const values = points.map((point) => point.price).filter((value): value is number => value != null);
+  if (values.length === 0) return emptyPriceSummary();
+  const current = values.at(-1) ?? null;
+  const previous = values.length > 1 ? values.at(-2) ?? null : null;
+  const changeAmount = current != null && previous != null ? roundMoney(current - previous) : null;
+  const changePercent = current != null && previous != null && previous !== 0
+    ? roundMoney(((current - previous) / previous) * 100)
+    : null;
+  return {
+    current,
+    previous,
+    low: Math.min(...values),
+    high: Math.max(...values),
+    changeAmount,
+    changePercent,
+  };
+}
+
 cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
   try {
     const cardId = req.params.id as string;
     const variant = typeof req.query.variant === "string" && req.query.variant.trim()
       ? req.query.variant.trim()
       : "Normal";
+    const field = toHistoryPriceField(req.query.field);
     const daysParam = typeof req.query.days === "string" ? Number.parseInt(req.query.days, 10) : 90;
     const days = Math.min(730, Math.max(1, Number.isFinite(daysParam) ? daysParam : 90));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -507,9 +550,12 @@ cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
         cardId,
         tcgPlayerId: null,
         variant,
+        field,
         currency: "USD",
+        rangeDays: days,
         points: [],
-        reason: "no_tcgplayer_id",
+        summary: emptyPriceSummary(),
+        emptyReason: "NO_TCGPLAYER_ID",
       });
       return;
     }
@@ -524,19 +570,30 @@ cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
       orderBy: { run: { sourceUpdatedAt: "asc" } },
     });
 
+    const points = rows.map((row) => {
+      const lowPrice = numericPrice(row.lowPrice);
+      const midPrice = numericPrice(row.midPrice);
+      const highPrice = numericPrice(row.highPrice);
+      const marketPrice = numericPrice(row.marketPrice);
+      const directLowPrice = numericPrice(row.directLowPrice);
+      const values = { lowPrice, midPrice, highPrice, marketPrice, directLowPrice };
+      return {
+        sourceUpdatedAt: row.run.sourceUpdatedAt.toISOString(),
+        price: values[field],
+        ...values,
+      };
+    });
+
     res.json({
       cardId,
       tcgPlayerId: card.tcgPlayerId,
       variant,
+      field,
       currency: "USD",
-      points: rows.map((row) => ({
-        sourceUpdatedAt: row.run.sourceUpdatedAt.toISOString(),
-        lowPrice: numericPrice(row.lowPrice),
-        midPrice: numericPrice(row.midPrice),
-        highPrice: numericPrice(row.highPrice),
-        marketPrice: numericPrice(row.marketPrice),
-        directLowPrice: numericPrice(row.directLowPrice),
-      })),
+      rangeDays: days,
+      points,
+      summary: priceHistorySummary(points),
+      ...(points.length === 0 ? { emptyReason: "NO_HISTORY" } : {}),
     });
   } catch (error) {
     console.error("Price history error:", error);

@@ -402,28 +402,60 @@ describe("cards routes", () => {
         highPrice: 3.5,
         marketPrice: 2.75,
         directLowPrice: null,
+        run: { sourceUpdatedAt: new Date("2026-09-24T20:05:42Z") },
+      },
+      {
+        productId: 100,
+        variant: "Normal",
+        lowPrice: 2,
+        midPrice: 3,
+        highPrice: 4,
+        marketPrice: 3.25,
+        directLowPrice: "1.75",
         run: { sourceUpdatedAt: new Date("2026-09-25T20:05:42Z") },
       },
     ]);
 
     await request(app)
       .get("/api/cards/card_1/price-history")
-      .query({ variant: "Normal", days: "365" })
+      .query({ variant: "Normal", field: "marketPrice", days: "365" })
       .expect(200)
       .expect((res) => {
         expect(res.body).toEqual({
           cardId: "card_1",
           tcgPlayerId: 100,
           variant: "Normal",
+          field: "marketPrice",
           currency: "USD",
-          points: [{
-            sourceUpdatedAt: "2026-09-25T20:05:42.000Z",
-            lowPrice: 1.5,
-            midPrice: 2.5,
-            highPrice: 3.5,
-            marketPrice: 2.75,
-            directLowPrice: null,
-          }],
+          rangeDays: 365,
+          points: [
+            {
+              sourceUpdatedAt: "2026-09-24T20:05:42.000Z",
+              price: 2.75,
+              lowPrice: 1.5,
+              midPrice: 2.5,
+              highPrice: 3.5,
+              marketPrice: 2.75,
+              directLowPrice: null,
+            },
+            {
+              sourceUpdatedAt: "2026-09-25T20:05:42.000Z",
+              price: 3.25,
+              lowPrice: 2,
+              midPrice: 3,
+              highPrice: 4,
+              marketPrice: 3.25,
+              directLowPrice: 1.75,
+            },
+          ],
+          summary: {
+            current: 3.25,
+            previous: 2.75,
+            low: 2.75,
+            high: 3.25,
+            changeAmount: 0.5,
+            changePercent: 18.18,
+          },
         });
       });
     expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -431,10 +463,29 @@ describe("cards routes", () => {
       orderBy: { run: { sourceUpdatedAt: "asc" } },
     }));
 
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card_no_history", tcgPlayerId: 101 });
+    prismaMock.tcgcsvPriceSnapshot.findMany.mockResolvedValueOnce([]);
+    await request(app).get("/api/cards/card_no_history/price-history").expect(200).expect((res) => {
+      expect(res.body.points).toEqual([]);
+      expect(res.body.emptyReason).toBe("NO_HISTORY");
+      expect(res.body.summary.current).toBeNull();
+    });
+
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card_direct", tcgPlayerId: 102 });
+    prismaMock.tcgcsvPriceSnapshot.findMany.mockResolvedValueOnce([
+      { productId: 102, variant: "Cold Foil", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null, directLowPrice: 0, run: { sourceUpdatedAt: new Date("2026-09-24T20:05:42Z") } },
+      { productId: 102, variant: "Cold Foil", lowPrice: null, midPrice: null, highPrice: null, marketPrice: null, directLowPrice: 1, run: { sourceUpdatedAt: new Date("2026-09-25T20:05:42Z") } },
+    ]);
+    await request(app).get("/api/cards/card_direct/price-history").query({ variant: "Cold Foil", field: "directLowPrice", days: "9999" }).expect(200).expect((res) => {
+      expect(res.body.rangeDays).toBe(730);
+      expect(res.body.points.map((point: { price: number | null }) => point.price)).toEqual([0, 1]);
+      expect(res.body.summary).toEqual(expect.objectContaining({ current: 1, previous: 0, low: 0, high: 1, changeAmount: 1, changePercent: null }));
+    });
+
     prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card_2", tcgPlayerId: null });
     await request(app).get("/api/cards/card_2/price-history").expect(200).expect((res) => {
       expect(res.body.points).toEqual([]);
-      expect(res.body.reason).toBe("no_tcgplayer_id");
+      expect(res.body.emptyReason).toBe("NO_TCGPLAYER_ID");
     });
   });
 

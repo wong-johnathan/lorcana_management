@@ -9,6 +9,7 @@ import {
 } from "../utils/cardVariants";
 import { cardImageUrl } from "../utils/cardImages";
 import CardPriceTable from "./CardPriceTable";
+import CardPriceHistoryChart from "./CardPriceHistoryChart";
 import MarketplaceLink from "./MarketplaceLink";
 
 interface CardDetailProps {
@@ -57,6 +58,7 @@ export default function CardDetail({
         currentQuantity.holofoilQuantity > 0 ? `${currentQuantity.holofoilQuantity} holofoil` : null,
       ].filter(Boolean)
     : [];
+  const priceHistoryVariants = card.prices.length > 0 ? card.prices.map((price) => price.variant) : ["Normal"];
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -96,6 +98,7 @@ export default function CardDetail({
 
           <div className="md:w-1/2 space-y-3">
             {card.prices.length > 0 && <CardPriceTable prices={card.prices} compact />}
+            <CardPriceHistoryChart cardId={card.id} variants={priceHistoryVariants} />
 
             {/* Market links */}
             <div className="space-y-1.5">

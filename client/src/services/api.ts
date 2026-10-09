@@ -111,7 +111,7 @@ export const cards = {
     return request<PaginatedCards>(`/cards${query}`);
   },
   get: (id: string) => request<Card>(`/cards/${id}`),
-  priceHistory: (id: string, params?: { variant?: string; days?: number }) => {
+  priceHistory: (id: string, params?: { variant?: string; field?: string; days?: number }) => {
     const query = params ? "?" + new URLSearchParams(Object.fromEntries(
       Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])
     )).toString() : "";

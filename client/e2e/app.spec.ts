@@ -111,6 +111,23 @@ async function mockApi(page: Page) {
     if (path === "/api/cards/card_1/analysis") {
       return route.fulfill({ status: 404, json: { status: "none" } });
     }
+    if (path === "/api/cards/card_1/price-history") {
+      return route.fulfill({
+        json: {
+          cardId: "card_1",
+          tcgPlayerId: 12345,
+          variant: url.searchParams.get("variant") || "Normal",
+          field: url.searchParams.get("field") || "marketPrice",
+          currency: "USD",
+          rangeDays: Number(url.searchParams.get("days") || "90"),
+          points: [
+            { sourceUpdatedAt: "2026-01-01T00:00:00.000Z", price: 3.5, lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 3.5, directLowPrice: null },
+            { sourceUpdatedAt: "2026-01-02T00:00:00.000Z", price: 4, lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4, directLowPrice: null },
+          ],
+          summary: { current: 4, previous: 3.5, low: 3.5, high: 4, changeAmount: 0.5, changePercent: 14.2857142857 },
+        },
+      });
+    }
     if (path === "/api/cards/card_1") {
       return route.fulfill({ json: card });
     }
