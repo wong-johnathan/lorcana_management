@@ -119,6 +119,11 @@ async function mockApi(page: Page) {
           currency: "USD",
           currentSourceUpdatedAt: "2026-09-30T20:05:42.000Z",
           previousSourceUpdatedAt: "2026-09-29T20:05:42.000Z",
+          filters: {
+            minPrevPrice: Number(url.searchParams.get("minPrevPrice")) || null,
+            minCurrentPrice: Number(url.searchParams.get("minCurrentPrice")) || null,
+            minChangePercent: Number(url.searchParams.get("minChangePercent")) || null,
+          },
           items: [{ card, variant: "Normal", currentPrice: 10, previousPrice: 5, changeAmount: 5, changePercent: 100 }],
         },
       });
@@ -139,7 +144,10 @@ async function mockApi(page: Page) {
             { sourceUpdatedAt: "2026-01-01T00:00:00.000Z", price: 3.5, lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 3.5, directLowPrice: null },
             { sourceUpdatedAt: "2026-01-02T00:00:00.000Z", price: 4, lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4, directLowPrice: null },
           ],
-          summary: { current: 4, previous: 3.5, low: 3.5, high: 4, changeAmount: 0.5, changePercent: 14.2857142857 },
+          summary: { current: 4, rangeStart: 3.5, low: 3.5, high: 4, changeAmount: 0.5, changePercent: 14.2857142857 },
+          earliestSourceUpdatedAt: "2026-01-01T00:00:00.000Z",
+          latestSourceUpdatedAt: "2026-01-02T00:00:00.000Z",
+          availableDays: 200,
         },
       });
     }
@@ -291,6 +299,12 @@ test("anonymous user views phase-one price movers", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Price Movers" })).toBeVisible();
   await expect(page.getByText("Mickey Mouse")).toBeVisible();
   await expect(page.getByText("+$5.00 / +100.00%")).toBeVisible();
+
+  await page.getByLabel("Min previous $").fill("5");
+  await expect(page.getByText("Mickey Mouse")).toBeVisible();
+
+  await page.getByLabel("Rarity").selectOption("Enchanted");
+  await expect(page.getByText("Enchanted, Epic and Iconic cards are Holofoil-only printings")).toBeVisible();
 });
 
 test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ page }) => {
@@ -315,6 +329,12 @@ test("anonymous user browses database, opens card detail, and runs master-set es
   await page.getByText("Mickey Mouse").first().click();
   await expect(page.getByRole("heading", { name: "Mickey Mouse" })).toBeVisible();
   await expect(page.getByRole("link", { name: /sold/i })).toBeVisible();
+
+  // Price history only offers windows the card has data for: 200 days -> no 1Y.
+  await expect(page.getByRole("button", { name: "90D" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "1Y" })).toHaveCount(0);
+  await expect(page.getByText("Change (90D)")).toBeVisible();
 
   await page.goto("/master-set");
   await page.selectOption("select", "The First Chapter");

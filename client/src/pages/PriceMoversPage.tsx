@@ -26,8 +26,10 @@ const FIELDS: Array<{ value: PriceMoverField; label: string }> = [
   { value: "directLowPrice", label: "Direct Low" },
 ];
 
-const VARIANTS = ["Normal", "Cold Foil", "Holofoil", "all"];
+const VARIANTS = ["all", "Normal", "Cold Foil", "Holofoil"];
 const RARITIES = ["all", "Common", "Uncommon", "Rare", "Super Rare", "Legendary", "Enchanted", "Epic", "Iconic", "Promo", "Special"];
+// These rarities only ever exist as premium foil printings in TCGCSV, so a "Normal" variant filter hides them.
+const PREMIUM_RARITIES = ["Enchanted", "Epic", "Iconic"];
 
 function money(value: number): string {
   return value < 0 ? `-$${Math.abs(value).toFixed(2)}` : `$${value.toFixed(2)}`;
@@ -44,18 +46,26 @@ function percent(value: number | null): string {
   return `${prefix}${value.toFixed(2)}%`;
 }
 
-function emptyCopy(reason?: PriceMoversResponse["emptyReason"]): string {
-  if (reason === "NO_COMPLETED_RUNS") return "No completed price snapshots yet. Run Sync Prices to capture market history.";
-  if (reason === "NO_COMPARISON_RUN") return "There is no older snapshot for this range yet. Try 24H or wait for more daily snapshots.";
-  return "No price movers found for this selection.";
+function emptyCopy(data: PriceMoversResponse | null): string {
+  if (data?.emptyReason === "NO_COMPLETED_RUNS") return "No completed price snapshots yet. Run Sync Prices to capture market history.";
+  if (data?.emptyReason === "NO_COMPARISON_RUN") {
+    const since = data.earliestSourceUpdatedAt ? new Date(data.earliestSourceUpdatedAt).toLocaleString() : null;
+    return since
+      ? `Price history only goes back to ${since}, so this window has no earlier snapshot to compare against. Try 24H or 7D, or wait for more daily snapshots.`
+      : "There is no older snapshot for this range yet. Try 24H or wait for more daily snapshots.";
+  }
+  return "No price movers match these filters. Try lowering the minimum price, widening the variant, or using a longer window.";
 }
 
 export default function PriceMoversPage() {
   const [type, setType] = useState<PriceMoverType>("gainers");
   const [windowRange, setWindowRange] = useState<PriceMoverWindow>("24h");
-  const [variant, setVariant] = useState("Normal");
+  const [variant, setVariant] = useState("all");
   const [rarity, setRarity] = useState("all");
   const [field, setField] = useState<PriceMoverField>("marketPrice");
+  const [minPrevPrice, setMinPrevPrice] = useState("");
+  const [minCurrentPrice, setMinCurrentPrice] = useState("");
+  const [minChangePercent, setMinChangePercent] = useState("");
   const [data, setData] = useState<PriceMoversResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,14 +74,25 @@ export default function PriceMoversPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    cardsApi.priceMovers({ window: windowRange, type, variant, rarity, field, limit: 50 })
+    cardsApi.priceMovers({
+      window: windowRange,
+      type,
+      variant,
+      rarity,
+      field,
+      limit: 50,
+      ...(minPrevPrice.trim() ? { minPrevPrice: minPrevPrice.trim() } : {}),
+      ...(minCurrentPrice.trim() ? { minCurrentPrice: minCurrentPrice.trim() } : {}),
+      ...(minChangePercent.trim() ? { minChangePercent: minChangePercent.trim() } : {}),
+    })
       .then((response) => { if (active) setData(response); })
       .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Failed to load price movers"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [windowRange, type, variant, rarity, field]);
+  }, [windowRange, type, variant, rarity, field, minPrevPrice, minCurrentPrice, minChangePercent]);
 
   const activeType = useMemo(() => MOVER_TYPES.find((item) => item.value === type) ?? MOVER_TYPES[0], [type]);
+  const premiumRaritySelected = PREMIUM_RARITIES.includes(rarity);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
@@ -116,6 +137,58 @@ export default function PriceMoversPage() {
           </div>
         </div>
 
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="text-xs text-gray-400">
+            Min previous $
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={minPrevPrice}
+              onChange={(event) => setMinPrevPrice(event.target.value)}
+              placeholder="any"
+              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100"
+            />
+          </label>
+          <label className="text-xs text-gray-400">
+            Min current $
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={minCurrentPrice}
+              onChange={(event) => setMinCurrentPrice(event.target.value)}
+              placeholder="any"
+              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100"
+            />
+          </label>
+          <label className="text-xs text-gray-400">
+            Min % move
+            <input
+              type="number"
+              min="0"
+              step="1"
+              inputMode="decimal"
+              value={minChangePercent}
+              onChange={(event) => setMinChangePercent(event.target.value)}
+              placeholder="any"
+              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100"
+            />
+          </label>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          Minimums filter out low-value noise. “Min % move” ignores the sign, so it applies to gainers and losers alike.
+        </p>
+
+        {premiumRaritySelected && (
+          <p className="text-xs text-amber-300">
+            Enchanted, Epic and Iconic cards are Holofoil-only printings — use “All variants” or “Holofoil” to see them.
+          </p>
+        )}
+
         <div className="flex flex-wrap gap-2">
           {MOVER_TYPES.map((option) => (
             <button
@@ -135,7 +208,7 @@ export default function PriceMoversPage() {
       ) : error ? (
         <div className="rounded-xl border border-red-900/60 bg-red-950/40 p-4 text-sm text-red-200">{error}</div>
       ) : !data || data.items.length === 0 ? (
-        <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">{emptyCopy(data?.emptyReason)}</div>
+        <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">{emptyCopy(data)}</div>
       ) : (
         <div className="space-y-3">
           <div className="text-xs text-gray-500">

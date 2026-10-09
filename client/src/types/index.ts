@@ -440,7 +440,8 @@ export interface CardPriceHistoryPoint {
 
 export interface CardPriceHistorySummary {
   current: number | null;
-  previous: number | null;
+  /** First priced point inside the selected range — the baseline changeAmount/changePercent compare against. */
+  rangeStart: number | null;
   low: number | null;
   high: number | null;
   changeAmount: number | null;
@@ -456,6 +457,11 @@ export interface CardPriceHistory {
   rangeDays: number;
   points: CardPriceHistoryPoint[];
   summary: CardPriceHistorySummary;
+  /** Earliest snapshot that has a price for this variant/field, across all history. */
+  earliestSourceUpdatedAt: string | null;
+  latestSourceUpdatedAt: string | null;
+  /** Day span the card's stored history actually covers, so the UI can hide unsupported ranges. */
+  availableDays: number;
   emptyReason?: "NO_TCGPLAYER_ID" | "NO_HISTORY" | "NO_VARIANT_HISTORY";
 }
 
@@ -472,6 +478,12 @@ export interface PriceMoverItem {
   changePercent: number | null;
 }
 
+export interface PriceMoverMinFilters {
+  minPrevPrice: number | null;
+  minCurrentPrice: number | null;
+  minChangePercent: number | null;
+}
+
 export interface PriceMoversResponse {
   window: PriceMoverWindow;
   type: PriceMoverType;
@@ -481,6 +493,8 @@ export interface PriceMoversResponse {
   currency: "USD";
   currentSourceUpdatedAt: string | null;
   previousSourceUpdatedAt: string | null;
+  earliestSourceUpdatedAt?: string | null;
+  filters?: PriceMoverMinFilters;
   items: PriceMoverItem[];
   emptyReason?: "NO_COMPLETED_RUNS" | "NO_COMPARISON_RUN" | "NO_MOVERS";
 }
