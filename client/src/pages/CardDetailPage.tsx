@@ -5,6 +5,7 @@ import { cards as cardsApi, analysis as analysisApi } from "../services/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CardPriceTable from "../components/CardPriceTable";
+import CardPriceHistoryChart from "../components/CardPriceHistoryChart";
 import MarketplaceLink from "../components/MarketplaceLink";
 import { formatTimeAgo } from "../utils/format";
 import { cardImageUrl } from "../utils/cardImages";
@@ -75,6 +76,7 @@ export default function CardDetailPage() {
   }
 
   const shortNumber = card.cardNumber.split("•")[0]?.trim() || card.cardNumber;
+  const priceHistoryVariants = card.prices.length > 0 ? card.prices.map((price) => price.variant) : ["Normal"];
 
   const tierColor = (tier: string | null) => {
     if (tier === "S-Grade") return { bg: "bg-yellow-900/30", border: "border-yellow-600/50", badge: "bg-yellow-700/50 text-yellow-300", bar: "bg-yellow-400" };
@@ -174,6 +176,8 @@ export default function CardDetailPage() {
               <CardPriceTable prices={card.prices} />
             </div>
           )}
+
+          <CardPriceHistoryChart cardId={card.id} variants={priceHistoryVariants} />
 
           {/* Market links */}
           <div className="flex flex-wrap gap-2">
