@@ -10,6 +10,10 @@ import type {
   PublicCollection,
   CardAnalysis,
   CardPriceHistory,
+  PriceMoverField,
+  PriceMoverType,
+  PriceMoverWindow,
+  PriceMoversResponse,
   MasterSetEstimate,
   SyncStatus,
   UserProfile,
@@ -111,6 +115,12 @@ export const cards = {
     return request<PaginatedCards>(`/cards${query}`);
   },
   get: (id: string) => request<Card>(`/cards/${id}`),
+  priceMovers: (params?: { window?: PriceMoverWindow; type?: PriceMoverType; variant?: string; field?: PriceMoverField; limit?: number }) => {
+    const query = params ? "?" + new URLSearchParams(Object.fromEntries(
+      Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])
+    )).toString() : "";
+    return request<PriceMoversResponse>(`/cards/price-movers${query}`);
+  },
   priceHistory: (id: string, params?: { variant?: string; field?: string; days?: number }) => {
     const query = params ? "?" + new URLSearchParams(Object.fromEntries(
       Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])

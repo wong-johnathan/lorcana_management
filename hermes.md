@@ -41,7 +41,7 @@ External data paths:
 The API is mounted under `/api`:
 
 - `/api/auth` — register/login/config.
-- `/api/cards` — card database, filters, card detail, master-set estimates, market analysis, and per-card TCGCSV price history (`/:id/price-history`) with variant/field/range controls, summary metrics, and empty reasons.
+- `/api/cards` — card database, filters, card detail, master-set estimates, market analysis, global TCGCSV price movers (`/price-movers`), and per-card TCGCSV price history (`/:id/price-history`) with variant/field/range controls, summary metrics, and empty reasons.
 - `/api/card-images/:cardId` — app-controlled card artwork URL; serves MinIO/S3 cached copies when present, otherwise fetches `Card.imageUrl`, stores the image, updates card cache metadata, and falls back to the original URL on cache failure.
 - `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, extras suggestions, keep policy/overrides, and bulk trim of extra copies.
 - `/api/extras-for-sale` — authenticated owner Extras for Sale listing CRUD plus bulk list/remove helpers.
@@ -61,6 +61,9 @@ The API is mounted under `/api`:
   - Estimates selected rarities and selected variants using configurable price field (`marketPrice`, `lowPrice`, `midPrice`, `highPrice`).
   - User-facing `Foil` aliases price rows like `Foil`, `Cold Foil`, and `Holofoil` where needed.
   - Drilldowns open in-page card-grid modals and support CSV export.
+- `/market-movers` — Phase 1 global price movement leaderboard backed by `TcgcsvPriceSnapshot`.
+  - Controls: window (`24h`, `7d`, `30d`, `90d`), movement type (`gainers`, `losers`, `volatile`, `dollars`), variant (`Normal`, `Cold Foil`, `Holofoil`, or all), and price field.
+  - It is market-wide only; inventory/portfolio gain-loss views are a later phase.
 - `/collection/:userId` — public read-only collection share page.
   - Only visible when the owner enables sharing in settings.
   - Reuses the database-style card grid and filters, but must remain read-only: no add/remove/wipe/stepper controls.
@@ -142,7 +145,7 @@ High-level completed work in this repo:
 - Card database with rich filters, pagination, numeric set/card ordering, card detail modals, and price/analysis filters.
 - Personal inventory CRUD with normal/foil/holofoil counts, value stats, CSV export, and wipe support.
 - Variant-aware inventory controls based on LorcanaJSON `foilTypes`.
-- tcgcsv bulk price sync with scheduled daily refresh at 21:00 UTC, startup freshness check, current-price cache updates, daily historical snapshot storage, and a CardDetail price-history chart backed by `TcgcsvPriceSnapshot`.
+- tcgcsv bulk price sync with scheduled daily refresh at 21:00 UTC, startup freshness check, current-price cache updates, daily historical snapshot storage, a global `/market-movers` price movement leaderboard, and a CardDetail price-history chart backed by `TcgcsvPriceSnapshot`.
 - AI per-card market analysis and admin batch analysis for selected rarities.
 - Public collection sharing with read-only database-style card grid.
 - Master-set cost calculator with variant/rarity selection, price-field selection, drilldown modals, and CSV export.

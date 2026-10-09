@@ -108,6 +108,20 @@ async function mockApi(page: Page) {
         },
       });
     }
+    if (path === "/api/cards/price-movers") {
+      return route.fulfill({
+        json: {
+          window: url.searchParams.get("window") || "24h",
+          type: url.searchParams.get("type") || "gainers",
+          variant: url.searchParams.get("variant") || "Normal",
+          field: url.searchParams.get("field") || "marketPrice",
+          currency: "USD",
+          currentSourceUpdatedAt: "2026-09-30T20:05:42.000Z",
+          previousSourceUpdatedAt: "2026-09-29T20:05:42.000Z",
+          items: [{ card, variant: "Normal", currentPrice: 10, previousPrice: 5, changeAmount: 5, changePercent: 100 }],
+        },
+      });
+    }
     if (path === "/api/cards/card_1/analysis") {
       return route.fulfill({ status: 404, json: { status: "none" } });
     }
@@ -269,6 +283,13 @@ async function mockApi(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
+});
+
+test("anonymous user views phase-one price movers", async ({ page }) => {
+  await page.goto("/market-movers");
+  await expect(page.getByRole("heading", { name: "Price Movers" })).toBeVisible();
+  await expect(page.getByText("Mickey Mouse")).toBeVisible();
+  await expect(page.getByText("+$5.00 / +100.00%")).toBeVisible();
 });
 
 test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ page }) => {

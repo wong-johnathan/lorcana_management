@@ -525,6 +525,164 @@ function priceHistorySummary(points: { price: number | null }[]) {
   };
 }
 
+const PRICE_MOVER_WINDOWS = {
+  "24h": 1,
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+} as const;
+
+type PriceMoverWindow = keyof typeof PRICE_MOVER_WINDOWS;
+type PriceMoverType = "gainers" | "losers" | "volatile" | "dollars";
+
+export function toPriceMoverWindow(value: unknown): PriceMoverWindow {
+  return typeof value === "string" && value in PRICE_MOVER_WINDOWS ? value as PriceMoverWindow : "24h";
+}
+
+export function toPriceMoverType(value: unknown): PriceMoverType {
+  return typeof value === "string" && ["gainers", "losers", "volatile", "dollars"].includes(value)
+    ? value as PriceMoverType
+    : "gainers";
+}
+
+export function toMoverLimit(value: unknown): number {
+  const parsed = typeof value === "string" ? Number.parseInt(value, 10) : 50;
+  return Math.min(100, Math.max(1, Number.isFinite(parsed) ? parsed : 50));
+}
+
+export function priceMoverSort(type: PriceMoverType) {
+  return (a: { changeAmount: number; changePercent: number | null }, b: { changeAmount: number; changePercent: number | null }) => {
+    if (type === "losers") {
+      return (a.changePercent ?? 0) - (b.changePercent ?? 0) || a.changeAmount - b.changeAmount;
+    }
+    if (type === "volatile") {
+      return Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0) || Math.abs(b.changeAmount) - Math.abs(a.changeAmount);
+    }
+    if (type === "dollars") {
+      return Math.abs(b.changeAmount) - Math.abs(a.changeAmount) || Math.abs(b.changePercent ?? 0) - Math.abs(a.changePercent ?? 0);
+    }
+    return (b.changePercent ?? 0) - (a.changePercent ?? 0) || b.changeAmount - a.changeAmount;
+  };
+}
+
+cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
+  try {
+    const window = toPriceMoverWindow(req.query.window);
+    const type = toPriceMoverType(req.query.type);
+    const field = toHistoryPriceField(req.query.field);
+    const limit = toMoverLimit(req.query.limit);
+    const requestedVariant = typeof req.query.variant === "string" && req.query.variant.trim()
+      ? req.query.variant.trim()
+      : "Normal";
+    const allVariants = requestedVariant.toLowerCase() === "all";
+
+    const latestRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
+      where: { categoryId: 71, status: "COMPLETED" },
+      orderBy: { sourceUpdatedAt: "desc" },
+    });
+
+    if (!latestRun) {
+      res.json({
+        window,
+        type,
+        variant: requestedVariant,
+        field,
+        currency: "USD",
+        currentSourceUpdatedAt: null,
+        previousSourceUpdatedAt: null,
+        items: [],
+        emptyReason: "NO_COMPLETED_RUNS",
+      });
+      return;
+    }
+
+    const targetDate = new Date(latestRun.sourceUpdatedAt.getTime() - PRICE_MOVER_WINDOWS[window] * 24 * 60 * 60 * 1000);
+    const previousRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
+      where: {
+        categoryId: 71,
+        status: "COMPLETED",
+        sourceUpdatedAt: window === "24h"
+          ? { lt: latestRun.sourceUpdatedAt }
+          : { lte: targetDate },
+      },
+      orderBy: { sourceUpdatedAt: "desc" },
+    });
+
+    if (!previousRun) {
+      res.json({
+        window,
+        type,
+        variant: requestedVariant,
+        field,
+        currency: "USD",
+        currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),
+        previousSourceUpdatedAt: null,
+        items: [],
+        emptyReason: "NO_COMPARISON_RUN",
+      });
+      return;
+    }
+
+    const snapshotWhere = (runId: number) => ({
+      runId,
+      ...(allVariants ? {} : { variant: requestedVariant }),
+    });
+
+    const [currentRows, previousRows] = await Promise.all([
+      prisma.tcgcsvPriceSnapshot.findMany({ where: snapshotWhere(latestRun.id) }),
+      prisma.tcgcsvPriceSnapshot.findMany({ where: snapshotWhere(previousRun.id) }),
+    ]);
+
+    const previousByProductVariant = new Map(
+      previousRows.map((row) => [`${row.productId}:${row.variant}`, row])
+    );
+    const productIds = [...new Set(currentRows.map((row) => row.productId))];
+    const cards = await prisma.card.findMany({
+      where: { tcgPlayerId: { in: productIds } },
+      include: { prices: true },
+    });
+    const cardsByTcgPlayerId = new Map(cards.map((card) => [card.tcgPlayerId, card]));
+
+    const items = currentRows.flatMap((currentRow) => {
+      const previousRow = previousByProductVariant.get(`${currentRow.productId}:${currentRow.variant}`);
+      if (!previousRow) return [];
+      const card = cardsByTcgPlayerId.get(currentRow.productId);
+      if (!card) return [];
+      const currentPrice = numericPrice((currentRow as any)[field]);
+      const previousPrice = numericPrice((previousRow as any)[field]);
+      if (currentPrice == null || previousPrice == null) return [];
+      const changeAmount = roundMoney(currentPrice - previousPrice);
+      if (changeAmount == null || changeAmount === 0) return [];
+      if (type === "gainers" && changeAmount <= 0) return [];
+      if (type === "losers" && changeAmount >= 0) return [];
+      const changePercent = previousPrice !== 0 ? roundMoney((changeAmount / previousPrice) * 100) : null;
+      return [{
+        card,
+        variant: currentRow.variant,
+        currentPrice,
+        previousPrice,
+        changeAmount,
+        changePercent,
+      }];
+    }).sort(priceMoverSort(type)).slice(0, limit);
+
+    res.json({
+      window,
+      type,
+      variant: requestedVariant,
+      field,
+      currency: "USD",
+      currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),
+      previousSourceUpdatedAt: previousRun.sourceUpdatedAt.toISOString(),
+      items,
+      ...(items.length === 0 ? { emptyReason: "NO_MOVERS" } : {}),
+    });
+  } catch (error) {
+    console.error("Price movers error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
   try {
     const cardId = req.params.id as string;

@@ -13,6 +13,7 @@ import MarketplacePage from "./pages/MarketplacePage";
 import MarketplaceCardPage from "./pages/MarketplaceCardPage";
 import MarketplaceEnquiriesPage from "./pages/MarketplaceEnquiriesPage";
 import MarketplaceEnquiryPage from "./pages/MarketplaceEnquiryPage";
+import PriceMoversPage from "./pages/PriceMoversPage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -30,6 +31,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/database" element={<DatabasePage />} />
         <Route path="/database/:cardId" element={<CardDetailPage />} />
+        <Route path="/market-movers" element={<PriceMoversPage />} />
         <Route path="/master-set" element={<MasterSetPage />} />
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/marketplace/card/:cardId" element={<MarketplaceCardPage />} />
