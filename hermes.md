@@ -62,7 +62,7 @@ The API is mounted under `/api`:
   - User-facing `Foil` aliases price rows like `Foil`, `Cold Foil`, and `Holofoil` where needed.
   - Drilldowns open in-page card-grid modals and support CSV export.
 - `/market-movers` — Phase 1 global price movement leaderboard backed by `TcgcsvPriceSnapshot`.
-  - Controls: window (`24h`, `7d`, `30d`, `90d`), movement type (`gainers`, `losers`, `volatile`, `dollars`), variant (`Normal`, `Cold Foil`, `Holofoil`, or all), and price field.
+  - Controls: window (`24h`, `7d`, `30d`, `90d`), movement type (`gainers`, `losers`, `volatile`, `dollars`), variant (`Normal`, `Cold Foil`, `Holofoil`, or all), rarity (`Common` through `Iconic`/`Enchanted`/`Epic`, or all), and price field.
   - It is market-wide only; inventory/portfolio gain-loss views are a later phase.
 - `/collection/:userId` — public read-only collection share page.
   - Only visible when the owner enables sharing in settings.
