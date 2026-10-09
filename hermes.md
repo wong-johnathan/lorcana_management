@@ -42,6 +42,8 @@ The API is mounted under `/api`:
 
 - `/api/auth` — register/login/config.
 - `/api/cards` — card database, filters, card detail, master-set estimates, market analysis, global TCGCSV price movers (`/price-movers`), and per-card TCGCSV price history (`/:id/price-history`) with variant/field/range controls, summary metrics, and empty reasons.
+  - Price history reports `rangeStart` (the first priced point inside the selected range), so `changeAmount`/`changePercent` describe the whole window rather than the last two snapshots — a flat final day must not report 0.00% while the range moved.
+  - It also reports `earliestSourceUpdatedAt`, `latestSourceUpdatedAt`, and `availableDays` (the day span the card's stored history actually covers). The chart hides range buttons wider than `availableDays` and offers `All` instead, so a window with no history is never selectable.
 - `/api/card-images/:cardId` — app-controlled card artwork URL; serves MinIO/S3 cached copies when present, otherwise fetches `Card.imageUrl`, stores the image, updates card cache metadata, and falls back to the original URL on cache failure.
 - `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, extras suggestions, keep policy/overrides, and bulk trim of extra copies.
 - `/api/extras-for-sale` — authenticated owner Extras for Sale listing CRUD plus bulk list/remove helpers.
@@ -62,7 +64,9 @@ The API is mounted under `/api`:
   - User-facing `Foil` aliases price rows like `Foil`, `Cold Foil`, and `Holofoil` where needed.
   - Drilldowns open in-page card-grid modals and support CSV export.
 - `/market-movers` — Phase 1 global price movement leaderboard backed by `TcgcsvPriceSnapshot`.
-  - Controls: window (`24h`, `7d`, `30d`, `90d`), movement type (`gainers`, `losers`, `volatile`, `dollars`), variant (`Normal`, `Cold Foil`, `Holofoil`, or all), rarity (`Common` through `Iconic`/`Enchanted`/`Epic`, or all), and price field.
+  - Controls: window (`24h`, `7d`, `30d`, `90d`), movement type (`gainers`, `losers`, `volatile`, `dollars`), variant (defaults to all variants), rarity (`Common` through `Iconic`/`Enchanted`/`Epic`, or all), price field, and minimum thresholds (`minPrevPrice`, `minCurrentPrice`, `minChangePercent`, where the percent minimum ignores sign).
+  - Variant defaults to all variants because Enchanted/Epic/Iconic cards are Holofoil-only printings in TCGCSV; pinning `Normal` silently hides them and the UI shows an inline hint when a premium rarity is selected.
+  - Windows longer than the captured history return `NO_COMPARISON_RUN` with `earliestSourceUpdatedAt`, and the UI explains that history only goes back that far. Snapshot history currently starts around 2026-09-30, so `30d`/`90d` stay empty until daily snapshots accumulate.
   - It is market-wide only; inventory/portfolio gain-loss views are a later phase.
 - `/collection/:userId` — public read-only collection share page.
   - Only visible when the owner enables sharing in settings.

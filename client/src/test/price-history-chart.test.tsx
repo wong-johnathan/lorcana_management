@@ -27,12 +27,15 @@ const historyResponse = {
   ],
   summary: {
     current: 3.25,
-    previous: 2.75,
+    rangeStart: 2.75,
     low: 2.75,
     high: 3.25,
     changeAmount: 0.5,
     changePercent: 18.18,
   },
+  earliestSourceUpdatedAt: "2025-09-25T00:00:00.000Z",
+  latestSourceUpdatedAt: "2026-09-25T00:00:00.000Z",
+  availableDays: 400,
 };
 
 beforeEach(() => {
@@ -63,7 +66,7 @@ describe("CardPriceHistoryChart", () => {
       ...historyResponse,
       tcgPlayerId: null,
       points: [],
-      summary: { current: null, previous: null, low: null, high: null, changeAmount: null, changePercent: null },
+      summary: { current: null, rangeStart: null, low: null, high: null, changeAmount: null, changePercent: null },
       emptyReason: "NO_TCGPLAYER_ID",
     });
 
@@ -81,7 +84,7 @@ describe("CardPriceHistoryChart", () => {
         { sourceUpdatedAt: "2026-09-24T00:00:00.000Z", price: 10, lowPrice: 9, midPrice: 10, highPrice: 11, marketPrice: 10, directLowPrice: null },
         { sourceUpdatedAt: "2026-09-25T00:00:00.000Z", price: 8, lowPrice: 7, midPrice: 8, highPrice: 9, marketPrice: 8, directLowPrice: null },
       ],
-      summary: { current: 8, previous: 10, low: 8, high: 10, changeAmount: -2, changePercent: -20 },
+      summary: { current: 8, rangeStart: 10, low: 8, high: 10, changeAmount: -2, changePercent: -20 },
     });
 
     const { rerender } = render(<CardPriceHistoryChart cardId="card_down" variants={[]} />);
@@ -92,7 +95,7 @@ describe("CardPriceHistoryChart", () => {
     priceHistoryMock.mockResolvedValueOnce({
       ...historyResponse,
       points: [{ sourceUpdatedAt: "2026-09-25T00:00:00.000Z", price: 1.75, lowPrice: null, midPrice: null, highPrice: null, marketPrice: null, directLowPrice: 1.75 }],
-      summary: { current: 1.75, previous: null, low: 1.75, high: 1.75, changeAmount: null, changePercent: null },
+      summary: { current: 1.75, rangeStart: null, low: 1.75, high: 1.75, changeAmount: null, changePercent: null },
     });
     await userEvent.selectOptions(screen.getByLabelText("History price field"), "directLowPrice");
     await waitFor(() => expect(priceHistoryMock).toHaveBeenLastCalledWith("card_down", { variant: "Normal", field: "directLowPrice", days: 90 }));
@@ -102,5 +105,33 @@ describe("CardPriceHistoryChart", () => {
     priceHistoryMock.mockRejectedValueOnce(new Error("history offline"));
     rerender(<CardPriceHistoryChart cardId="card_error" variants={["Normal"]} />);
     expect(await screen.findByText("history offline")).toBeInTheDocument();
+  });
+
+  it("only offers ranges the card actually has history for", async () => {
+    priceHistoryMock.mockResolvedValue({ ...historyResponse, availableDays: 9 });
+
+    render(<CardPriceHistoryChart cardId="card_shallow" variants={["Normal"]} />);
+
+    await waitFor(() => expect(priceHistoryMock).toHaveBeenLastCalledWith("card_shallow", { variant: "Normal", field: "marketPrice", days: 730 }));
+
+    expect(screen.queryByRole("button", { name: "30D" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "90D" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "1Y" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(screen.getByText("Change (All)")).toBeInTheDocument();
+  });
+
+  it("adds an All range when history is longer than the standard windows", async () => {
+    priceHistoryMock.mockResolvedValue({ ...historyResponse, availableDays: 200 });
+
+    render(<CardPriceHistoryChart cardId="card_deep" variants={["Normal"]} />);
+
+    await waitFor(() => expect(priceHistoryMock).toHaveBeenCalledWith("card_deep", { variant: "Normal", field: "marketPrice", days: 90 }));
+
+    expect(screen.getByRole("button", { name: "30D" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "90D" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "1Y" })).not.toBeInTheDocument();
+    expect(screen.getByText("Change (90D)")).toBeInTheDocument();
   });
 });

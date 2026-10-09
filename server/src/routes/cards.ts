@@ -498,7 +498,7 @@ function roundMoney(value: number | null): number | null {
 function emptyPriceSummary() {
   return {
     current: null,
-    previous: null,
+    rangeStart: null,
     low: null,
     high: null,
     changeAmount: null,
@@ -506,23 +506,41 @@ function emptyPriceSummary() {
   };
 }
 
+/**
+ * Summary for the selected range.
+ *
+ * `changeAmount`/`changePercent` compare the latest price against the FIRST priced point
+ * in the range, so the figure matches the trend the chart draws. Using the previous
+ * snapshot instead would show 0.00% whenever the last two days happened to be flat,
+ * even while the range moved.
+ */
 function priceHistorySummary(points: { price: number | null }[]) {
   const values = points.map((point) => point.price).filter((value): value is number => value != null);
   if (values.length === 0) return emptyPriceSummary();
   const current = values.at(-1) ?? null;
-  const previous = values.length > 1 ? values.at(-2) ?? null : null;
-  const changeAmount = current != null && previous != null ? roundMoney(current - previous) : null;
-  const changePercent = current != null && previous != null && previous !== 0
-    ? roundMoney(((current - previous) / previous) * 100)
+  const rangeStart = values.length > 1 ? values[0] : null;
+  const changeAmount = current != null && rangeStart != null ? roundMoney(current - rangeStart) : null;
+  const changePercent = current != null && rangeStart != null && rangeStart !== 0
+    ? roundMoney(((current - rangeStart) / rangeStart) * 100)
     : null;
   return {
     current,
-    previous,
+    rangeStart,
     low: Math.min(...values),
     high: Math.max(...values),
     changeAmount,
     changePercent,
   };
+}
+
+/** Day span covered by the priced points, or 0 when there is nothing to span. */
+export function priceHistoryAvailableDays(points: { sourceUpdatedAt: string; price: number | null }[]): number {
+  const priced = points.filter((point) => point.price != null);
+  if (priced.length === 0) return 0;
+  const first = Date.parse(priced[0].sourceUpdatedAt);
+  const last = Date.parse(priced[priced.length - 1].sourceUpdatedAt);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return 0;
+  return Math.max(0, Math.ceil((last - first) / (24 * 60 * 60 * 1000)));
 }
 
 const PRICE_MOVER_WINDOWS = {
@@ -548,6 +566,36 @@ export function toPriceMoverType(value: unknown): PriceMoverType {
 export function toMoverLimit(value: unknown): number {
   const parsed = typeof value === "string" ? Number.parseInt(value, 10) : 50;
   return Math.min(100, Math.max(1, Number.isFinite(parsed) ? parsed : 50));
+}
+
+export function toMoverMin(value: unknown): number | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export interface PriceMoverMinFilters {
+  minPrevPrice: number | null;
+  minCurrentPrice: number | null;
+  minChangePercent: number | null;
+}
+
+export function toPriceMoverMinFilters(query: Record<string, unknown>): PriceMoverMinFilters {
+  return {
+    minPrevPrice: toMoverMin(query.minPrevPrice),
+    minCurrentPrice: toMoverMin(query.minCurrentPrice),
+    minChangePercent: toMoverMin(query.minChangePercent),
+  };
+}
+
+export function passesPriceMoverMinFilters(
+  item: { currentPrice: number; previousPrice: number; changePercent: number | null },
+  filters: PriceMoverMinFilters,
+): boolean {
+  if (filters.minPrevPrice != null && item.previousPrice < filters.minPrevPrice) return false;
+  if (filters.minCurrentPrice != null && item.currentPrice < filters.minCurrentPrice) return false;
+  if (filters.minChangePercent != null && Math.abs(item.changePercent ?? 0) < filters.minChangePercent) return false;
+  return true;
 }
 
 export function priceMoverSort(type: PriceMoverType) {
@@ -579,6 +627,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       ? req.query.rarity.trim()
       : "all";
     const rarityFilter = requestedRarity.toLowerCase() === "all" ? null : requestedRarity;
+    const filters = toPriceMoverMinFilters(req.query as Record<string, unknown>);
 
     const latestRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
       where: { categoryId: 71, status: "COMPLETED" },
@@ -595,6 +644,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         currency: "USD",
         currentSourceUpdatedAt: null,
         previousSourceUpdatedAt: null,
+        filters,
         items: [],
         emptyReason: "NO_COMPLETED_RUNS",
       });
@@ -614,6 +664,10 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
     });
 
     if (!previousRun) {
+      const earliestRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
+        where: { categoryId: 71, status: "COMPLETED" },
+        orderBy: { sourceUpdatedAt: "asc" },
+      });
       res.json({
         window,
         type,
@@ -623,6 +677,8 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         currency: "USD",
         currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),
         previousSourceUpdatedAt: null,
+        earliestSourceUpdatedAt: earliestRun?.sourceUpdatedAt.toISOString() ?? null,
+        filters,
         items: [],
         emptyReason: "NO_COMPARISON_RUN",
       });
@@ -665,14 +721,16 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       if (type === "gainers" && changeAmount <= 0) return [];
       if (type === "losers" && changeAmount >= 0) return [];
       const changePercent = previousPrice !== 0 ? roundMoney((changeAmount / previousPrice) * 100) : null;
-      return [{
+      const item = {
         card,
         variant: currentRow.variant,
         currentPrice,
         previousPrice,
         changeAmount,
         changePercent,
-      }];
+      };
+      if (!passesPriceMoverMinFilters(item, filters)) return [];
+      return [item];
     }).sort(priceMoverSort(type)).slice(0, limit);
 
     res.json({
@@ -684,6 +742,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       currency: "USD",
       currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),
       previousSourceUpdatedAt: previousRun.sourceUpdatedAt.toISOString(),
+      filters,
       items,
       ...(items.length === 0 ? { emptyReason: "NO_MOVERS" } : {}),
     });
@@ -723,22 +782,26 @@ cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
         rangeDays: days,
         points: [],
         summary: emptyPriceSummary(),
+        earliestSourceUpdatedAt: null,
+        latestSourceUpdatedAt: null,
+        availableDays: 0,
         emptyReason: "NO_TCGPLAYER_ID",
       });
       return;
     }
 
+    // Fetch the card's whole history for this variant so we can report how much
+    // history actually exists, then narrow to the requested window in memory.
     const rows = await prisma.tcgcsvPriceSnapshot.findMany({
       where: {
         productId: card.tcgPlayerId,
         variant,
-        run: { sourceUpdatedAt: { gte: since } },
       },
       include: { run: { select: { sourceUpdatedAt: true } } },
       orderBy: { run: { sourceUpdatedAt: "asc" } },
     });
 
-    const points = rows.map((row) => {
+    const allPoints = rows.map((row) => {
       const lowPrice = numericPrice(row.lowPrice);
       const midPrice = numericPrice(row.midPrice);
       const highPrice = numericPrice(row.highPrice);
@@ -752,6 +815,13 @@ cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
       };
     });
 
+    const pricedPoints = allPoints.filter((point) => point.price != null);
+    const earliestSourceUpdatedAt = pricedPoints[0]?.sourceUpdatedAt ?? null;
+    const latestSourceUpdatedAt = pricedPoints[pricedPoints.length - 1]?.sourceUpdatedAt ?? null;
+    const availableDays = priceHistoryAvailableDays(allPoints);
+    const sinceMs = since.getTime();
+    const points = allPoints.filter((point) => Date.parse(point.sourceUpdatedAt) >= sinceMs);
+
     res.json({
       cardId,
       tcgPlayerId: card.tcgPlayerId,
@@ -761,6 +831,9 @@ cardsRouter.get("/:id/price-history", async (req: Request, res: Response) => {
       rangeDays: days,
       points,
       summary: priceHistorySummary(points),
+      earliestSourceUpdatedAt,
+      latestSourceUpdatedAt,
+      availableDays,
       ...(points.length === 0 ? { emptyReason: "NO_HISTORY" } : {}),
     });
   } catch (error) {

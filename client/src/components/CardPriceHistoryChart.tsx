@@ -10,9 +10,31 @@ const PRICE_FIELDS = [
   { value: "directLowPrice", label: "Direct Low" },
 ] as const;
 
-const RANGES = [30, 90, 365] as const;
+const STANDARD_RANGES = [30, 90, 365] as const;
+/** Backend caps `days` at 730; used as the "All" option meaning "everything stored". */
+const ALL_RANGE = 730;
 
 type PriceField = (typeof PRICE_FIELDS)[number]["value"];
+
+export function rangeLabel(days: number): string {
+  if (days === ALL_RANGE) return "All";
+  if (days === 365) return "1Y";
+  return `${days}D`;
+}
+
+/**
+ * Ranges we are willing to offer for a card.
+ *
+ * A button for a window the card has no history for would always draw the same
+ * short series, so hide it. `All` stands in for "more than the largest standard
+ * window you cannot fill"; with very little history it is the only option.
+ */
+export function priceRangeOptions(availableDays: number | null | undefined): number[] {
+  if (availableDays == null) return [...STANDARD_RANGES];
+  const options: number[] = STANDARD_RANGES.filter((range) => range <= availableDays);
+  if (availableDays < 365) options.push(ALL_RANGE);
+  return options.length > 0 ? options : [ALL_RANGE];
+}
 
 interface CardPriceHistoryChartProps {
   cardId: string;
@@ -79,23 +101,31 @@ export default function CardPriceHistoryChart({ cardId, variants }: CardPriceHis
 
   const path = useMemo(() => chartPath(history?.points ?? []), [history]);
   const empty = history && history.points.length === 0 ? emptyCopy(history.emptyReason) : null;
+  const rangeOptions = useMemo(() => priceRangeOptions(history?.availableDays), [history]);
+
+  // Keep the selected window inside the options this card can actually support.
+  useEffect(() => {
+    if (!rangeOptions.includes(days)) setDays(rangeOptions[rangeOptions.length - 1]);
+  }, [rangeOptions, days]);
 
   return (
     <section className="rounded-lg border border-gray-800 bg-gray-950/80 p-3 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-gray-100">Price history</h3>
-        <div className="flex gap-1">
-          {RANGES.map((range) => (
-            <button
-              key={range}
-              type="button"
-              onClick={() => setDays(range)}
-              className={`rounded px-2 py-1 text-[11px] font-semibold ${days === range ? "bg-amber-500 text-gray-950" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
-            >
-              {range === 365 ? "1Y" : `${range}D`}
-            </button>
-          ))}
-        </div>
+        {!empty && (
+          <div className="flex gap-1">
+            {rangeOptions.map((range) => (
+              <button
+                key={range}
+                type="button"
+                onClick={() => setDays(range)}
+                className={`rounded px-2 py-1 text-[11px] font-semibold ${days === range ? "bg-amber-500 text-gray-950" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
+              >
+                {rangeLabel(range)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -127,7 +157,7 @@ export default function CardPriceHistoryChart({ cardId, variants }: CardPriceHis
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div><p className="text-gray-500">Current</p><p className="font-semibold text-gray-100">{money(history.summary.current)}</p></div>
             <div><p className="text-gray-500">Low / High</p><p className="font-semibold text-gray-100">{money(history.summary.low)} / {money(history.summary.high)}</p></div>
-            <div><p className="text-gray-500">Change</p><p className={history.summary.changeAmount != null && history.summary.changeAmount >= 0 ? "font-semibold text-emerald-300" : "font-semibold text-red-300"}>{changeText(history.summary)}</p></div>
+            <div><p className="text-gray-500">Change ({rangeLabel(days)})</p><p className={history.summary.changeAmount != null && history.summary.changeAmount >= 0 ? "font-semibold text-emerald-300" : "font-semibold text-red-300"}>{changeText(history.summary)}</p></div>
           </div>
           <svg aria-label="Price history chart" viewBox="0 0 100 100" className="h-28 w-full rounded bg-gray-900" preserveAspectRatio="none">
             <path d={path} fill="none" stroke="rgb(251 191 36)" strokeWidth="3" vectorEffect="non-scaling-stroke" />
