@@ -22,6 +22,22 @@ vi.mock("../components/FilterBar", () => ({
   ),
 }));
 
+vi.mock("../services/api", () => ({
+  cards: {
+    priceHistory: vi.fn().mockResolvedValue({
+      cardId: "card_1",
+      tcgPlayerId: 12345,
+      variant: "Normal",
+      field: "marketPrice",
+      currency: "USD",
+      rangeDays: 90,
+      points: [],
+      summary: { current: null, previous: null, low: null, high: null, changeAmount: null, changePercent: null },
+      emptyReason: "NO_HISTORY",
+    }),
+  },
+}));
+
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
     id: "card_1",

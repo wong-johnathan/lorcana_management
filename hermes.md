@@ -41,7 +41,7 @@ External data paths:
 The API is mounted under `/api`:
 
 - `/api/auth` — register/login/config.
-- `/api/cards` — card database, filters, card detail, master-set estimates, market analysis.
+- `/api/cards` — card database, filters, card detail, master-set estimates, market analysis, and per-card TCGCSV price history (`/:id/price-history`) with variant/field/range controls, summary metrics, and empty reasons.
 - `/api/card-images/:cardId` — app-controlled card artwork URL; serves MinIO/S3 cached copies when present, otherwise fetches `Card.imageUrl`, stores the image, updates card cache metadata, and falls back to the original URL on cache failure.
 - `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, extras suggestions, keep policy/overrides, and bulk trim of extra copies.
 - `/api/extras-for-sale` — authenticated owner Extras for Sale listing CRUD plus bulk list/remove helpers.
@@ -99,7 +99,7 @@ Typical mapping:
 
 ### Card detail and market analysis
 
-`CardDetail` is a full-screen modal used by database, inventory, master-set, and public collection flows. It shows large art, stats/abilities, market links, collection counts, add controls when allowed, and AI market analysis state.
+`CardDetail` is a full-screen modal used by database, inventory, master-set, and public collection flows. It shows large art, stats/abilities, current prices, a lightweight TCGCSV historical price chart, market links, collection counts, add controls when allowed, and AI market analysis state.
 
 Market links use card name/subtitle/card number where appropriate:
 
@@ -142,7 +142,7 @@ High-level completed work in this repo:
 - Card database with rich filters, pagination, numeric set/card ordering, card detail modals, and price/analysis filters.
 - Personal inventory CRUD with normal/foil/holofoil counts, value stats, CSV export, and wipe support.
 - Variant-aware inventory controls based on LorcanaJSON `foilTypes`.
-- tcgcsv bulk price sync with scheduled daily refresh at 21:00 UTC, startup freshness check, current-price cache updates, and daily historical snapshot storage.
+- tcgcsv bulk price sync with scheduled daily refresh at 21:00 UTC, startup freshness check, current-price cache updates, daily historical snapshot storage, and a CardDetail price-history chart backed by `TcgcsvPriceSnapshot`.
 - AI per-card market analysis and admin batch analysis for selected rarities.
 - Public collection sharing with read-only database-style card grid.
 - Master-set cost calculator with variant/rarity selection, price-field selection, drilldown modals, and CSV export.

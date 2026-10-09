@@ -430,6 +430,7 @@ export interface SyncStatus {
 
 export interface CardPriceHistoryPoint {
   sourceUpdatedAt: string;
+  price: number | null;
   lowPrice: number | null;
   midPrice: number | null;
   highPrice: number | null;
@@ -437,13 +438,25 @@ export interface CardPriceHistoryPoint {
   directLowPrice: number | null;
 }
 
+export interface CardPriceHistorySummary {
+  current: number | null;
+  previous: number | null;
+  low: number | null;
+  high: number | null;
+  changeAmount: number | null;
+  changePercent: number | null;
+}
+
 export interface CardPriceHistory {
   cardId: string;
   tcgPlayerId: number | null;
   variant: string;
+  field: "lowPrice" | "midPrice" | "highPrice" | "marketPrice" | "directLowPrice";
   currency: "USD";
+  rangeDays: number;
   points: CardPriceHistoryPoint[];
-  reason?: "no_tcgplayer_id";
+  summary: CardPriceHistorySummary;
+  emptyReason?: "NO_TCGPLAYER_ID" | "NO_HISTORY" | "NO_VARIANT_HISTORY";
 }
 
 export interface AppNotification {
