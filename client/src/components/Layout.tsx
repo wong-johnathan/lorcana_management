@@ -9,6 +9,7 @@ const NAV_ICONS = {
   inventory: "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10",
   extras: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.657 0 3 .895 3 2s-1.343 2-3 2-3-.895-3-2 1.343-2 3-2zm0 0V4m0 16v-4m8-4h-4M8 12H4",
   database: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4",
+  movers: "M3 17l6-6 4 4 8-8M14 7h7v7",
   masterSet: "M9 7h6m-6 4h6m-6 4h2m-5 6h10a2 2 0 002-2V5a2 2 0 00-2-2H8l-4 4v12a2 2 0 002 2z",
   marketplace: "M3 7h18M5 7l1.5 12h11L19 7M8 7V5a4 4 0 018 0v2",
   messages: "M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
@@ -52,12 +53,14 @@ export default function Layout() {
         { to: "/inventory", label: "Inventory", icon: NAV_ICONS.inventory },
         { to: "/extras-for-sale", label: "Extras", icon: NAV_ICONS.extras },
         { to: "/database", label: "Database", icon: NAV_ICONS.database },
+        { to: "/market-movers", label: "Movers", icon: NAV_ICONS.movers },
         { to: "/marketplace", label: "Marketplace", shortLabel: "Market", icon: NAV_ICONS.marketplace },
         { to: "/marketplace/enquiries", label: "Messages", icon: NAV_ICONS.messages },
         { to: "/master-set", label: "Master Set", shortLabel: "Master", icon: NAV_ICONS.masterSet },
       ]
     : [
         { to: "/database", label: "Database", icon: NAV_ICONS.database },
+        { to: "/market-movers", label: "Movers", icon: NAV_ICONS.movers },
         { to: "/marketplace", label: "Marketplace", icon: NAV_ICONS.marketplace },
         { to: "/master-set", label: "Master Set", icon: NAV_ICONS.masterSet },
         { to: "/login", label: "Sign In", icon: NAV_ICONS.login },

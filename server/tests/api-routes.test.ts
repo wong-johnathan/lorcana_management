@@ -44,6 +44,7 @@ import { fetchAndSaveRemote, seedFromLocal, upsertCards } from "../src/services/
 import { fetchPriceGroups, getLatestPriceSnapshotRun, syncGroupPrices } from "../src/services/priceSync.js";
 import { resetSyncStatuses } from "../src/routes/sync.js";
 import { compareInventoryEntryByCardIndex, compareNullableNumber } from "../src/routes/inventory.js";
+import { priceMoverSort, toMoverLimit, toPriceMoverType, toPriceMoverWindow } from "../src/routes/cards.js";
 import { deleteProfileImage } from "../src/services/objectStorage.js";
 
 const app = createApp();
@@ -389,6 +390,248 @@ describe("cards routes", () => {
     await request(app).get("/api/cards/card_1").expect(200).expect((res) => expect(res.body.id).toBe("card_1"));
     prismaMock.card.findUnique.mockResolvedValueOnce(null);
     await request(app).get("/api/cards/missing").expect(404, { error: "Card not found" });
+  });
+
+  it("returns global price movers from completed TCGCSV snapshot runs", async () => {
+    const latestRun = { id: 2, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
+    const previousRun = { id: 1, sourceUpdatedAt: new Date("2026-08-31T20:05:42Z") };
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: 8, midPrice: 9, highPrice: 11, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 4, lowPrice: 3, midPrice: 3.5, highPrice: 5, directLowPrice: null },
+        { productId: 102, variant: "Normal", marketPrice: null, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 5, lowPrice: 4, midPrice: 4.5, highPrice: 6, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 8, lowPrice: 7, midPrice: 7.5, highPrice: 9, directLowPrice: null },
+        { productId: 102, variant: "Normal", marketPrice: 2, lowPrice: 1, midPrice: 1.5, highPrice: 3, directLowPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "card_gain", name: "Gainer", tcgPlayerId: 100 }),
+      card({ id: "card_loss", name: "Loser", tcgPlayerId: 101 }),
+    ]);
+
+    await request(app)
+      .get("/api/cards/price-movers")
+      .query({ window: "30d", type: "gainers", variant: "Normal", field: "marketPrice", limit: "10" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body).toEqual(expect.objectContaining({
+          window: "30d",
+          type: "gainers",
+          variant: "Normal",
+          field: "marketPrice",
+          currency: "USD",
+          currentSourceUpdatedAt: "2026-09-30T20:05:42.000Z",
+          previousSourceUpdatedAt: "2026-08-31T20:05:42.000Z",
+        }));
+        expect(res.body.items).toHaveLength(1);
+        expect(res.body.items[0]).toEqual(expect.objectContaining({
+          variant: "Normal",
+          currentPrice: 10,
+          previousPrice: 5,
+          changeAmount: 5,
+          changePercent: 100,
+        }));
+        expect(res.body.items[0].card.id).toBe("card_gain");
+      });
+
+    expect(prismaMock.tcgcsvPriceSnapshotRun.findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { categoryId: 71, status: "COMPLETED" },
+      orderBy: { sourceUpdatedAt: "desc" },
+    }));
+    expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { runId: 2, variant: "Normal" },
+    }));
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 8, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "card_gain", tcgPlayerId: 100 }),
+      card({ id: "card_loss", tcgPlayerId: 101 }),
+    ]);
+
+    await request(app).get("/api/cards/price-movers").query({ type: "losers" }).expect(200).expect((res) => {
+      expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_loss"]);
+      expect(res.body.items[0].changePercent).toBe(-50);
+    });
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(null);
+    await request(app).get("/api/cards/price-movers").expect(200).expect((res) => {
+      expect(res.body.items).toEqual([]);
+      expect(res.body.emptyReason).toBe("NO_COMPLETED_RUNS");
+    });
+  });
+
+  it("handles price mover all-variant, sort, empty, and error cases", async () => {
+    const latestRun = { id: 4, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
+    const previousRun = { id: 3, sourceUpdatedAt: new Date("2026-09-29T20:05:42Z") };
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(null);
+    await request(app).get("/api/cards/price-movers").expect(200).expect((res) => {
+      expect(res.body.emptyReason).toBe("NO_COMPARISON_RUN");
+      expect(res.body.currentSourceUpdatedAt).toBe("2026-09-30T20:05:42.000Z");
+    });
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", directLowPrice: 2, marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 101, variant: "Holofoil", directLowPrice: 3, marketPrice: 3, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 102, variant: "Normal", directLowPrice: 8, marketPrice: 8, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 103, variant: "Normal", directLowPrice: 5, marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 104, variant: "Normal", directLowPrice: null, marketPrice: null, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 105, variant: "Normal", directLowPrice: 1, marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 106, variant: "Normal", directLowPrice: 1, marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", directLowPrice: 0, marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 101, variant: "Holofoil", directLowPrice: 1, marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 104, variant: "Normal", directLowPrice: 1, marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 105, variant: "Normal", directLowPrice: 1, marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null },
+        { productId: 106, variant: "Normal", directLowPrice: 4, marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "zero_previous", tcgPlayerId: 100 }),
+      card({ id: "volatile", tcgPlayerId: 101 }),
+      card({ id: "null_price", tcgPlayerId: 104 }),
+      card({ id: "flat", tcgPlayerId: 105 }),
+      card({ id: "down", tcgPlayerId: 106 }),
+    ]);
+
+    await request(app).get("/api/cards/price-movers").query({ type: "volatile", variant: "all", field: "directLowPrice", limit: "2" }).expect(200).expect((res) => {
+      expect(res.body.variant).toBe("all");
+      expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["volatile", "down"]);
+      expect(res.body.items[0].changePercent).toBe(200);
+    });
+    expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { runId: 4 } }));
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 14, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 3, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 8, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "dollar_up", tcgPlayerId: 100 }),
+      card({ id: "dollar_down", tcgPlayerId: 101 }),
+    ]);
+    await request(app).get("/api/cards/price-movers").query({ type: "dollars" }).expect(200).expect((res) => {
+      expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["dollar_up", "dollar_down"]);
+    });
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }])
+      .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 2, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }]);
+    prismaMock.card.findMany.mockResolvedValueOnce([card({ id: "only_down", tcgPlayerId: 100 })]);
+    await request(app).get("/api/cards/price-movers").query({ type: "unknown", window: "bad", field: "bad", limit: "999" }).expect(200).expect((res) => {
+      expect(res.body.type).toBe("gainers");
+      expect(res.body.window).toBe("24h");
+      expect(res.body.field).toBe("marketPrice");
+      expect(res.body.items).toEqual([]);
+      expect(res.body.emptyReason).toBe("NO_MOVERS");
+    });
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockRejectedValueOnce(new Error("db"));
+    await request(app).get("/api/cards/price-movers").expect(500, { error: "Internal server error" });
+  });
+
+  it("covers additional price mover filtering and fallback branches", async () => {
+    const latestRun = { id: 6, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
+    const previousRun = { id: 5, sourceUpdatedAt: new Date("2026-06-30T20:05:42Z") };
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 2, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 3, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 102, variant: "Normal", marketPrice: null, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 103, variant: "Normal", marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 0, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 102, variant: "Normal", marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 103, variant: "Normal", marketPrice: 6, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "zero_base", tcgPlayerId: 100 }),
+      card({ id: "missing_previous", tcgPlayerId: 101 }),
+      card({ id: "null_current", tcgPlayerId: 102 }),
+      card({ id: "down_card", tcgPlayerId: 103 }),
+    ]);
+    await request(app).get("/api/cards/price-movers").query({ window: "90d", variant: "   ", limit: "bad" }).expect(200).expect((res) => {
+      expect(res.body.variant).toBe("Normal");
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0]).toEqual(expect.objectContaining({ card: expect.objectContaining({ id: "zero_base" }), changeAmount: 2, changePercent: null }));
+    });
+
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }])
+      .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 2, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }]);
+    prismaMock.card.findMany.mockResolvedValueOnce([card({ id: "positive_only", tcgPlayerId: 100 })]);
+    await request(app).get("/api/cards/price-movers").query({ type: "losers" }).expect(200).expect((res) => {
+      expect(res.body.items).toEqual([]);
+      expect(res.body.emptyReason).toBe("NO_MOVERS");
+    });
+  });
+
+  it("covers price mover control helpers and tie-break sorting", () => {
+    expect(toPriceMoverWindow("7d")).toBe("7d");
+    expect(toPriceMoverWindow("missing")).toBe("24h");
+    expect(toPriceMoverWindow(7)).toBe("24h");
+    expect(toPriceMoverType("losers")).toBe("losers");
+    expect(toPriceMoverType("volatile")).toBe("volatile");
+    expect(toPriceMoverType("dollars")).toBe("dollars");
+    expect(toPriceMoverType("bad")).toBe("gainers");
+    expect(toPriceMoverType(null)).toBe("gainers");
+    expect(toMoverLimit("0")).toBe(1);
+    expect(toMoverLimit("101")).toBe(100);
+    expect(toMoverLimit("25")).toBe(25);
+    expect(toMoverLimit("bad")).toBe(50);
+    expect(toMoverLimit(undefined)).toBe(50);
+
+    const upA = { changeAmount: 3, changePercent: 20 };
+    const upB = { changeAmount: 4, changePercent: 20 };
+    const downA = { changeAmount: -3, changePercent: -20 };
+    const downB = { changeAmount: -4, changePercent: -20 };
+    const flatPercent = { changeAmount: 5, changePercent: null };
+
+    expect(priceMoverSort("gainers")(upA, upB)).toBeGreaterThan(0);
+    expect(priceMoverSort("losers")(downA, downB)).toBeGreaterThan(0);
+    expect(priceMoverSort("volatile")(flatPercent, upA)).toBeGreaterThan(0);
+    expect(priceMoverSort("volatile")({ changeAmount: 1, changePercent: 10 }, { changeAmount: -3, changePercent: -10 })).toBeGreaterThan(0);
+    expect(priceMoverSort("dollars")({ changeAmount: 2, changePercent: 30 }, { changeAmount: -2, changePercent: -50 })).toBeGreaterThan(0);
   });
 
   it("returns card price history by tcgPlayerId, variant, and day window", async () => {

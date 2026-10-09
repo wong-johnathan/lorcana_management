@@ -459,6 +459,31 @@ export interface CardPriceHistory {
   emptyReason?: "NO_TCGPLAYER_ID" | "NO_HISTORY" | "NO_VARIANT_HISTORY";
 }
 
+export type PriceMoverWindow = "24h" | "7d" | "30d" | "90d";
+export type PriceMoverType = "gainers" | "losers" | "volatile" | "dollars";
+export type PriceMoverField = "lowPrice" | "midPrice" | "highPrice" | "marketPrice" | "directLowPrice";
+
+export interface PriceMoverItem {
+  card: Card;
+  variant: string;
+  currentPrice: number;
+  previousPrice: number;
+  changeAmount: number;
+  changePercent: number | null;
+}
+
+export interface PriceMoversResponse {
+  window: PriceMoverWindow;
+  type: PriceMoverType;
+  variant: string;
+  field: PriceMoverField;
+  currency: "USD";
+  currentSourceUpdatedAt: string | null;
+  previousSourceUpdatedAt: string | null;
+  items: PriceMoverItem[];
+  emptyReason?: "NO_COMPLETED_RUNS" | "NO_COMPARISON_RUN" | "NO_MOVERS";
+}
+
 export interface AppNotification {
   id: string;
   type: string;
