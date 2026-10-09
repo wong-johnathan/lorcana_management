@@ -97,7 +97,7 @@ describe("API client wrapper", () => {
       auth.deleteAccount("jw", "DELETE"),
       auth.config(),
       cards.list({ search: "Mickey" }),
-      cards.priceMovers({ window: "30d", type: "volatile", variant: "all", field: "marketPrice", limit: 25 }),
+      cards.priceMovers({ window: "30d", type: "volatile", variant: "all", rarity: "Enchanted", field: "marketPrice", limit: 25 }),
       cards.filters(),
       cards.masterSetEstimate({ setName: "Set" }),
       inventory.list({ color: "Amber" }),
@@ -166,7 +166,7 @@ describe("API client wrapper", () => {
       analysis.batchStatus(),
     ]);
     expect(fetchMock).toHaveBeenCalledWith("/api/cards?search=Mickey", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/cards/price-movers?window=30d&type=volatile&variant=all&field=marketPrice&limit=25", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith("/api/cards/price-movers?window=30d&type=volatile&variant=all&rarity=Enchanted&field=marketPrice&limit=25", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/google", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/link-google", expect.objectContaining({ method: "POST", body: JSON.stringify({ credential: "google-link-token" }) }));
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/me", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ confirmUsername: "jw", confirmText: "DELETE" }) }));

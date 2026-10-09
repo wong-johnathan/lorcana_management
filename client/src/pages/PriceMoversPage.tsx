@@ -27,6 +27,7 @@ const FIELDS: Array<{ value: PriceMoverField; label: string }> = [
 ];
 
 const VARIANTS = ["Normal", "Cold Foil", "Holofoil", "all"];
+const RARITIES = ["all", "Common", "Uncommon", "Rare", "Super Rare", "Legendary", "Enchanted", "Epic", "Iconic", "Promo", "Special"];
 
 function money(value: number): string {
   return value < 0 ? `-$${Math.abs(value).toFixed(2)}` : `$${value.toFixed(2)}`;
@@ -53,6 +54,7 @@ export default function PriceMoversPage() {
   const [type, setType] = useState<PriceMoverType>("gainers");
   const [windowRange, setWindowRange] = useState<PriceMoverWindow>("24h");
   const [variant, setVariant] = useState("Normal");
+  const [rarity, setRarity] = useState("all");
   const [field, setField] = useState<PriceMoverField>("marketPrice");
   const [data, setData] = useState<PriceMoversResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,12 +64,12 @@ export default function PriceMoversPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    cardsApi.priceMovers({ window: windowRange, type, variant, field, limit: 50 })
+    cardsApi.priceMovers({ window: windowRange, type, variant, rarity, field, limit: 50 })
       .then((response) => { if (active) setData(response); })
       .catch((err) => { if (active) setError(err instanceof Error ? err.message : "Failed to load price movers"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [windowRange, type, variant, field]);
+  }, [windowRange, type, variant, rarity, field]);
 
   const activeType = useMemo(() => MOVER_TYPES.find((item) => item.value === type) ?? MOVER_TYPES[0], [type]);
 
@@ -82,7 +84,7 @@ export default function PriceMoversPage() {
       </div>
 
       <section className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-4">
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <label className="text-xs text-gray-400">
             Window
             <select value={windowRange} onChange={(event) => setWindowRange(event.target.value as PriceMoverWindow)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
@@ -93,6 +95,12 @@ export default function PriceMoversPage() {
             Variant
             <select value={variant} onChange={(event) => setVariant(event.target.value)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
               {VARIANTS.map((option) => <option key={option} value={option}>{option === "all" ? "All variants" : option}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-gray-400">
+            Rarity
+            <select value={rarity} onChange={(event) => setRarity(event.target.value)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
+              {RARITIES.map((option) => <option key={option} value={option}>{option === "all" ? "All rarities" : option}</option>)}
             </select>
           </label>
           <label className="text-xs text-gray-400">

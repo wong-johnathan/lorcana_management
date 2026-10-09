@@ -476,6 +476,40 @@ describe("cards routes", () => {
     });
   });
 
+  it("filters global price movers by card rarity", async () => {
+    const latestRun = { id: 8, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
+    const previousRun = { id: 7, sourceUpdatedAt: new Date("2026-09-29T20:05:42Z") };
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst
+      .mockResolvedValueOnce(latestRun)
+      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 20, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "enchanted_gain", name: "Enchanted Gainer", rarity: "Enchanted", tcgPlayerId: 101 }),
+    ]);
+
+    await request(app)
+      .get("/api/cards/price-movers")
+      .query({ rarity: "Enchanted" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.rarity).toBe("Enchanted");
+        expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["enchanted_gain"]);
+      });
+
+    expect(prismaMock.card.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tcgPlayerId: { in: [100, 101] }, rarity: "Enchanted" },
+      include: { prices: true },
+    }));
+  });
+
   it("handles price mover all-variant, sort, empty, and error cases", async () => {
     const latestRun = { id: 4, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
     const previousRun = { id: 3, sourceUpdatedAt: new Date("2026-09-29T20:05:42Z") };

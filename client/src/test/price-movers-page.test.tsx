@@ -44,6 +44,7 @@ const response = {
   window: "24h",
   type: "gainers",
   variant: "Normal",
+  rarity: "all",
   field: "marketPrice",
   currency: "USD",
   currentSourceUpdatedAt: "2026-09-30T20:05:42.000Z",
@@ -70,14 +71,18 @@ describe("PriceMoversPage", () => {
     render(<PriceMoversPage />, { wrapper: MemoryRouter });
 
     expect(await screen.findByRole("heading", { name: "Price Movers" })).toBeInTheDocument();
-    await waitFor(() => expect(priceMoversMock).toHaveBeenCalledWith({ window: "24h", type: "gainers", variant: "Normal", field: "marketPrice", limit: 50 }));
+    await waitFor(() => expect(priceMoversMock).toHaveBeenCalledWith({ window: "24h", type: "gainers", variant: "Normal", rarity: "all", field: "marketPrice", limit: 50 }));
     expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
     expect(screen.getByText("+$5.00 / +100.00%")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view mickey mouse/i })).toHaveAttribute("href", "/database/card_gain");
 
-    priceMoversMock.mockResolvedValueOnce({ ...response, type: "losers", items: [] });
+    priceMoversMock.mockResolvedValueOnce({ ...response, variant: "all", rarity: "Enchanted" });
+    await userEvent.selectOptions(screen.getByLabelText("Rarity"), "Enchanted");
+    await waitFor(() => expect(priceMoversMock).toHaveBeenLastCalledWith({ window: "24h", type: "gainers", variant: "Normal", rarity: "Enchanted", field: "marketPrice", limit: 50 }));
+
+    priceMoversMock.mockResolvedValueOnce({ ...response, type: "losers", rarity: "Enchanted", items: [] });
     await userEvent.click(screen.getByRole("button", { name: "Top losers" }));
-    await waitFor(() => expect(priceMoversMock).toHaveBeenLastCalledWith({ window: "24h", type: "losers", variant: "Normal", field: "marketPrice", limit: 50 }));
+    await waitFor(() => expect(priceMoversMock).toHaveBeenLastCalledWith({ window: "24h", type: "losers", variant: "Normal", rarity: "Enchanted", field: "marketPrice", limit: 50 }));
     expect(await screen.findByText("No price movers found for this selection.")).toBeInTheDocument();
   });
 });

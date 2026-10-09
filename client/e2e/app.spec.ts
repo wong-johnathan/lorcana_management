@@ -114,6 +114,7 @@ async function mockApi(page: Page) {
           window: url.searchParams.get("window") || "24h",
           type: url.searchParams.get("type") || "gainers",
           variant: url.searchParams.get("variant") || "Normal",
+          rarity: url.searchParams.get("rarity") || "all",
           field: url.searchParams.get("field") || "marketPrice",
           currency: "USD",
           currentSourceUpdatedAt: "2026-09-30T20:05:42.000Z",

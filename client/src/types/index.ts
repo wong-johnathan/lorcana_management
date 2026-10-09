@@ -476,6 +476,7 @@ export interface PriceMoversResponse {
   window: PriceMoverWindow;
   type: PriceMoverType;
   variant: string;
+  rarity: string;
   field: PriceMoverField;
   currency: "USD";
   currentSourceUpdatedAt: string | null;

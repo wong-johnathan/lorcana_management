@@ -575,6 +575,10 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       ? req.query.variant.trim()
       : "Normal";
     const allVariants = requestedVariant.toLowerCase() === "all";
+    const requestedRarity = typeof req.query.rarity === "string" && req.query.rarity.trim()
+      ? req.query.rarity.trim()
+      : "all";
+    const rarityFilter = requestedRarity.toLowerCase() === "all" ? null : requestedRarity;
 
     const latestRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
       where: { categoryId: 71, status: "COMPLETED" },
@@ -586,6 +590,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         window,
         type,
         variant: requestedVariant,
+        rarity: requestedRarity,
         field,
         currency: "USD",
         currentSourceUpdatedAt: null,
@@ -613,6 +618,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         window,
         type,
         variant: requestedVariant,
+        rarity: requestedRarity,
         field,
         currency: "USD",
         currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),
@@ -638,7 +644,10 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
     );
     const productIds = [...new Set(currentRows.map((row) => row.productId))];
     const cards = await prisma.card.findMany({
-      where: { tcgPlayerId: { in: productIds } },
+      where: {
+        tcgPlayerId: { in: productIds },
+        ...(rarityFilter ? { rarity: rarityFilter } : {}),
+      },
       include: { prices: true },
     });
     const cardsByTcgPlayerId = new Map(cards.map((card) => [card.tcgPlayerId, card]));
@@ -670,6 +679,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       window,
       type,
       variant: requestedVariant,
+      rarity: requestedRarity,
       field,
       currency: "USD",
       currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),

@@ -115,7 +115,7 @@ export const cards = {
     return request<PaginatedCards>(`/cards${query}`);
   },
   get: (id: string) => request<Card>(`/cards/${id}`),
-  priceMovers: (params?: { window?: PriceMoverWindow; type?: PriceMoverType; variant?: string; field?: PriceMoverField; limit?: number }) => {
+  priceMovers: (params?: { window?: PriceMoverWindow; type?: PriceMoverType; variant?: string; rarity?: string; field?: PriceMoverField; limit?: number }) => {
     const query = params ? "?" + new URLSearchParams(Object.fromEntries(
       Object.entries(params).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])
     )).toString() : "";
