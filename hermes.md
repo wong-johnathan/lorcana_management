@@ -68,6 +68,7 @@ The API is mounted under `/api`:
   - Variant defaults to all variants because Enchanted/Epic/Iconic cards are Holofoil-only printings in TCGCSV; pinning `Normal` silently hides them and the UI shows an inline hint when a premium rarity is selected.
   - Windows longer than the captured history return `NO_COMPARISON_RUN` with `earliestSourceUpdatedAt`, and the UI explains that history only goes back that far. Snapshot history currently starts around 2026-09-30, so `30d`/`90d` stay empty until daily snapshots accumulate.
   - It is market-wide only; inventory/portfolio gain-loss views are a later phase.
+  - Every control is mirrored into the URL query (`window`, `type`, `variant`, `rarity`, `field`, `minPrevPrice`, `minCurrentPrice`, `minChangePercent`) so a view can be shared, bookmarked, or reloaded. The URL is the single source of truth: `client/src/utils/priceMoverParams.ts` parses/serialises it, only non-default values are written, unknown values degrade to defaults, and writes use `replace: true` so typing in a minimum field does not flood browser history.
 - `/collection/:userId` — public read-only collection share page.
   - Only visible when the owner enables sharing in settings.
   - Reuses the database-style card grid and filters, but must remain read-only: no add/remove/wipe/stepper controls.
