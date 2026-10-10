@@ -533,6 +533,10 @@ describe("cards routes", () => {
         expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_gap"]);
         expect(res.body.items[0].previousPrice).toBe(5);
         expect(res.body.items[0].changePercent).toBe(100);
+        // the fallen card is still counted, it is just not a gainer
+        expect(res.body.gainersCount).toBe(1);
+        expect(res.body.losersCount).toBe(1);
+        expect(res.body.comparedCount).toBe(2);
       });
 
     // Only the run at/before the target within the grace band is eligible.
@@ -571,6 +575,9 @@ describe("cards routes", () => {
         expect(res.body.comparedCount).toBe(3);
         expect(res.body.unchangedCount).toBe(2);
         expect(res.body.movedCount).toBe(1);
+        // direction is reported too, so the UI can explain an empty gainers list
+        expect(res.body.gainersCount).toBe(0);
+        expect(res.body.losersCount).toBe(1);
         // unchanged cards stay out of the ranked list
         expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_loss"]);
       });
