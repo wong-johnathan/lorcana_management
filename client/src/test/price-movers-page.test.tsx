@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PriceMoversPage from "../pages/PriceMoversPage";
 
@@ -61,6 +61,20 @@ const response = {
     },
   ],
 };
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{location.search}</span>;
+}
+
+function renderPage(initialEntry = "/market-movers") {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <PriceMoversPage />
+      <LocationProbe />
+    </MemoryRouter>,
+  );
+}
 
 describe("PriceMoversPage", () => {
   beforeEach(() => {
@@ -127,5 +141,66 @@ describe("PriceMoversPage", () => {
     const second = render(<PriceMoversPage />, { wrapper: MemoryRouter });
     await waitFor(() => expect(second.container.textContent).toContain("Price history only goes back to"));
     expect(second.container.textContent).toContain("9/30/2026, 8:05:12 PM");
+  });
+
+  it("hydrates the whole view from a shared url", async () => {
+    renderPage("/market-movers?window=7d&type=losers&variant=Holofoil&rarity=Enchanted&field=lowPrice&minPrevPrice=5&minCurrentPrice=7.5&minChangePercent=25");
+
+    await waitFor(() => expect(priceMoversMock).toHaveBeenCalledWith({
+      window: "7d",
+      type: "losers",
+      variant: "Holofoil",
+      rarity: "Enchanted",
+      field: "lowPrice",
+      limit: 50,
+      minPrevPrice: "5",
+      minCurrentPrice: "7.5",
+      minChangePercent: "25",
+    }));
+
+    expect(screen.getByLabelText("Window")).toHaveValue("7d");
+    expect(screen.getByLabelText("Variant")).toHaveValue("Holofoil");
+    expect(screen.getByLabelText("Rarity")).toHaveValue("Enchanted");
+    expect(screen.getByLabelText("Price field")).toHaveValue("lowPrice");
+    expect(screen.getByLabelText("Min previous $")).toHaveValue(5);
+    expect(screen.getByLabelText("Min current $")).toHaveValue(7.5);
+    expect(screen.getByLabelText("Min % move")).toHaveValue(25);
+    expect(screen.getByRole("button", { name: "Top losers" })).toHaveClass("bg-amber-500");
+  });
+
+  it("writes control changes back to the url and drops defaults again", async () => {
+    const { getByTestId } = renderPage();
+    await waitFor(() => expect(priceMoversMock).toHaveBeenCalledTimes(1));
+    expect(getByTestId("location").textContent).toBe("");
+
+    await userEvent.selectOptions(screen.getByLabelText("Window"), "30d");
+    await waitFor(() => expect(getByTestId("location").textContent).toBe("?window=30d"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Most volatile" }));
+    await waitFor(() => expect(getByTestId("location").textContent).toBe("?window=30d&type=volatile"));
+
+    await userEvent.type(screen.getByLabelText("Min previous $"), "5");
+    await waitFor(() => expect(getByTestId("location").textContent).toBe("?window=30d&type=volatile&minPrevPrice=5"));
+
+    await userEvent.selectOptions(screen.getByLabelText("Window"), "24h");
+    await waitFor(() => expect(getByTestId("location").textContent).toBe("?type=volatile&minPrevPrice=5"));
+
+    await userEvent.clear(screen.getByLabelText("Min previous $"));
+    await waitFor(() => expect(getByTestId("location").textContent).toBe("?type=volatile"));
+  });
+
+  it("ignores junk url values and loads the default view", async () => {
+    renderPage("/market-movers?window=999d&type=sideways&rarity=Bogus&field=nope&minPrevPrice=abc");
+
+    await waitFor(() => expect(priceMoversMock).toHaveBeenCalledWith({
+      window: "24h",
+      type: "gainers",
+      variant: "all",
+      rarity: "all",
+      field: "marketPrice",
+      limit: 50,
+    }));
+    expect(screen.getByLabelText("Window")).toHaveValue("24h");
+    expect(screen.getByLabelText("Min previous $")).toHaveValue(null);
   });
 });

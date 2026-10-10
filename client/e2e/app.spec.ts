@@ -305,6 +305,18 @@ test("anonymous user views phase-one price movers", async ({ page }) => {
 
   await page.getByLabel("Rarity").selectOption("Enchanted");
   await expect(page.getByText("Enchanted, Epic and Iconic cards are Holofoil-only printings")).toBeVisible();
+
+  // Controls are mirrored into the URL so the view can be shared and reloaded.
+  await expect(page).toHaveURL(/rarity=Enchanted/);
+  await expect(page).toHaveURL(/minPrevPrice=5/);
+
+  // A shared deep link restores the full view.
+  await page.goto("/market-movers?window=7d&type=losers&variant=Holofoil&rarity=Enchanted&field=lowPrice");
+  await expect(page.getByLabel("Window")).toHaveValue("7d");
+  await expect(page.getByLabel("Variant")).toHaveValue("Holofoil");
+  await expect(page.getByLabel("Rarity")).toHaveValue("Enchanted");
+  await expect(page.getByLabel("Price field")).toHaveValue("lowPrice");
+  await expect(page.getByRole("button", { name: "Top losers" })).toBeVisible();
 });
 
 test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ page }) => {

@@ -1,35 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { cards as cardsApi } from "../services/api";
 import type { PriceMoverField, PriceMoverType, PriceMoverWindow, PriceMoversResponse } from "../types";
 import { cardImageUrl } from "../utils/cardImages";
-
-const MOVER_TYPES: Array<{ value: PriceMoverType; label: string; helper: string }> = [
-  { value: "gainers", label: "Top gainers", helper: "Highest positive % move" },
-  { value: "losers", label: "Top losers", helper: "Largest negative % move" },
-  { value: "volatile", label: "Most volatile", helper: "Biggest move either way" },
-  { value: "dollars", label: "Biggest $ moves", helper: "Largest absolute dollar change" },
-];
-
-const WINDOWS: Array<{ value: PriceMoverWindow; label: string }> = [
-  { value: "24h", label: "24H" },
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "90d", label: "90D" },
-];
-
-const FIELDS: Array<{ value: PriceMoverField; label: string }> = [
-  { value: "marketPrice", label: "Market" },
-  { value: "lowPrice", label: "Low" },
-  { value: "midPrice", label: "Mid" },
-  { value: "highPrice", label: "High" },
-  { value: "directLowPrice", label: "Direct Low" },
-];
-
-const VARIANTS = ["all", "Normal", "Cold Foil", "Holofoil"];
-const RARITIES = ["all", "Common", "Uncommon", "Rare", "Super Rare", "Legendary", "Enchanted", "Epic", "Iconic", "Promo", "Special"];
-// These rarities only ever exist as premium foil printings in TCGCSV, so a "Normal" variant filter hides them.
-const PREMIUM_RARITIES = ["Enchanted", "Epic", "Iconic"];
+import {
+  MOVER_FIELD_OPTIONS as FIELDS,
+  MOVER_PREMIUM_RARITIES as PREMIUM_RARITIES,
+  MOVER_RARITY_OPTIONS as RARITIES,
+  MOVER_TYPE_OPTIONS as MOVER_TYPES,
+  MOVER_VARIANT_OPTIONS as VARIANTS,
+  MOVER_WINDOW_OPTIONS as WINDOWS,
+  type MoverControls,
+  moverControlsFromParams,
+  moverParamsFromControls,
+} from "../utils/priceMoverParams";
 
 function money(value: number): string {
   return value < 0 ? `-$${Math.abs(value).toFixed(2)}` : `$${value.toFixed(2)}`;
@@ -58,17 +42,18 @@ function emptyCopy(data: PriceMoversResponse | null): string {
 }
 
 export default function PriceMoversPage() {
-  const [type, setType] = useState<PriceMoverType>("gainers");
-  const [windowRange, setWindowRange] = useState<PriceMoverWindow>("24h");
-  const [variant, setVariant] = useState("all");
-  const [rarity, setRarity] = useState("all");
-  const [field, setField] = useState<PriceMoverField>("marketPrice");
-  const [minPrevPrice, setMinPrevPrice] = useState("");
-  const [minCurrentPrice, setMinCurrentPrice] = useState("");
-  const [minChangePercent, setMinChangePercent] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const controls = useMemo(() => moverControlsFromParams(searchParams), [searchParams]);
+  const { windowRange, type, variant, rarity, field, minPrevPrice, minCurrentPrice, minChangePercent } = controls;
   const [data, setData] = useState<PriceMoversResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // The URL owns the control state, so share/reload/back restore the exact view.
+  // `replace` keeps rapid input (every keystroke) from flooding browser history.
+  const updateControls = useCallback((patch: Partial<MoverControls>) => {
+    setSearchParams(moverParamsFromControls({ ...controls, ...patch }), { replace: true });
+  }, [controls, setSearchParams]);
 
   useEffect(() => {
     let active = true;
@@ -108,25 +93,25 @@ export default function PriceMoversPage() {
         <div className="grid gap-3 md:grid-cols-5">
           <label className="text-xs text-gray-400">
             Window
-            <select value={windowRange} onChange={(event) => setWindowRange(event.target.value as PriceMoverWindow)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
+            <select value={windowRange} onChange={(event) => updateControls({ windowRange: event.target.value as PriceMoverWindow })} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
               {WINDOWS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
           <label className="text-xs text-gray-400">
             Variant
-            <select value={variant} onChange={(event) => setVariant(event.target.value)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
+            <select value={variant} onChange={(event) => updateControls({ variant: event.target.value })} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
               {VARIANTS.map((option) => <option key={option} value={option}>{option === "all" ? "All variants" : option}</option>)}
             </select>
           </label>
           <label className="text-xs text-gray-400">
             Rarity
-            <select value={rarity} onChange={(event) => setRarity(event.target.value)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
+            <select value={rarity} onChange={(event) => updateControls({ rarity: event.target.value })} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
               {RARITIES.map((option) => <option key={option} value={option}>{option === "all" ? "All rarities" : option}</option>)}
             </select>
           </label>
           <label className="text-xs text-gray-400">
             Price field
-            <select value={field} onChange={(event) => setField(event.target.value as PriceMoverField)} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
+            <select value={field} onChange={(event) => updateControls({ field: event.target.value as PriceMoverField })} className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100">
               {FIELDS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
@@ -146,7 +131,7 @@ export default function PriceMoversPage() {
               step="0.01"
               inputMode="decimal"
               value={minPrevPrice}
-              onChange={(event) => setMinPrevPrice(event.target.value)}
+              onChange={(event) => updateControls({ minPrevPrice: event.target.value })}
               placeholder="any"
               className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100"
             />
@@ -159,7 +144,7 @@ export default function PriceMoversPage() {
               step="0.01"
               inputMode="decimal"
               value={minCurrentPrice}
-              onChange={(event) => setMinCurrentPrice(event.target.value)}
+              onChange={(event) => updateControls({ minCurrentPrice: event.target.value })}
               placeholder="any"
               className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100"
             />
@@ -172,7 +157,7 @@ export default function PriceMoversPage() {
               step="1"
               inputMode="decimal"
               value={minChangePercent}
-              onChange={(event) => setMinChangePercent(event.target.value)}
+              onChange={(event) => updateControls({ minChangePercent: event.target.value })}
               placeholder="any"
               className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100"
             />
@@ -194,7 +179,7 @@ export default function PriceMoversPage() {
             <button
               key={option.value}
               type="button"
-              onClick={() => setType(option.value)}
+              onClick={() => updateControls({ type: option.value })}
               className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${type === option.value ? "bg-amber-500 text-gray-950" : "bg-gray-800 text-gray-300 hover:bg-gray-700"}`}
             >
               {option.label}
