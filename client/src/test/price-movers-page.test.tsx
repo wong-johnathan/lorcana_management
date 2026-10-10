@@ -203,4 +203,39 @@ describe("PriceMoversPage", () => {
     expect(screen.getByLabelText("Window")).toHaveValue("24h");
     expect(screen.getByLabelText("Min previous $")).toHaveValue(null);
   });
+
+  it("explains how many comparable cards moved and stayed unchanged", async () => {
+    priceMoversMock.mockResolvedValue({ ...response, comparedCount: 10, unchangedCount: 6, movedCount: 4 });
+    renderPage();
+
+    expect(await screen.findByText("4 of 10 comparable cards moved · 6 unchanged")).toBeInTheDocument();
+  });
+
+  it("says so when every comparable card was unchanged", async () => {
+    priceMoversMock.mockResolvedValue({
+      ...response,
+      items: [],
+      emptyReason: "NO_MOVERS",
+      comparedCount: 10,
+      unchangedCount: 10,
+      movedCount: 0,
+    });
+    const { container } = renderPage();
+
+    await waitFor(() => expect(container.textContent).toContain("All 10 comparable cards were unchanged in this window."));
+  });
+
+  it("says so when cards moved but none in this direction", async () => {
+    priceMoversMock.mockResolvedValue({
+      ...response,
+      items: [],
+      emptyReason: "NO_MOVERS",
+      comparedCount: 10,
+      unchangedCount: 6,
+      movedCount: 4,
+    });
+    const { container } = renderPage();
+
+    await waitFor(() => expect(container.textContent).toContain("4 comparable cards moved in this window, but none match this mode."));
+  });
 });

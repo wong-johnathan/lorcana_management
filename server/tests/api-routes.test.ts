@@ -44,7 +44,7 @@ import { fetchAndSaveRemote, seedFromLocal, upsertCards } from "../src/services/
 import { fetchPriceGroups, getLatestPriceSnapshotRun, syncGroupPrices } from "../src/services/priceSync.js";
 import { resetSyncStatuses } from "../src/routes/sync.js";
 import { compareInventoryEntryByCardIndex, compareNullableNumber } from "../src/routes/inventory.js";
-import { passesPriceMoverMinFilters, priceHistoryAvailableDays, priceMoverSort, toMoverLimit, toMoverMin, toPriceMoverMinFilters, toPriceMoverType, toPriceMoverWindow } from "../src/routes/cards.js";
+import { passesPriceMoverMinFilters, pickNearestSnapshotRun, priceHistoryAvailableDays, priceMoverSort, toMoverLimit, toMoverMin, toPriceMoverMinFilters, toPriceMoverType, toPriceMoverWindow } from "../src/routes/cards.js";
 import { deleteProfileImage } from "../src/services/objectStorage.js";
 
 const app = createApp();
@@ -395,9 +395,8 @@ describe("cards routes", () => {
   it("returns global price movers from completed TCGCSV snapshot runs", async () => {
     const latestRun = { id: 2, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
     const previousRun = { id: 1, sourceUpdatedAt: new Date("2026-08-31T20:05:42Z") };
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: 8, midPrice: 9, highPrice: 11, directLowPrice: null },
@@ -447,9 +446,8 @@ describe("cards routes", () => {
       where: { runId: 2, variant: "Normal" },
     }));
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -476,12 +474,157 @@ describe("cards routes", () => {
     });
   });
 
+  it("compares against the snapshot run nearest the window target, not the day before", async () => {
+    // TCGCSV build timestamps drift by seconds each day: the run ON the target day
+    // can land a few seconds after the target instant and was previously skipped.
+    const latestRun = { id: 9, sourceUpdatedAt: new Date("2026-10-09T20:05:19Z") };
+    const targetDayRun = { id: 8, sourceUpdatedAt: new Date("2026-10-02T20:05:49Z") };
+    const dayBeforeRun = { id: 7, sourceUpdatedAt: new Date("2026-10-01T20:05:57Z") };
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([targetDayRun, dayBeforeRun]);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }])
+      .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }]);
+    prismaMock.card.findMany.mockResolvedValueOnce([card({ id: "card_gain", tcgPlayerId: 100 })]);
+
+    await request(app)
+      .get("/api/cards/price-movers")
+      .query({ window: "7d", type: "gainers", variant: "Normal" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.previousSourceUpdatedAt).toBe("2026-10-02T20:05:49.000Z");
+        expect(res.body.items[0].changePercent).toBe(100);
+      });
+
+    expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { runId: 8, variant: "Normal" },
+    }));
+  });
+
+  it("falls back to a card's nearest earlier snapshot when the comparison run lacks it", async () => {
+    const latestRun = { id: 9, sourceUpdatedAt: new Date("2026-10-09T20:05:19Z") };
+    const targetDayRun = { id: 8, sourceUpdatedAt: new Date("2026-10-02T20:05:49Z") };
+    const dayBeforeRun = { id: 7, sourceUpdatedAt: new Date("2026-10-01T20:05:57Z") };
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([targetDayRun, dayBeforeRun]);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      // product 100 has no row in the comparison run (upstream gap)
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 101, variant: "Normal", marketPrice: 8, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      // fallback lookup for the missing product
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 5, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null, run: { sourceUpdatedAt: new Date("2026-10-01T20:05:57Z") } },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "card_gap", name: "Gappy", tcgPlayerId: 100 }),
+      card({ id: "card_loss", name: "Loser", tcgPlayerId: 101 }),
+    ]);
+
+    await request(app)
+      .get("/api/cards/price-movers")
+      .query({ window: "7d", type: "gainers", variant: "Normal" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_gap"]);
+        expect(res.body.items[0].previousPrice).toBe(5);
+        expect(res.body.items[0].changePercent).toBe(100);
+      });
+
+    // Only the run at/before the target within the grace band is eligible.
+    expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      where: expect.objectContaining({ productId: { in: [100] }, runId: { in: [7] } }),
+    }));
+  });
+
+  it("reports how many comparable cards moved versus stayed unchanged", async () => {
+    const latestRun = { id: 9, sourceUpdatedAt: new Date("2026-10-09T20:05:19Z") };
+    const targetDayRun = { id: 8, sourceUpdatedAt: new Date("2026-10-02T20:05:49Z") };
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([targetDayRun]);
+    prismaMock.tcgcsvPriceSnapshot.findMany
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 102, variant: "Normal", marketPrice: 7, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ])
+      .mockResolvedValueOnce([
+        { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 101, variant: "Normal", marketPrice: 8, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+        { productId: 102, variant: "Normal", marketPrice: 7, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
+      ]);
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "card_flat_a", tcgPlayerId: 100 }),
+      card({ id: "card_loss", tcgPlayerId: 101 }),
+      card({ id: "card_flat_b", tcgPlayerId: 102 }),
+    ]);
+
+    await request(app)
+      .get("/api/cards/price-movers")
+      .query({ window: "7d", type: "losers", variant: "Normal" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.comparedCount).toBe(3);
+        expect(res.body.unchangedCount).toBe(2);
+        expect(res.body.movedCount).toBe(1);
+        // unchanged cards stay out of the ranked list
+        expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_loss"]);
+      });
+  });
+
+  it("picks the run nearest the target and prefers the earlier run on a tie", async () => {
+    const target = new Date("2026-10-02T20:05:19Z");
+    expect(pickNearestSnapshotRun([], target)).toBeNull();
+    expect(pickNearestSnapshotRun([
+      { id: 7, sourceUpdatedAt: new Date("2026-10-01T20:05:57Z") },
+      { id: 8, sourceUpdatedAt: new Date("2026-10-02T20:05:49Z") },
+    ], target)?.id).toBe(8);
+    expect(pickNearestSnapshotRun([
+      { id: 8, sourceUpdatedAt: new Date("2026-10-02T20:05:49Z") },
+      { id: 9, sourceUpdatedAt: new Date("2026-10-03T20:05:49Z") },
+    ], target)?.id).toBe(8);
+    // equidistant -> earlier run wins so the window is never shortened
+    expect(pickNearestSnapshotRun([
+      { id: 7, sourceUpdatedAt: new Date("2026-10-01T20:05:19Z") },
+      { id: 8, sourceUpdatedAt: new Date("2026-10-03T20:05:19Z") },
+    ], target)?.id).toBe(7);
+    // history that never reaches the target must not be quietly used
+    expect(pickNearestSnapshotRun([
+      { id: 1, sourceUpdatedAt: new Date("2026-09-25T20:05:52Z") },
+    ], target)).toBeNull();
+  });
+
+  it("reports no comparison run when the requested window reaches past all history", async () => {
+    const latestRun = { id: 15, sourceUpdatedAt: new Date("2026-10-09T20:05:19Z") };
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    // 30d targets 2026-09-09; the oldest run is 2026-09-25, so nothing is comparable.
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([
+      { id: 1, sourceUpdatedAt: new Date("2026-09-25T20:05:52Z") },
+    ]);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce({ sourceUpdatedAt: new Date("2026-09-25T20:05:52Z") });
+
+    await request(app)
+      .get("/api/cards/price-movers")
+      .query({ window: "30d", rarity: "Iconic" })
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.emptyReason).toBe("NO_COMPARISON_RUN");
+        expect(res.body.comparedCount).toBe(0);
+        expect(res.body.items).toEqual([]);
+        // the 30D window is understated as ~14D, which is exactly what we refuse to do
+        expect(res.body.previousSourceUpdatedAt).toBeNull();
+      });
+  });
+
   it("filters global price movers by card rarity", async () => {
     const latestRun = { id: 8, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
     const previousRun = { id: 7, sourceUpdatedAt: new Date("2026-09-29T20:05:42Z") };
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -513,9 +656,8 @@ describe("cards routes", () => {
   it("applies min previous price, min current price, and min percent filters", async () => {
     const latestRun = { id: 10, sourceUpdatedAt: new Date("2026-10-08T20:05:18Z") };
     const previousRun = { id: 9, sourceUpdatedAt: new Date("2026-10-07T20:06:09Z") };
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 20, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -543,9 +685,8 @@ describe("cards routes", () => {
       });
 
     // minPrevPrice excludes the cheap card even though it moved 75%
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 20, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -571,9 +712,8 @@ describe("cards routes", () => {
       });
 
     // invalid/negative values are ignored rather than breaking the response
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 101, variant: "Normal", marketPrice: 0.07, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -596,8 +736,8 @@ describe("cards routes", () => {
     const latestRun = { id: 12, sourceUpdatedAt: new Date("2026-10-08T20:05:18Z") };
     prismaMock.tcgcsvPriceSnapshotRun.findFirst
       .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ sourceUpdatedAt: new Date("2026-09-30T20:05:12Z") });
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([]);
 
     await request(app)
       .get("/api/cards/price-movers")
@@ -613,17 +753,15 @@ describe("cards routes", () => {
     const latestRun = { id: 4, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
     const previousRun = { id: 3, sourceUpdatedAt: new Date("2026-09-29T20:05:42Z") };
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(null);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([]);
     await request(app).get("/api/cards/price-movers").expect(200).expect((res) => {
       expect(res.body.emptyReason).toBe("NO_COMPARISON_RUN");
       expect(res.body.currentSourceUpdatedAt).toBe("2026-09-30T20:05:42.000Z");
     });
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", directLowPrice: 2, marketPrice: 10, lowPrice: null, midPrice: null, highPrice: null },
@@ -656,9 +794,8 @@ describe("cards routes", () => {
     });
     expect(prismaMock.tcgcsvPriceSnapshot.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { runId: 4 } }));
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 14, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -676,9 +813,8 @@ describe("cards routes", () => {
       expect(res.body.items.map((item: { card: { id: string } }) => item.card.id)).toEqual(["dollar_up", "dollar_down"]);
     });
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }])
       .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 2, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }]);
@@ -697,11 +833,11 @@ describe("cards routes", () => {
 
   it("covers additional price mover filtering and fallback branches", async () => {
     const latestRun = { id: 6, sourceUpdatedAt: new Date("2026-09-30T20:05:42Z") };
-    const previousRun = { id: 5, sourceUpdatedAt: new Date("2026-06-30T20:05:42Z") };
+    // 90d targets 2026-07-02, so the comparison run has to sit on that date.
+    const previousRun = { id: 5, sourceUpdatedAt: new Date("2026-07-02T20:05:42Z") };
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([
         { productId: 100, variant: "Normal", marketPrice: 2, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
@@ -713,7 +849,9 @@ describe("cards routes", () => {
         { productId: 100, variant: "Normal", marketPrice: 0, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
         { productId: 102, variant: "Normal", marketPrice: 1, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
         { productId: 103, variant: "Normal", marketPrice: 6, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null },
-      ]);
+      ])
+      // product 101 has no earlier snapshot in the grace band either, so it stays out
+      .mockResolvedValueOnce([]);
     prismaMock.card.findMany.mockResolvedValueOnce([
       card({ id: "zero_base", tcgPlayerId: 100 }),
       card({ id: "missing_previous", tcgPlayerId: 101 }),
@@ -726,9 +864,8 @@ describe("cards routes", () => {
       expect(res.body.items[0]).toEqual(expect.objectContaining({ card: expect.objectContaining({ id: "zero_base" }), changeAmount: 2, changePercent: null }));
     });
 
-    prismaMock.tcgcsvPriceSnapshotRun.findFirst
-      .mockResolvedValueOnce(latestRun)
-      .mockResolvedValueOnce(previousRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findFirst.mockResolvedValueOnce(latestRun);
+    prismaMock.tcgcsvPriceSnapshotRun.findMany.mockResolvedValueOnce([previousRun]);
     prismaMock.tcgcsvPriceSnapshot.findMany
       .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 4, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }])
       .mockResolvedValueOnce([{ productId: 100, variant: "Normal", marketPrice: 2, lowPrice: null, midPrice: null, highPrice: null, directLowPrice: null }]);
