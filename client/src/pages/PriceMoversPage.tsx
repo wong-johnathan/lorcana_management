@@ -30,6 +30,7 @@ function percent(value: number | null): string {
   return `${prefix}${value.toFixed(2)}%`;
 }
 
+/** Why a mover list is empty, phrased from the comparable/unchanged counts when we have them. */
 function emptyCopy(data: PriceMoversResponse | null): string {
   if (data?.emptyReason === "NO_COMPLETED_RUNS") return "No completed price snapshots yet. Run Sync Prices to capture market history.";
   if (data?.emptyReason === "NO_COMPARISON_RUN") {
@@ -37,6 +38,15 @@ function emptyCopy(data: PriceMoversResponse | null): string {
     return since
       ? `Price history only goes back to ${since}, so this window has no earlier snapshot to compare against. Try 24H or 7D, or wait for more daily snapshots.`
       : "There is no older snapshot for this range yet. Try 24H or wait for more daily snapshots.";
+  }
+  const compared = data?.comparedCount ?? 0;
+  const unchanged = data?.unchangedCount ?? 0;
+  const moved = data?.movedCount ?? 0;
+  if (compared > 0 && unchanged === compared) {
+    return `All ${compared} comparable cards were unchanged in this window. Try a longer window.`;
+  }
+  if (compared > 0 && moved > 0) {
+    return `${moved} comparable cards moved in this window, but none match this mode. Try another mode.`;
   }
   return "No price movers match these filters. Try lowering the minimum price, widening the variant, or using a longer window.";
 }
@@ -78,6 +88,9 @@ export default function PriceMoversPage() {
 
   const activeType = useMemo(() => MOVER_TYPES.find((item) => item.value === type) ?? MOVER_TYPES[0], [type]);
   const premiumRaritySelected = PREMIUM_RARITIES.includes(rarity);
+  // How many of the comparable cards in this view actually moved, so a short list
+  // reads as "the market was quiet" rather than "the page is broken".
+  const compared = data?.comparedCount ?? 0;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
@@ -199,6 +212,11 @@ export default function PriceMoversPage() {
           <div className="text-xs text-gray-500">
             Comparing {data.previousSourceUpdatedAt ? new Date(data.previousSourceUpdatedAt).toLocaleString() : "previous snapshot"} → {data.currentSourceUpdatedAt ? new Date(data.currentSourceUpdatedAt).toLocaleString() : "latest snapshot"}
           </div>
+          {data.items.length > 0 && compared > 0 && (
+            <div className="text-xs text-gray-500">
+              {data.movedCount ?? 0} of {compared} comparable cards moved · {data.unchangedCount ?? 0} unchanged
+            </div>
+          )}
           {data.items.map((item, index) => {
             const positive = item.changeAmount > 0;
             return (

@@ -543,6 +543,47 @@ export function priceHistoryAvailableDays(points: { sourceUpdatedAt: string; pri
   return Math.max(0, Math.ceil((last - first) / (24 * 60 * 60 * 1000)));
 }
 
+/**
+ * Pick the completed run closest to the window target.
+ *
+ * TCGCSV's build timestamp drifts by seconds day to day, so the run *on* the target
+ * day can land a few seconds after the target instant. Comparing with `lte: target`
+ * then silently skips it and the window becomes one day too long — and which run gets
+ * used flips depending on that day's drift. Nearest-run avoids both. Ties go to the
+ * earlier run so the requested window is never shortened.
+ *
+ * A run further than one snapshot cadence from the target is rejected: history that
+ * simply does not reach back that far must report "no comparison run" rather than
+ * quietly compare a 14-day span under a "30D" label.
+ */
+export function pickNearestSnapshotRun<T extends { sourceUpdatedAt: Date }>(
+  runs: T[],
+  targetDate: Date,
+): T | null {
+  if (runs.length === 0) return null;
+  const target = targetDate.getTime();
+  let best = runs[0];
+  let bestDistance = Math.abs(best.sourceUpdatedAt.getTime() - target);
+  for (const run of runs.slice(1)) {
+    const distance = Math.abs(run.sourceUpdatedAt.getTime() - target);
+    if (distance < bestDistance) {
+      best = run;
+      bestDistance = distance;
+    }
+  }
+  return bestDistance <= PRICE_MOVER_RUN_MATCH_DAYS * 24 * 60 * 60 * 1000 ? best : null;
+}
+
+/** Snapshots are daily, so a run must land within this many days of the window target. */
+const PRICE_MOVER_RUN_MATCH_DAYS = 1;
+
+/**
+ * How far back a card's own snapshot may be borrowed when the comparison run lacks it.
+ * One cadence only: it rescues a card missing yesterday's sync without letting a card's
+ * real comparison span drift noticeably past the window it is labelled with.
+ */
+const PRICE_MOVER_FALLBACK_DAYS = 1;
+
 const PRICE_MOVER_WINDOWS = {
   "24h": 1,
   "7d": 7,
@@ -645,6 +686,9 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         currentSourceUpdatedAt: null,
         previousSourceUpdatedAt: null,
         filters,
+        comparedCount: 0,
+        unchangedCount: 0,
+        movedCount: 0,
         items: [],
         emptyReason: "NO_COMPLETED_RUNS",
       });
@@ -652,16 +696,18 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
     }
 
     const targetDate = new Date(latestRun.sourceUpdatedAt.getTime() - PRICE_MOVER_WINDOWS[window] * 24 * 60 * 60 * 1000);
-    const previousRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
+    // Runs before the latest one, newest first. The runs table holds one row per daily
+    // source build, so this stays small even after years of history.
+    const earlierRuns = await prisma.tcgcsvPriceSnapshotRun.findMany({
       where: {
         categoryId: 71,
         status: "COMPLETED",
-        sourceUpdatedAt: window === "24h"
-          ? { lt: latestRun.sourceUpdatedAt }
-          : { lte: targetDate },
+        sourceUpdatedAt: { lt: latestRun.sourceUpdatedAt },
       },
       orderBy: { sourceUpdatedAt: "desc" },
+      take: 400,
     });
+    const previousRun = window === "24h" ? earlierRuns[0] ?? null : pickNearestSnapshotRun(earlierRuns, targetDate);
 
     if (!previousRun) {
       const earliestRun = await prisma.tcgcsvPriceSnapshotRun.findFirst({
@@ -679,6 +725,9 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         previousSourceUpdatedAt: null,
         earliestSourceUpdatedAt: earliestRun?.sourceUpdatedAt.toISOString() ?? null,
         filters,
+        comparedCount: 0,
+        unchangedCount: 0,
+        movedCount: 0,
         items: [],
         emptyReason: "NO_COMPARISON_RUN",
       });
@@ -698,6 +747,38 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
     const previousByProductVariant = new Map(
       previousRows.map((row) => [`${row.productId}:${row.variant}`, row])
     );
+
+    // Upstream drops a product for a day or two now and then. Rather than silently
+    // excluding that card from every window, borrow its own nearest snapshot at or
+    // before the target, as long as it sits within the grace band. Only multi-day
+    // windows do this: for "24h" an older snapshot would misstate the window.
+    const fallbackByProductVariant = new Map<string, { row: (typeof currentRows)[number]; runSourceUpdatedAt: Date }>();
+    if (window !== "24h") {
+      const missingRows = currentRows.filter((row) => !previousByProductVariant.has(`${row.productId}:${row.variant}`));
+      const graceFloor = new Date(targetDate.getTime() - PRICE_MOVER_FALLBACK_DAYS * 24 * 60 * 60 * 1000);
+      const eligibleRunIds = earlierRuns
+        .filter((run) => run.sourceUpdatedAt <= targetDate && run.sourceUpdatedAt >= graceFloor)
+        .map((run) => run.id);
+      if (missingRows.length > 0 && eligibleRunIds.length > 0) {
+        const borrowedRows = await prisma.tcgcsvPriceSnapshot.findMany({
+          where: {
+            productId: { in: [...new Set(missingRows.map((row) => row.productId))] },
+            ...(allVariants ? {} : { variant: requestedVariant }),
+            runId: { in: eligibleRunIds },
+          },
+          include: { run: { select: { sourceUpdatedAt: true } } },
+          orderBy: { run: { sourceUpdatedAt: "asc" } },
+        });
+        for (const row of borrowedRows) {
+          const key = `${row.productId}:${row.variant}`;
+          const held = fallbackByProductVariant.get(key);
+          if (!held || row.run.sourceUpdatedAt > held.runSourceUpdatedAt) {
+            fallbackByProductVariant.set(key, { row, runSourceUpdatedAt: row.run.sourceUpdatedAt });
+          }
+        }
+      }
+    }
+
     const productIds = [...new Set(currentRows.map((row) => row.productId))];
     const cards = await prisma.card.findMany({
       where: {
@@ -708,8 +789,12 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
     });
     const cardsByTcgPlayerId = new Map(cards.map((card) => [card.tcgPlayerId, card]));
 
-    const items = currentRows.flatMap((currentRow) => {
-      const previousRow = previousByProductVariant.get(`${currentRow.productId}:${currentRow.variant}`);
+    // Everything with a usable earlier price, including cards that did not move:
+    // the counts below describe the whole comparable universe, while `items` stays
+    // limited to cards that actually moved in the requested direction.
+    const candidates = currentRows.flatMap((currentRow) => {
+      const key = `${currentRow.productId}:${currentRow.variant}`;
+      const previousRow = previousByProductVariant.get(key) ?? fallbackByProductVariant.get(key)?.row;
       if (!previousRow) return [];
       const card = cardsByTcgPlayerId.get(currentRow.productId);
       if (!card) return [];
@@ -717,9 +802,7 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       const previousPrice = numericPrice((previousRow as any)[field]);
       if (currentPrice == null || previousPrice == null) return [];
       const changeAmount = roundMoney(currentPrice - previousPrice);
-      if (changeAmount == null || changeAmount === 0) return [];
-      if (type === "gainers" && changeAmount <= 0) return [];
-      if (type === "losers" && changeAmount >= 0) return [];
+      if (changeAmount == null) return [];
       const changePercent = previousPrice !== 0 ? roundMoney((changeAmount / previousPrice) * 100) : null;
       const item = {
         card,
@@ -731,7 +814,15 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       };
       if (!passesPriceMoverMinFilters(item, filters)) return [];
       return [item];
-    }).sort(priceMoverSort(type)).slice(0, limit);
+    });
+
+    const comparedCount = candidates.length;
+    const unchangedCount = candidates.filter((item) => item.changeAmount === 0).length;
+    const items = candidates
+      .filter((item) => item.changeAmount !== 0)
+      .filter((item) => (type === "gainers" ? item.changeAmount > 0 : type === "losers" ? item.changeAmount < 0 : true))
+      .sort(priceMoverSort(type))
+      .slice(0, limit);
 
     res.json({
       window,
@@ -743,6 +834,9 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       currentSourceUpdatedAt: latestRun.sourceUpdatedAt.toISOString(),
       previousSourceUpdatedAt: previousRun.sourceUpdatedAt.toISOString(),
       filters,
+      comparedCount,
+      unchangedCount,
+      movedCount: comparedCount - unchangedCount,
       items,
       ...(items.length === 0 ? { emptyReason: "NO_MOVERS" } : {}),
     });

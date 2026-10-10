@@ -124,6 +124,9 @@ async function mockApi(page: Page) {
             minCurrentPrice: Number(url.searchParams.get("minCurrentPrice")) || null,
             minChangePercent: Number(url.searchParams.get("minChangePercent")) || null,
           },
+          comparedCount: 10,
+          unchangedCount: 6,
+          movedCount: 4,
           items: [{ card, variant: "Normal", currentPrice: 10, previousPrice: 5, changeAmount: 5, changePercent: 100 }],
         },
       });
@@ -299,6 +302,8 @@ test("anonymous user views phase-one price movers", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Price Movers" })).toBeVisible();
   await expect(page.getByText("Mickey Mouse")).toBeVisible();
   await expect(page.getByText("+$5.00 / +100.00%")).toBeVisible();
+  // A short list reads as a quiet market rather than a broken page.
+  await expect(page.getByText("4 of 10 comparable cards moved · 6 unchanged")).toBeVisible();
 
   await page.getByLabel("Min previous $").fill("5");
   await expect(page.getByText("Mickey Mouse")).toBeVisible();

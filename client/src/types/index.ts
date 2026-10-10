@@ -494,7 +494,10 @@ export interface PriceMoversResponse {
   currentSourceUpdatedAt: string | null;
   previousSourceUpdatedAt: string | null;
   earliestSourceUpdatedAt?: string | null;
-  filters?: PriceMoverMinFilters;
+  filters: PriceMoverMinFilters;
+  comparedCount?: number;
+  unchangedCount?: number;
+  movedCount?: number;
   items: PriceMoverItem[];
   emptyReason?: "NO_COMPLETED_RUNS" | "NO_COMPARISON_RUN" | "NO_MOVERS";
 }
