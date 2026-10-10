@@ -204,11 +204,11 @@ describe("PriceMoversPage", () => {
     expect(screen.getByLabelText("Min previous $")).toHaveValue(null);
   });
 
-  it("explains how many comparable cards moved and stayed unchanged", async () => {
-    priceMoversMock.mockResolvedValue({ ...response, comparedCount: 10, unchangedCount: 6, movedCount: 4 });
+  it("explains how many comparable cards rose, fell, and stayed unchanged", async () => {
+    priceMoversMock.mockResolvedValue({ ...response, comparedCount: 10, unchangedCount: 6, movedCount: 4, gainersCount: 1, losersCount: 3 });
     renderPage();
 
-    expect(await screen.findByText("4 of 10 comparable cards moved · 6 unchanged")).toBeInTheDocument();
+    expect(await screen.findByText("1 of 10 comparable cards rose · 3 fell · 6 unchanged")).toBeInTheDocument();
   });
 
   it("says so when every comparable card was unchanged", async () => {
@@ -219,13 +219,15 @@ describe("PriceMoversPage", () => {
       comparedCount: 10,
       unchangedCount: 10,
       movedCount: 0,
+      gainersCount: 0,
+      losersCount: 0,
     });
     const { container } = renderPage();
 
     await waitFor(() => expect(container.textContent).toContain("All 10 comparable cards were unchanged in this window."));
   });
 
-  it("says so when cards moved but none in this direction", async () => {
+  it("points at the opposite mode when nothing moved the way you asked", async () => {
     priceMoversMock.mockResolvedValue({
       ...response,
       items: [],
@@ -233,9 +235,28 @@ describe("PriceMoversPage", () => {
       comparedCount: 10,
       unchangedCount: 6,
       movedCount: 4,
+      gainersCount: 0,
+      losersCount: 4,
     });
     const { container } = renderPage();
 
-    await waitFor(() => expect(container.textContent).toContain("4 comparable cards moved in this window, but none match this mode."));
+    await waitFor(() => expect(container.textContent).toContain("No comparable cards rose in this window — 4 fell. Try Top losers."));
+  });
+
+  it("blames the minimum filters, not the market, when a threshold emptied the list", async () => {
+    priceMoversMock.mockResolvedValue({
+      ...response,
+      filters: { minPrevPrice: 500, minCurrentPrice: null, minChangePercent: null },
+      items: [],
+      emptyReason: "NO_MOVERS",
+      comparedCount: 0,
+      unchangedCount: 0,
+      movedCount: 0,
+      gainersCount: 0,
+      losersCount: 0,
+    });
+    const { container } = renderPage();
+
+    await waitFor(() => expect(container.textContent).toContain("Try lowering the minimum price"));
   });
 });

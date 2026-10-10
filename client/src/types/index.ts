@@ -498,6 +498,8 @@ export interface PriceMoversResponse {
   comparedCount?: number;
   unchangedCount?: number;
   movedCount?: number;
+  gainersCount?: number;
+  losersCount?: number;
   items: PriceMoverItem[];
   emptyReason?: "NO_COMPLETED_RUNS" | "NO_COMPARISON_RUN" | "NO_MOVERS";
 }

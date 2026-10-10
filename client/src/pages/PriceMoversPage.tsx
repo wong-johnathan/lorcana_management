@@ -45,6 +45,18 @@ function emptyCopy(data: PriceMoversResponse | null): string {
   if (compared > 0 && unchanged === compared) {
     return `All ${compared} comparable cards were unchanged in this window. Try a longer window.`;
   }
+  // A minimum threshold can empty the list even when the market moved, so only blame
+  // the market when the user has not narrowed it themselves.
+  const filters = data?.filters;
+  const narrowedByUser = Boolean(filters && (filters.minPrevPrice !== null || filters.minCurrentPrice !== null || filters.minChangePercent !== null));
+  const gainers = data?.gainersCount ?? 0;
+  const losers = data?.losersCount ?? 0;
+  if (compared > 0 && !narrowedByUser && data?.type === "gainers" && gainers === 0 && losers > 0) {
+    return `No comparable cards rose in this window — ${losers} fell. Try Top losers.`;
+  }
+  if (compared > 0 && !narrowedByUser && data?.type === "losers" && losers === 0 && gainers > 0) {
+    return `No comparable cards fell in this window — ${gainers} rose. Try Top gainers.`;
+  }
   if (compared > 0 && moved > 0) {
     return `${moved} comparable cards moved in this window, but none match this mode. Try another mode.`;
   }
@@ -214,7 +226,7 @@ export default function PriceMoversPage() {
           </div>
           {data.items.length > 0 && compared > 0 && (
             <div className="text-xs text-gray-500">
-              {data.movedCount ?? 0} of {compared} comparable cards moved · {data.unchangedCount ?? 0} unchanged
+              {data.gainersCount ?? 0} of {compared} comparable cards rose · {data.losersCount ?? 0} fell · {data.unchangedCount ?? 0} unchanged
             </div>
           )}
           {data.items.map((item, index) => {

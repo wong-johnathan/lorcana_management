@@ -689,6 +689,8 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         comparedCount: 0,
         unchangedCount: 0,
         movedCount: 0,
+        gainersCount: 0,
+        losersCount: 0,
         items: [],
         emptyReason: "NO_COMPLETED_RUNS",
       });
@@ -728,6 +730,8 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
         comparedCount: 0,
         unchangedCount: 0,
         movedCount: 0,
+        gainersCount: 0,
+        losersCount: 0,
         items: [],
         emptyReason: "NO_COMPARISON_RUN",
       });
@@ -817,7 +821,8 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
     });
 
     const comparedCount = candidates.length;
-    const unchangedCount = candidates.filter((item) => item.changeAmount === 0).length;
+    const gainersCount = candidates.filter((item) => item.changeAmount > 0).length;
+    const losersCount = candidates.filter((item) => item.changeAmount < 0).length;
     const items = candidates
       .filter((item) => item.changeAmount !== 0)
       .filter((item) => (type === "gainers" ? item.changeAmount > 0 : type === "losers" ? item.changeAmount < 0 : true))
@@ -835,8 +840,10 @@ cardsRouter.get("/price-movers", async (req: Request, res: Response) => {
       previousSourceUpdatedAt: previousRun.sourceUpdatedAt.toISOString(),
       filters,
       comparedCount,
-      unchangedCount,
-      movedCount: comparedCount - unchangedCount,
+      unchangedCount: comparedCount - gainersCount - losersCount,
+      movedCount: gainersCount + losersCount,
+      gainersCount,
+      losersCount,
       items,
       ...(items.length === 0 ? { emptyReason: "NO_MOVERS" } : {}),
     });
