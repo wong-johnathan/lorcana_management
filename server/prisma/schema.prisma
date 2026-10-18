@@ -37,10 +37,12 @@ model Card {
   imageCachedAt    DateTime?
   imageContentType String?
 
-  inventoryEntries   InventoryEntry[]
-  analysis           CardAnalysis?
-  prices             CardPrice[]
-  retentionOverrides CardRetentionOverride[]
+  inventoryEntries        InventoryEntry[]
+  analysis                CardAnalysis?
+  prices                  CardPrice[]
+  retentionOverrides      CardRetentionOverride[]
+  marketplaceListings     MarketplaceListing[]
+  marketplaceTransactions MarketplaceTransaction[]
 
   @@index([name])
   @@index([color])
@@ -64,11 +66,24 @@ model User {
   authProvider    String    @default("LOCAL")
   publicEnabled   Boolean   @default(false)
   createdAt       DateTime  @default(now())
+  isOperator      Boolean   @default(false)
+  disabledAt      DateTime?
 
   inventoryEntries       InventoryEntry[]
   profile                UserProfile?
   inventoryPolicy        UserInventoryPolicy?
   cardRetentionOverrides CardRetentionOverride[]
+  listings               MarketplaceListing[]
+  enquiriesAsBuyer       MarketplaceEnquiry[]     @relation("EnquiryBuyer")
+  enquiriesAsSeller      MarketplaceEnquiry[]     @relation("EnquirySeller")
+  transactionsAsBuyer    MarketplaceTransaction[] @relation("TxBuyer")
+  transactionsAsSeller   MarketplaceTransaction[] @relation("TxSeller")
+  reviewsWritten         MarketplaceReview[]      @relation("ReviewReviewer")
+  reviewsReceived        MarketplaceReview[]      @relation("ReviewReviewee")
+  referencesWritten      UserReference[]          @relation("RefAuthor")
+  referencesReceived     UserReference[]          @relation("RefSubject")
+  reports                MarketplaceReport[]
+  enquiryMessages        EnquiryMessage[]
 }
 
 model UserInventoryPolicy {
@@ -201,4 +216,160 @@ model TcgcsvPriceSnapshot {
   @@unique([runId, productId, variant])
   @@index([productId, variant, runId])
   @@index([runId, groupId])
+}
+
+model MarketplaceListing {
+  id         String    @id @default(cuid())
+  sellerId   String
+  seller     User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  cardId     String
+  card       Card      @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  variant    String // "normal" | "foil" | "holofoil"
+  quantity   Int // remaining offered count
+  priceMinor Int // unit price in minor units
+  currency   String // ISO-4217 uppercase
+  condition  String? // "NM" | "LP" | "MP" | "HP"
+  location   String    @default("")
+  note       String?
+  status     String    @default("ACTIVE") // "ACTIVE" | "CLOSED"
+  hiddenAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  photos       MarketplaceListingPhoto[]
+  enquiries    MarketplaceEnquiry[]
+  transactions MarketplaceTransaction[]
+
+  @@index([status, hiddenAt, variant])
+  @@index([sellerId, variant])
+  @@index([cardId])
+  @@index([currency])
+  @@index([condition])
+}
+
+model MarketplaceListingPhoto {
+  id        String             @id @default(cuid())
+  listingId String
+  listing   MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  objectKey String
+  url       String
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+
+  @@index([listingId])
+}
+
+model MarketplaceEnquiry {
+  id                String             @id @default(cuid())
+  listingId         String
+  listing           MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId           String
+  buyer             User               @relation("EnquiryBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId          String // denormalized from listing for "my enquiries as seller" + authz
+  seller            User               @relation("EnquirySeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  requestedQuantity Int
+  status            String             @default("ACTIVE") // "ACTIVE" | "ARCHIVED"
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  messages     EnquiryMessage[]
+  transactions MarketplaceTransaction[]
+
+  @@unique([buyerId, listingId])
+  @@index([listingId])
+  @@index([sellerId])
+  @@index([buyerId])
+}
+
+model EnquiryMessage {
+  id        String             @id @default(cuid())
+  enquiryId String
+  enquiry   MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body      String // plain text, unmodified (AC-13.1)
+  createdAt DateTime           @default(now())
+
+  @@index([enquiryId, createdAt])
+}
+
+model MarketplaceTransaction {
+  id             String             @id @default(cuid())
+  enquiryId      String
+  enquiry        MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  listingId      String
+  listing        MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId        String
+  buyer          User               @relation("TxBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId       String
+  seller         User               @relation("TxSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  cardId         String
+  card           Card               @relation(fields: [cardId], references: [id], onDelete: Restrict)
+  variant        String // "normal" | "foil" | "holofoil"
+  quantity       Int
+  priceMinor     Int // unit-price snapshot at mark-sold
+  currency       String
+  status         String             @default("PENDING_CONFIRMATION") // "PENDING_CONFIRMATION" | "COMPLETED" | "CANCELLED"
+  completedCause String? // "BUYER_CONFIRM" | "AUTO_TRANSFER"
+  cancelledBy    String? // "BUYER" | "SELLER" | "SYSTEM"
+  soldAt         DateTime           @default(now())
+  confirmedAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  reviews MarketplaceReview[]
+
+  @@index([sellerId, cardId, variant, status])
+  @@index([buyerId, status])
+  @@index([status, soldAt]) // auto-transfer sweep
+  @@index([listingId])
+}
+
+model MarketplaceReview {
+  id            String                 @id @default(cuid())
+  transactionId String
+  transaction   MarketplaceTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  reviewerId    String
+  reviewer      User                   @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+  revieweeId    String
+  reviewee      User                   @relation("ReviewReviewee", fields: [revieweeId], references: [id], onDelete: Cascade)
+  rating        Int // 1..5 (CHECK in migration)
+  comment       String?
+  createdAt     DateTime               @default(now())
+
+  @@unique([transactionId, reviewerId])
+  @@index([revieweeId])
+}
+
+model UserReference {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation("RefAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   User     @relation("RefSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  comment   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One vouch per (author, subject): a new vouch upserts and replaces the prior
+  // (AC-20.2). No transactionId — a vouch is a free-form reference check, distinct
+  // from transaction-linked reviews. The "completed deal" indication is computed at
+  // read time (AC-21.2), never stored.
+  @@unique([authorId, subjectId])
+  @@index([subjectId])
+}
+
+model MarketplaceReport {
+  id         String   @id @default(cuid())
+  reporterId String
+  reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType String // "LISTING" | "USER"
+  targetId   String
+  reason     String
+  status     String   @default("OPEN") // "OPEN" | "RESOLVED"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, targetType])
+  @@index([targetType, targetId])
 }

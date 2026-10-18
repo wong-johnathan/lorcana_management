@@ -175,6 +175,18 @@ describe("health and auth routes", () => {
     await request(app).post("/api/auth/login").send({ username: "jw", password: "secret1" }).expect(500, { error: "Internal server error" });
   });
 
+  it("rejects login for disabled accounts (D6)", async () => {
+    const bcrypt = await import("bcryptjs");
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: "u",
+      username: "jw",
+      passwordHash: await bcrypt.hash("secret1", 4),
+      disabledAt: new Date(),
+    });
+    await request(app).post("/api/auth/login").send({ username: "jw", password: "secret1" })
+      .expect(403, { error: "Account is disabled" });
+  });
+
   it("logs in with Google, links existing email users, and creates verified users", async () => {
     googleMocks.verifyIdToken.mockResolvedValue({
       getPayload: () => ({ sub: "google-sub", email: "JW@Example.com", email_verified: true, name: "John Wong" }),
@@ -293,6 +305,19 @@ describe("health and auth routes", () => {
 
     expect(deleteProfileImage).toHaveBeenCalledWith("profile-images/user_1/avatar.png");
     expect(prismaMock.user.delete).toHaveBeenCalledWith({ where: { id: "user_1" } });
+  });
+
+  it("rejects account deletion with a clear 409 when marketplace transaction history exists (D9)", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw1005", profile: null });
+    prismaMock.marketplaceTransaction.count.mockResolvedValueOnce(1);
+
+    await auth(request(app).delete("/api/auth/me").send({ confirmUsername: "jw1005", confirmText: "DELETE" }))
+      .expect(409, { error: "Cannot delete account with marketplace transaction history" });
+
+    expect(prismaMock.user.delete).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceTransaction.count).toHaveBeenCalledWith({
+      where: { OR: [{ buyerId: "user_1" }, { sellerId: "user_1" }] },
+    });
   });
 });
 

@@ -8,6 +8,8 @@ import { syncRouter } from "./routes/sync.js";
 import { settingsRouter } from "./routes/settings.js";
 import { publicRouter } from "./routes/public.js";
 import { profileRouter } from "./routes/profile.js";
+import { marketplaceRouter } from "./routes/marketplace.js";
+import { marketplaceAdminRouter } from "./routes/marketplaceAdmin.js";
 import { LOCAL_UPLOAD_ROOT } from "./services/objectStorage.js";
 
 export function createApp() {
@@ -25,6 +27,11 @@ export function createApp() {
   app.use("/api/settings", settingsRouter);
   app.use("/api/profile", profileRouter);
   app.use("/api/public", publicRouter);
+  // Operator endpoints (design §7) mount at /api/marketplace/admin and are
+  // registered BEFORE the main marketplace router so `/admin/...` resolves
+  // before B3's dynamic `:id` routes (e.g. /listings/:id, /users/:userId/...).
+  app.use("/api/marketplace/admin", marketplaceAdminRouter);
+  app.use("/api/marketplace", marketplaceRouter);
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });
