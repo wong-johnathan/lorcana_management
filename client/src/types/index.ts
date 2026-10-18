@@ -502,3 +502,79 @@ export interface MarketplacePendingSaleItem {
 export interface MarketplacePendingSalesResponse {
   items: MarketplacePendingSaleItem[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F2 additions — authed/transactional surfaces (chat, sell, transactions).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /marketplace/enquiries — the seller/buyer inbox. */
+export interface MarketplaceEnquiriesResponse {
+  enquiries: MarketplaceEnquirySummary[];
+}
+
+/**
+ * GET /marketplace/enquiries/:id — thread + messages. The embedded `listing` is
+ * the raw Prisma listing (card + photos, no `seller`), so `seller` is unused.
+ */
+export interface MarketplaceEnquiryDetail {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  requestedQuantity: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: MarketplaceListing;
+  buyer: { id: string; username: string };
+  seller: { id: string; username: string };
+}
+
+export interface MarketplaceEnquiryDetailResponse {
+  enquiry: MarketplaceEnquiryDetail;
+  messages: EnquiryMessage[];
+}
+
+/** POST /marketplace/listings/:id/enquire → { enquiryId }. */
+export interface MarketplaceEnquireResponse {
+  enquiryId: string;
+}
+
+/** Listing photo upload body (dataUrl + contentType; REQ-23 / D7). */
+export interface MarketplacePhotoUpload {
+  dataUrl: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+}
+
+/** POST /marketplace/listings/:id/photos — the persisted photo row. */
+export interface MarketplacePhotoUploadResult extends MarketplaceListingPhoto {
+  listingId: string;
+  objectKey: string;
+  createdAt: string;
+}
+
+/** Thin results returned by the B2 transition write endpoints. */
+export interface MarketplaceMarkSoldResult {
+  transactionId: string;
+  quantity: number;
+  status: string;
+  listingQuantity: number;
+  listingStatus: string;
+}
+
+export interface MarketplaceAdjustQuantityResult {
+  transactionId: string;
+  quantity: number;
+}
+
+export interface MarketplaceConfirmResult {
+  transactionId: string;
+  alreadyCompleted: boolean;
+  status?: string;
+}
+
+export interface MarketplaceCancelResult {
+  transactionId: string;
+  alreadyCancelled: boolean;
+  status?: string;
+}

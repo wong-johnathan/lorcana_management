@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import ReportModal from "../../components/marketplace/ReportModal";
 import { marketplace } from "../../services/api";
@@ -15,11 +15,14 @@ const PREMIUM_RARITIES = ["Enchanted", "Iconic"];
 export default function MarketplaceListingPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [listing, setListing] = useState<MarketplaceListingDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enquiring, setEnquiring] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [enquireError, setEnquireError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -66,6 +69,20 @@ export default function MarketplaceListingPage() {
   const isPremium = card ? PREMIUM_RARITIES.includes(card.rarity) : false;
   const canEnquire = listing.status === "ACTIVE" && listing.quantity > 0;
   const quantityOptions = Array.from({ length: Math.max(0, listing.quantity) }, (_, i) => i + 1);
+
+  // REQ-11/12: POST /listings/:id/enquire resolves (or re-activates) the one
+  // thread per (buyer, listing) and returns the thread id; navigate to it.
+  const startEnquiry = async () => {
+    setSubmitting(true);
+    setEnquireError(null);
+    try {
+      const { enquiryId } = await marketplace.enquire(listing.id, quantity);
+      navigate(`/marketplace/chat/${enquiryId}`);
+    } catch (err) {
+      setEnquireError(err instanceof Error ? err.message : "Failed to start enquiry");
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 space-y-6">
@@ -211,22 +228,26 @@ export default function MarketplaceListingPage() {
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setEnquiring(false)}
+                    onClick={() => {
+                      setEnquireError(null);
+                      setEnquiring(false);
+                    }}
                     className="flex-1 rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:border-gray-500"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      // F2 wires marketplace.enquire(listing.id, quantity) here.
-                      setEnquiring(false);
-                    }}
-                    className="flex-1 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400"
+                    onClick={() => void startEnquiry()}
+                    disabled={submitting}
+                    className="flex-1 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Start enquiry
+                    {submitting ? "Starting…" : "Start enquiry"}
                   </button>
                 </div>
+                {enquireError && (
+                  <p className="mt-2 text-sm text-red-300">{enquireError}</p>
+                )}
               </div>
             ) : (
               <button
