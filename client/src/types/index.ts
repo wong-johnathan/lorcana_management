@@ -503,6 +503,16 @@ export interface MarketplacePendingSalesResponse {
   items: MarketplacePendingSaleItem[];
 }
 
+/** GET /marketplace/transactions — the caller's own transactions (buyer OR seller). */
+export interface MarketplaceTransactionsResponse {
+  transactions: MarketplaceTransaction[];
+}
+
+/** GET /marketplace/listings/mine — the seller's own listings, incl. CLOSED/hidden. */
+export interface MarketplaceMyListingsResponse {
+  listings: MarketplaceListing[];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // F2 additions — authed/transactional surfaces (chat, sell, transactions).
 // ─────────────────────────────────────────────────────────────────────────────

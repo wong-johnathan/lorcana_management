@@ -40,6 +40,8 @@ import type {
   MarketplaceCancelResult,
   MarketplaceTransaction,
   MarketplacePendingSalesResponse,
+  MarketplaceTransactionsResponse,
+  MarketplaceMyListingsResponse,
   EnquiryMessage,
   MarketplaceListing,
 } from "../types";
@@ -335,6 +337,16 @@ export const marketplace = {
   /** GET /marketplace/transactions/:id — status + parties + cause. */
   getTransaction: (transactionId: string) =>
     request<MarketplaceTransaction>(`/marketplace/transactions/${transactionId}`),
+
+  /** GET /marketplace/transactions — my transactions (buyer OR seller, newest-first). */
+  getTransactions: (status?: string) => {
+    const query = status ? `?${new URLSearchParams({ status }).toString()}` : "";
+    return request<MarketplaceTransactionsResponse>(`/marketplace/transactions${query}`);
+  },
+
+  /** GET /marketplace/listings/mine — my listings incl. CLOSED/hidden (D2). */
+  getMyListings: () =>
+    request<MarketplaceMyListingsResponse>("/marketplace/listings/mine"),
 
   /** GET /marketplace/me/pending — seller's pending-sale breakdown (REQ-15). */
   getMyPending: () => request<MarketplacePendingSalesResponse>("/marketplace/me/pending"),

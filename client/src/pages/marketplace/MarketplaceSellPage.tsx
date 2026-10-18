@@ -7,7 +7,6 @@ import type {
   InventoryEntry,
   InventoryPolicy,
   MarketplaceListing,
-  MarketplaceListingDetail,
 } from "../../types";
 import {
   formatPriceMinor,
@@ -16,17 +15,18 @@ import {
 
 /**
  * Sell surface (REQ-3/4/5/6/7/8): my listings plus the create/edit form.
- * "My listings" is sourced from the browse endpoint filtered by `sellerId`
- * (the frozen §7 contract has no dedicated "my listings" endpoint, so CLOSED /
- * sold-out listings are not enumerable here — see the F2 discrepancy note).
- * Each listing's `pendingQuantity` (from its detail view) drives the
- * locked-fields state (REQ-8).
+ * "My listings" is sourced from `GET /marketplace/listings/mine`, which lists
+ * the seller's own listings including CLOSED / sold-out rows that the public
+ * browse feed excludes (D2). Locked fields (REQ-8) are driven by the listing's
+ * status (a CLOSED listing can no longer be re-priced/re-quantified) plus any
+ * PENDING_CONFIRMATION transaction on the listing (from `GET /transactions`).
  */
 export default function MarketplaceSellPage() {
   const { user } = useAuth();
   const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [policy, setPolicy] = useState<InventoryPolicy | null>(null);
-  const [listings, setListings] = useState<MarketplaceListingDetail[] | null>(null);
+  const [listings, setListings] = useState<MarketplaceListing[] | null>(null);
+  const [pendingListingIds, setPendingListingIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -37,17 +37,22 @@ export default function MarketplaceSellPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inv, pol, mine] = await Promise.all([
+      const [inv, pol, mine, pendingTransactions] = await Promise.all([
         inventoryApi.list(),
         inventoryApi.getPolicy().catch(() => null),
-        (async () => {
-          const { listings } = await marketplace.listings({ sellerId: user.id, limit: 100 });
-          return Promise.all(listings.map((listing) => marketplace.listing(listing.id)));
-        })(),
+        marketplace.getMyListings(),
+        marketplace.getTransactions("PENDING_CONFIRMATION"),
       ]);
       setInventory(inv);
       setPolicy(pol);
-      setListings(mine);
+      setListings(mine.listings);
+      setPendingListingIds(
+        new Set(
+          pendingTransactions.transactions
+            .filter((transaction) => transaction.sellerId === user.id)
+            .map((transaction) => transaction.listingId)
+        )
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load your listings");
     } finally {
@@ -59,6 +64,9 @@ export default function MarketplaceSellPage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  const isLocked = (listing: MarketplaceListing) =>
+    listing.status !== "ACTIVE" || pendingListingIds.has(listing.id);
 
   const editingListing = editingId ? listings?.find((l) => l.id === editingId) ?? null : null;
 
@@ -112,7 +120,7 @@ export default function MarketplaceSellPage() {
               <ListingForm
                 mode="edit"
                 listing={editingListing}
-                locked={editingListing.pendingQuantity > 0}
+                locked={isLocked(editingListing)}
                 inventory={inventory}
                 policy={policy}
                 onSaved={() => {
@@ -135,12 +143,12 @@ export default function MarketplaceSellPage() {
           </div>
         ) : !listings || listings.length === 0 ? (
           <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">
-            You have no active listings. Create one to start selling.
+            You have no listings yet. Create one to start selling.
           </div>
         ) : (
           <ul className="space-y-2">
             {listings.map((listing) => {
-              const locked = listing.pendingQuantity > 0;
+              const locked = isLocked(listing);
               return (
                 <li
                   key={listing.id}
@@ -163,7 +171,9 @@ export default function MarketplaceSellPage() {
                     </p>
                     {locked && (
                       <p className="mt-0.5 text-xs text-amber-300">
-                        {listing.pendingQuantity} pending sale — price/quantity locked
+                        {listing.status === "CLOSED"
+                          ? "Sold out — price/quantity locked"
+                          : "Pending sale — price/quantity locked"}
                       </p>
                     )}
                   </div>
