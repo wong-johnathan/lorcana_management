@@ -204,6 +204,8 @@ describe("marketplace write authorization (REQ-2)", () => {
     await request(app).post("/api/marketplace/transactions/tx1/confirm").expect(401);
     await request(app).post("/api/marketplace/reports").send({}).expect(401);
     await request(app).get("/api/marketplace/enquiries").expect(401);
+    await request(app).get("/api/marketplace/transactions").expect(401);
+    await request(app).get("/api/marketplace/listings/mine").expect(401);
   });
 });
 
@@ -534,5 +536,130 @@ describe("marketplace reports (REQ-22)", () => {
         data: expect.objectContaining({ reporterId: "buyer1", targetType: "LISTING", targetId: "listing1", reason: "fake", status: "OPEN" }),
       })
     );
+  });
+});
+
+describe("marketplace transaction list (D1)", () => {
+  it("lists the caller's transactions newest-first, buyer OR seller", async () => {
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValueOnce([
+      tx({
+        id: "tx2",
+        buyer: { id: "buyer1", username: "buyer" },
+        seller: { id: "seller1", username: "seller" },
+        card: { id: "card1", name: "Mickey Mouse", setName: "Set 1" },
+      }),
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/transactions"), buyerToken).expect(200);
+
+    expect(prismaMock.marketplaceTransaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { OR: [{ buyerId: "buyer1" }, { sellerId: "buyer1" }] },
+        orderBy: { createdAt: "desc" },
+        include: {
+          buyer: { select: { id: true, username: true } },
+          seller: { select: { id: true, username: true } },
+          card: { select: { id: true, name: true, setName: true } },
+        },
+      })
+    );
+    expect(res.body.transactions).toHaveLength(1);
+    expect(res.body.transactions[0].id).toBe("tx2");
+    expect(res.body.transactions[0].buyer.username).toBe("buyer");
+  });
+
+  it("filters by a valid status and rejects an invalid status", async () => {
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValueOnce([]);
+    await auth(request(app).get("/api/marketplace/transactions").query({ status: "COMPLETED" }), buyerToken).expect(200);
+    expect(prismaMock.marketplaceTransaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: "COMPLETED", OR: [{ buyerId: "buyer1" }, { sellerId: "buyer1" }] }),
+      })
+    );
+
+    await auth(request(app).get("/api/marketplace/transactions").query({ status: "BOGUS" }), buyerToken).expect(400, {
+      error: "Invalid transaction status",
+    });
+    expect(prismaMock.marketplaceTransaction.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("marketplace my listings (D2)", () => {
+  it("lists the seller's own listings including CLOSED and hidden", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([
+      listing({ status: "CLOSED", quantity: 0, hiddenAt: new Date("2026-10-02T00:00:00Z"), sellerId: "seller1" }),
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/listings/mine"), sellerToken).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sellerId: "seller1" },
+        orderBy: { createdAt: "desc" },
+      })
+    );
+    expect(res.body.listings).toHaveLength(1);
+    expect(res.body.listings[0].status).toBe("CLOSED");
+    expect(res.body.listings[0].hiddenAt).not.toBeNull();
+  });
+
+  it("is not shadowed by /listings/:id (mine is treated as a route, not an id)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([listing()]);
+
+    const res = await auth(request(app).get("/api/marketplace/listings/mine"), sellerToken).expect(200);
+
+    expect(prismaMock.marketplaceListing.findUnique).not.toHaveBeenCalled();
+    expect(res.body.listings).toHaveLength(1);
+  });
+});
+
+describe("marketplace enquiry thread authz (AC-11.3 / T1)", () => {
+  it("rejects a non-participant reading an enquiry thread", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiry({ buyerId: "buyer1", sellerId: "seller1" })
+    );
+    await auth(request(app).get("/api/marketplace/enquiries/enq1"), otherToken).expect(403, {
+      error: "You are not a participant in this enquiry",
+    });
+  });
+
+  it("rejects a non-participant posting a message to an enquiry thread", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiry({ buyerId: "buyer1", sellerId: "seller1", status: "ACTIVE" })
+    );
+    await auth(request(app).post("/api/marketplace/enquiries/enq1/messages").send({ body: "hi" }), otherToken).expect(403, {
+      error: "You are not a participant in this enquiry",
+    });
+  });
+
+  it("creates a message as a participant and stores it as plain text", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiry({ buyerId: "buyer1", sellerId: "seller1", status: "ACTIVE" })
+    );
+    prismaMock.enquiryMessage.create.mockResolvedValueOnce({
+      id: "msg1",
+      enquiryId: "enq1",
+      senderId: "buyer1",
+      body: "hello",
+    });
+
+    const res = await auth(
+      request(app).post("/api/marketplace/enquiries/enq1/messages").send({ body: "hello" }),
+      buyerToken
+    ).expect(201);
+
+    expect(prismaMock.enquiryMessage.create).toHaveBeenCalledWith({
+      data: { enquiryId: "enq1", senderId: "buyer1", body: "hello" },
+    });
+    expect(res.body.id).toBe("msg1");
+  });
+
+  it("rejects a message on an archived thread with 409", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiry({ buyerId: "buyer1", sellerId: "seller1", status: "ARCHIVED" })
+    );
+    await auth(request(app).post("/api/marketplace/enquiries/enq1/messages").send({ body: "hello" }), buyerToken).expect(409, {
+      error: "Enquiry is not active",
+    });
   });
 });
