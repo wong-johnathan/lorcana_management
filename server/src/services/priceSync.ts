@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { resolveFallbackTcgPlayerIds } from "./tcgPlayerIdMatcher.js";
 
 const prisma = new PrismaClient();
 
@@ -14,6 +15,10 @@ export interface TcgcsvGroup {
 
 interface TcgcsvProduct {
   productId: number;
+  name: string;
+  groupId: number;
+  extendedData: { name: string; value: string }[];
+  presaleInfo?: { isPresale?: boolean };
 }
 
 interface TcgcsvPrice {
@@ -275,6 +280,7 @@ export async function syncGroupPrices(
     try {
       const products = await fetchGroupProducts(group.groupId);
       const prices = await fetchGroupPrices(group.groupId);
+      await resolveFallbackTcgPlayerIds(prisma, group.name, products);
       const result = await persistGroupSnapshotAndCurrentPrices(run.id, group.groupId, products, prices);
       matched += result.matched;
       unmatched += result.unmatched;
