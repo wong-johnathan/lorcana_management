@@ -7,7 +7,7 @@ type PublicProfilePanelProps = {
 
 function hasProfile(profile?: PublicUserProfile | null): profile is PublicUserProfile {
   if (!profile) return false;
-  return Object.entries(profile).some(([key, value]) => key !== "references" && Boolean(value)) || Boolean(profile.references?.length);
+  return Object.entries(profile).some(([, value]) => Boolean(value));
 }
 
 function externalLink(value: string, kind: "instagram" | "telegram" | "facebook" | "email" | "phone") {
@@ -57,20 +57,6 @@ export default function PublicProfilePanel({ profile, username }: PublicProfileP
           {profile.phoneNumber && <ProfileLink label="HP" href={externalLink(profile.phoneNumber, "phone")} value={profile.phoneNumber} />}
         </div>
 
-        {profile.references && profile.references.length > 0 && (
-          <section className="space-y-3">
-            <h3 className="font-medium text-gray-100">User-provided references</h3>
-            <div className="grid gap-3">
-              {profile.references.map((reference) => (
-                <div key={reference.id} className="rounded-lg border border-gray-800 bg-gray-950 p-3">
-                  <p className="font-medium text-gray-100">{reference.name}</p>
-                  {reference.description && <p className="text-sm text-gray-400">{reference.description}</p>}
-                  {reference.contactInfo && <p className="text-sm text-gray-500">{reference.contactInfo}</p>}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
       </div>
     </div>
   );

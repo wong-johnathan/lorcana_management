@@ -3,10 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
-import UserReferencesEditor from "../components/profile/UserReferencesEditor";
 import PublicProfilePanel from "../components/profile/PublicProfilePanel";
 import AccountSettingsPanel from "../components/profile/AccountSettingsPanel";
-import type { UserProfile, UserReference, PublicUserProfile } from "../types";
+import type { UserProfile, PublicUserProfile } from "../types";
 
 const profile: UserProfile = {
   displayName: "Johnathan",
@@ -23,15 +22,6 @@ const profile: UserProfile = {
   emailVisible: false,
   phoneNumber: "+6599999999",
   phoneNumberVisible: false,
-  references: [],
-};
-
-const reference: UserReference = {
-  id: "ref_1",
-  name: "Alice",
-  description: "Trade reference",
-  contactInfo: "@alice",
-  visible: true,
 };
 
 describe("profile components", () => {
@@ -68,30 +58,6 @@ describe("profile components", () => {
     }));
   });
 
-  it("manages user-provided references with visible/private states", async () => {
-    const onCreate = vi.fn();
-    const onUpdate = vi.fn();
-    const onDelete = vi.fn();
-    render(<UserReferencesEditor references={[reference]} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} saving={false} />);
-
-    expect(screen.getByText("User-provided references")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Hide Alice" }));
-    expect(onUpdate).toHaveBeenCalledWith("ref_1", { visible: false });
-
-    await userEvent.type(screen.getByLabelText("Reference name"), "Bob");
-    await userEvent.type(screen.getByLabelText("Relationship / description"), "Bought cards before");
-    await userEvent.type(screen.getByLabelText("Contact method or note"), "Telegram @bob");
-    await userEvent.click(screen.getByLabelText("Show this reference publicly"));
-    await userEvent.click(screen.getByRole("button", { name: "Add reference" }));
-
-    expect(onCreate).toHaveBeenCalledWith({
-      name: "Bob",
-      description: "Bought cards before",
-      contactInfo: "Telegram @bob",
-      visible: true,
-    });
-  });
-
   it("renders public profile without placeholders for hidden or empty fields", () => {
     const publicProfile: PublicUserProfile = {
       displayName: "Johnathan",
@@ -99,7 +65,6 @@ describe("profile components", () => {
       countryOfResidence: "Singapore",
       instagram: "john.cards",
       telegram: "johntelegram",
-      references: [{ id: "ref_1", name: "Alice", description: "Trade reference", contactInfo: "@alice" }],
     };
 
     render(<PublicProfilePanel profile={publicProfile} username="jw" />);
@@ -108,7 +73,6 @@ describe("profile components", () => {
     expect(screen.getByText("Singapore")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Instagram" })).toHaveAttribute("href", "https://instagram.com/john.cards");
     expect(screen.getByRole("link", { name: "Telegram" })).toHaveAttribute("href", "https://t.me/johntelegram");
-    expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.queryByText(/email/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/hidden/i)).not.toBeInTheDocument();
   });
@@ -145,16 +109,6 @@ describe("profile components", () => {
     expect(screen.queryByText("Edit profile picture")).not.toBeInTheDocument();
   });
 
-  it("renders empty references and delete actions", async () => {
-    const onDelete = vi.fn();
-    const { rerender } = render(<UserReferencesEditor references={[]} onCreate={vi.fn()} onUpdate={vi.fn()} onDelete={onDelete} saving={false} />);
-    expect(screen.getByText("No references added.")).toBeInTheDocument();
-
-    rerender(<UserReferencesEditor references={[reference]} onCreate={vi.fn()} onUpdate={vi.fn()} onDelete={onDelete} saving={false} />);
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(onDelete).toHaveBeenCalledWith("ref_1");
-  });
-
   it("covers null profile form values, saving labels, and empty file selection", async () => {
     const onSubmit = vi.fn();
     const emptyProfile: UserProfile = {
@@ -172,7 +126,6 @@ describe("profile components", () => {
       emailVisible: false,
       phoneNumber: null,
       phoneNumberVisible: false,
-      references: [],
     };
 
     const { rerender } = render(<ProfileForm profile={emptyProfile} saving={true} onSubmit={onSubmit} />);

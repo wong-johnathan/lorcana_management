@@ -63,7 +63,7 @@ export function authenticateOptional(
     const payload = verifyAuthToken(token);
     if (payload) req.user = payload;
   } catch {
-    // Marketplace browsing stays public; an invalid optional token simply means anonymous browsing.
+    // Public database browsing stays open; an invalid optional token simply means anonymous browsing.
   }
   next();
 }

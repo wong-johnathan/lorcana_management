@@ -18,32 +18,11 @@ import type {
   SyncStatus,
   UserProfile,
   UserProfileUpdate,
-  UserReference,
   ProfileImageUpload,
   InventoryPolicy,
-  InventoryExtrasResponse,
   CardRetentionOverride,
   CardRetentionOverrideListItem,
-  ExtraForSaleListing,
-  InventoryVariant,
-  ListingCurrency,
-  PublicExtrasForSale,
-  MarketplaceListParams,
-  MarketplaceListResponse,
-  MarketplaceCardOffersResponse,
-  MarketplaceCreateEnquiryPayload,
-  MarketplaceEnquiryDetailResponse,
-  MarketplaceEnquiriesResponse,
-  MarketplaceCreateOfferPayload,
-  MarketplaceEnquiryOffer,
-  MarketplaceReservation,
   InventoryRemoveExtrasSummary,
-  ExtrasForSaleBulkRemoveSummary,
-  AppNotification,
-  NotificationsResponse,
-  NotificationUnreadCountResponse,
-  NotificationMarkReadResponse,
-  NotificationMarkAllReadResponse,
 } from "../types";
 
 const API_BASE = "/api";
@@ -158,7 +137,6 @@ export const inventory = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  getExtras: () => request<InventoryExtrasResponse>("/inventory/extras"),
   removeExtras: () => request<InventoryRemoveExtrasSummary>("/inventory/remove-extras", { method: "POST" }),
   listRetentionOverrides: () => request<{ overrides: CardRetentionOverrideListItem[] }>("/inventory/retention"),
   getRetentionOverride: (cardId: string) => request<{ override: CardRetentionOverride | null }>(`/inventory/retention/${cardId}`),
@@ -168,23 +146,6 @@ export const inventory = {
       body: JSON.stringify(data),
     }),
   deleteRetentionOverride: (cardId: string) => request<void>(`/inventory/retention/${cardId}`, { method: "DELETE" }),
-};
-
-export const extrasForSale = {
-  list: () => request<{ listings: ExtraForSaleListing[] }>("/extras-for-sale"),
-  listAll: () => request<{ created: number; skipped: number }>("/extras-for-sale/list-all", { method: "POST" }),
-  removeAll: () => request<ExtrasForSaleBulkRemoveSummary>("/extras-for-sale", { method: "DELETE" }),
-  create: (data: { cardId: string; variant: InventoryVariant; desiredQuantity: number; note?: string | null; customPrice?: number | null; customPriceCurrency?: ListingCurrency; pricingMode?: string }) =>
-    request<{ listing: ExtraForSaleListing }>("/extras-for-sale", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  update: (id: string, data: { desiredQuantity?: number; note?: string | null; status?: "active" | "paused"; customPrice?: number | null; customPriceCurrency?: ListingCurrency; pricingMode?: string }) =>
-    request<{ listing: ExtraForSaleListing }>(`/extras-for-sale/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-  remove: (id: string) => request<void>(`/extras-for-sale/${id}`, { method: "DELETE" }),
 };
 
 export const sync = {
@@ -222,17 +183,6 @@ export const profile = {
       body: JSON.stringify(data),
     }),
   deletePhoto: () => request<void>("/profile/me/photo", { method: "DELETE" }),
-  createReference: (data: Omit<UserReference, "id">) =>
-    request<UserReference>("/profile/me/references", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  updateReference: (id: string, data: Partial<Omit<UserReference, "id">>) =>
-    request<UserReference>(`/profile/me/references/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
-  deleteReference: (id: string) => request<void>(`/profile/me/references/${id}`, { method: "DELETE" }),
 };
 
 export const publicCollection = {
@@ -240,57 +190,6 @@ export const publicCollection = {
     const query = params ? "?" + new URLSearchParams(params).toString() : "";
     return request<PublicCollection>(`/public/collection/${userId}${query}`);
   },
-  extras: (userId: string) => request<PublicExtrasForSale>(`/public/collection/${userId}/extras`),
-};
-
-const marketplaceQuery = (params?: Record<string, string | undefined>) => {
-  if (!params) return "";
-  const cleanParams = Object.fromEntries(
-    Object.entries(params).filter(([, value]) => value !== undefined && value !== "")
-  ) as Record<string, string>;
-  const query = new URLSearchParams(cleanParams).toString();
-  return query ? `?${query}` : "";
-};
-
-export const marketplace = {
-  list: (params?: MarketplaceListParams) =>
-    request<MarketplaceListResponse>(`/marketplace${marketplaceQuery(params as Record<string, string | undefined> | undefined)}`),
-  cardOffers: (cardId: string) =>
-    request<MarketplaceCardOffersResponse>(`/marketplace/cards/${cardId}/offers`),
-  createEnquiry: (listingId: string, data: MarketplaceCreateEnquiryPayload) =>
-    request<MarketplaceEnquiryDetailResponse>(`/marketplace/listings/${listingId}/enquiries`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  listEnquiries: (params?: { status?: string }) =>
-    request<MarketplaceEnquiriesResponse>(`/marketplace/enquiries${marketplaceQuery(params)}`),
-  getEnquiry: (id: string) => request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}`),
-  sendMessage: (id: string, message: string) =>
-    request<{ message: { id: string } }>(`/marketplace/enquiries/${id}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ message }),
-    }),
-  createOffer: (id: string, data: MarketplaceCreateOfferPayload) =>
-    request<{ offer: MarketplaceEnquiryOffer }>(`/marketplace/enquiries/${id}/offers`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  acceptEnquiry: (id: string) =>
-    request<{ reservation: MarketplaceReservation }>(`/marketplace/enquiries/${id}/accept`, { method: "POST" }),
-  declineEnquiry: (id: string) =>
-    request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}/decline`, { method: "POST" }),
-  withdrawEnquiry: (id: string) =>
-    request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}/withdraw`, { method: "POST" }),
-  cancelReservation: (id: string) =>
-    request<{ reservation: MarketplaceReservation }>(`/marketplace/reservations/${id}/cancel`, { method: "POST" }),
-};
-
-export const notifications = {
-  list: () => request<NotificationsResponse>("/notifications"),
-  unreadCount: () => request<NotificationUnreadCountResponse>("/notifications/unread-count"),
-  markRead: (id: AppNotification["id"]) =>
-    request<NotificationMarkReadResponse>(`/notifications/${id}/read`, { method: "POST" }),
-  markAllRead: () => request<NotificationMarkAllReadResponse>("/notifications/read-all", { method: "POST" }),
 };
 
 export const analysis = {

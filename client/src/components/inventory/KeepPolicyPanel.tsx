@@ -1,22 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import type { InventoryPolicy } from "../../types";
 
-interface ExtrasSettingsPanelProps {
+interface KeepPolicyPanelProps {
   policy: InventoryPolicy;
   saving?: boolean;
-  publicEnabled?: boolean;
-  showManageLink?: boolean;
   onSave: (policy: InventoryPolicy) => Promise<void> | void;
 }
 
-export default function ExtrasSettingsPanel({
+export default function KeepPolicyPanel({
   policy,
   saving = false,
-  publicEnabled = true,
-  showManageLink = false,
   onSave,
-}: ExtrasSettingsPanelProps) {
+}: KeepPolicyPanelProps) {
   const [form, setForm] = useState<InventoryPolicy>(policy);
   const [error, setError] = useState<string | null>(null);
   const lastPolicyRef = useRef(policy);
@@ -46,17 +41,11 @@ export default function ExtrasSettingsPanel({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <h3 className="font-medium">Extras for Sale</h3>
+        <h3 className="font-medium">Keep policy</h3>
         <p className="mt-1 text-sm text-gray-400">
-          Define how many cards to keep before copies become private Suggested Extras. Public listings are still explicit.
+          How many copies of each card to keep. Anything above this counts as surplus when you bulk trim your collection.
         </p>
       </div>
-
-      {!publicEnabled && (
-        <div className="rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-sm text-amber-200">
-          Enable Public Collection to share Extras for Sale publicly.
-        </div>
-      )}
 
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
 
@@ -93,29 +82,14 @@ export default function ExtrasSettingsPanel({
         </label>
       </div>
 
-      <label className="flex items-center gap-3 text-sm text-gray-300">
-        <input
-          type="checkbox"
-          checked={form.autoSuggestExtras}
-          onChange={(event) => setForm((current) => ({ ...current, autoSuggestExtras: event.target.checked }))}
-          className="h-4 w-4 rounded border-gray-700 bg-gray-950 text-amber-500"
-        />
-        Auto-suggest cards above my keep rules
-      </label>
-
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
           disabled={saving}
           className="rounded bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:opacity-60"
         >
-          {saving ? "Saving..." : "Save extras settings"}
+          {saving ? "Saving..." : "Save keep policy"}
         </button>
-        {showManageLink && (
-          <Link to="/extras-for-sale" className="text-sm font-medium text-amber-400 hover:text-amber-300">
-            Manage Extras for Sale
-          </Link>
-        )}
       </div>
     </form>
   );

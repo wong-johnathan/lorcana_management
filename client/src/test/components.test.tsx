@@ -425,7 +425,7 @@ describe("presentational components", () => {
     expect(screen.getAllByText("$4.00").length).toBeGreaterThan(0);
   });
 
-  it("renders marketplace links as links or unavailable buttons", () => {
+  it("renders external card-shop links as links or unavailable buttons", () => {
     const { rerender } = render(<MarketplaceLink href="https://example.com" label="Shop" colorClass="tone" />);
     expect(screen.getByRole("link", { name: "Shop" })).toHaveAttribute("href", "https://example.com");
     rerender(<MarketplaceLink href={null} label="Shop" colorClass="tone" />);

@@ -1,5 +1,5 @@
-export type InventoryTab = "collection" | "stats" | "profile" | "extras";
+export type InventoryTab = "collection" | "stats" | "profile";
 
 export function parseInventoryTab(value: string | null): InventoryTab {
-  return value === "stats" || value === "collection" || value === "profile" || value === "extras" ? value : "collection";
+  return value === "stats" || value === "collection" || value === "profile" ? value : "collection";
 }
