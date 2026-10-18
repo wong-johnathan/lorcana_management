@@ -21,6 +21,7 @@ import {
   isValidCurrency,
   isValidRating,
   isValidReportTargetType,
+  isValidTransactionStatus,
   isValidVariant,
 } from "../services/marketplace.js";
 import {
@@ -245,6 +246,31 @@ marketplaceRouter.get(
         listings: listings.map(serializeListing),
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
+    } catch (error) {
+      sendError(res, error);
+    }
+  }
+);
+
+// The seller's own listings (REQ-7 §9 \"my listings\"), including CLOSED and
+// hidden rows that the public browse feed deliberately excludes (D2). Registered
+// BEFORE `/listings/:id` so the literal `/mine` segment wins over the `:id` param.
+marketplaceRouter.get(
+  "/listings/mine",
+  authenticateToken,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const listings = await prisma.marketplaceListing.findMany({
+        where: { sellerId: userId },
+        orderBy: { createdAt: "desc" },
+        include: {
+          card: true,
+          photos: { orderBy: { sortOrder: "asc" } },
+          seller: { select: { id: true, username: true, profile: true } },
+        },
+      });
+      res.json({ listings: listings.map(serializeListing) });
     } catch (error) {
       sendError(res, error);
     }
@@ -846,6 +872,42 @@ marketplaceRouter.post("/transactions/:id/cancel", async (req: AuthRequest, res:
 
     const result = await cancelTransaction(id, actor);
     res.json(result);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// List the caller's own transactions — buyer OR seller, newest-first, with an
+// optional status filter validated against TRANSACTION_STATUSES (D1, design §9
+// \"my buys/sales\"). Returns the same serialized shape as GET /transactions/:id.
+marketplaceRouter.get("/transactions", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const where: any = {
+      OR: [{ buyerId: userId }, { sellerId: userId }],
+    };
+
+    const status =
+      typeof query.status === "string" && query.status ? query.status : undefined;
+    if (status !== undefined) {
+      if (!isValidTransactionStatus(status)) {
+        throw new MarketplaceError(400, "Invalid transaction status");
+      }
+      where.status = status;
+    }
+
+    const transactions = await prisma.marketplaceTransaction.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        buyer: { select: { id: true, username: true } },
+        seller: { select: { id: true, username: true } },
+        card: { select: { id: true, name: true, setName: true } },
+      },
+    });
+
+    res.json({ transactions });
   } catch (error) {
     sendError(res, error);
   }
