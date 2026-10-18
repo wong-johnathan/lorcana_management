@@ -23,6 +23,25 @@ import type {
   CardRetentionOverride,
   CardRetentionOverrideListItem,
   InventoryRemoveExtrasSummary,
+  MarketplaceListingsResponse,
+  MarketplaceListingDetail,
+  MarketplaceSellerProfile,
+  MarketplaceReview,
+  UserReference,
+  MarketplaceReport,
+  MarketplaceEnquiriesResponse,
+  MarketplaceEnquiryDetailResponse,
+  MarketplaceEnquireResponse,
+  MarketplacePhotoUpload,
+  MarketplacePhotoUploadResult,
+  MarketplaceMarkSoldResult,
+  MarketplaceAdjustQuantityResult,
+  MarketplaceConfirmResult,
+  MarketplaceCancelResult,
+  MarketplaceTransaction,
+  MarketplacePendingSalesResponse,
+  EnquiryMessage,
+  MarketplaceListing,
 } from "../types";
 
 const API_BASE = "/api";
@@ -204,4 +223,176 @@ export const analysis = {
     }),
   batchStatus: () =>
     request<{ status: string; total: number; completed: number; failed: number; currentCard: string | null; startedAt: string | null }>("/cards/analyze-batch/status"),
+};
+
+/**
+ * Lorcana Marketplace (Lean V2).
+ *
+ * F1 owns the public/read surface plus the report write (REQ-22) and the vouch
+ * write (REQ-20, see the F1 card + plan.md ownership matrix). F2 appends the
+ * remaining authed write functions (enquire/messages/mark-sold/confirm/cancel/
+ * adjust/review/photo-upload) onto this namespace without re-defining these.
+ */
+export const marketplace = {
+  listings: (params?: {
+    q?: string;
+    variant?: string;
+    condition?: string;
+    priceMin?: string;
+    priceMax?: string;
+    currency?: string;
+    sellerId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const query = params
+      ? "?" +
+        new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(params)
+              .filter(([, value]) => value != null && value !== "")
+              .map(([key, value]) => [key, String(value)])
+          )
+        ).toString()
+      : "";
+    return request<MarketplaceListingsResponse>(`/marketplace/listings${query}`);
+  },
+  listing: (id: string) =>
+    request<MarketplaceListingDetail>(`/marketplace/listings/${id}`),
+  seller: (userId: string) =>
+    request<MarketplaceSellerProfile>(`/marketplace/sellers/${userId}`),
+  reviews: (userId: string) =>
+    request<{ reviews: MarketplaceReview[] }>(`/marketplace/users/${userId}/reviews`),
+  references: (userId: string) =>
+    request<{ references: UserReference[] }>(`/marketplace/users/${userId}/references`),
+  vouch: (userId: string, comment: string) =>
+    request<UserReference>(`/marketplace/users/${userId}/references`, {
+      method: "POST",
+      body: JSON.stringify({ comment }),
+    }),
+  report: (body: {
+    targetType: "LISTING" | "USER";
+    targetId: string;
+    reason: string;
+  }) =>
+    request<MarketplaceReport>("/marketplace/reports", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // ── F2: authed/transactional writes and reads (design §7) ────────────────
+
+  /** POST /marketplace/listings/:id/enquire (REQ-11/12) → { enquiryId }. */
+  enquire: (listingId: string, requestedQuantity: number) =>
+    request<MarketplaceEnquireResponse>(`/marketplace/listings/${listingId}/enquire`, {
+      method: "POST",
+      body: JSON.stringify({ requestedQuantity }),
+    }),
+
+  /** GET /marketplace/enquiries — my threads (buyer or seller). */
+  getEnquiries: () => request<MarketplaceEnquiriesResponse>("/marketplace/enquiries"),
+
+  /** GET /marketplace/enquiries/:id — thread + messages (buyer/seller only). */
+  getEnquiry: (id: string) =>
+    request<MarketplaceEnquiryDetailResponse>(`/marketplace/enquiries/${id}`),
+
+  /** POST /marketplace/enquiries/:id/messages — plain text (REQ-13). */
+  postMessage: (id: string, body: string) =>
+    request<EnquiryMessage>(`/marketplace/enquiries/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+
+  /** POST /marketplace/enquiries/:id/mark-sold (seller; q defaults to requested). */
+  markSold: (id: string, quantity?: number) =>
+    request<MarketplaceMarkSoldResult>(`/marketplace/enquiries/${id}/mark-sold`, {
+      method: "POST",
+      body: JSON.stringify(quantity != null ? { quantity } : {}),
+    }),
+
+  /** PATCH /marketplace/transactions/:id/quantity (AC-14.5). */
+  adjustQuantity: (transactionId: string, quantity: number) =>
+    request<MarketplaceAdjustQuantityResult>(
+      `/marketplace/transactions/${transactionId}/quantity`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ quantity }),
+      }
+    ),
+
+  /** POST /marketplace/transactions/:id/confirm (buyer, REQ-16). */
+  confirm: (transactionId: string) =>
+    request<MarketplaceConfirmResult>(`/marketplace/transactions/${transactionId}/confirm`, {
+      method: "POST",
+    }),
+
+  /** POST /marketplace/transactions/:id/cancel (buyer/seller, REQ-18). */
+  cancel: (transactionId: string) =>
+    request<MarketplaceCancelResult>(`/marketplace/transactions/${transactionId}/cancel`, {
+      method: "POST",
+    }),
+
+  /** GET /marketplace/transactions/:id — status + parties + cause. */
+  getTransaction: (transactionId: string) =>
+    request<MarketplaceTransaction>(`/marketplace/transactions/${transactionId}`),
+
+  /** GET /marketplace/me/pending — seller's pending-sale breakdown (REQ-15). */
+  getMyPending: () => request<MarketplacePendingSalesResponse>("/marketplace/me/pending"),
+
+  /** POST /marketplace/transactions/:id/review (REQ-19; COMPLETED only). */
+  postReview: (transactionId: string, rating: number, comment?: string) =>
+    request<MarketplaceReview>(`/marketplace/transactions/${transactionId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ rating, ...(comment != null ? { comment } : {}) }),
+    }),
+
+  /** POST /marketplace/listings/:id/photos (REQ-23; dataUrl + contentType). */
+  uploadPhoto: (listingId: string, photo: MarketplacePhotoUpload) =>
+    request<MarketplacePhotoUploadResult>(`/marketplace/listings/${listingId}/photos`, {
+      method: "POST",
+      body: JSON.stringify(photo),
+    }),
+
+  /** DELETE /marketplace/listings/:id/photos/:photoId. */
+  deletePhoto: (listingId: string, photoId: string) =>
+    request<void>(`/marketplace/listings/${listingId}/photos/${photoId}`, {
+      method: "DELETE",
+    }),
+
+  /** POST /marketplace/listings (REQ-3/4/5). */
+  createListing: (body: {
+    cardId: string;
+    variant: string;
+    quantity: number;
+    priceMinor: number;
+    currency: string;
+    condition?: string | null;
+    location?: string;
+    note?: string | null;
+  }) =>
+    request<MarketplaceListing>("/marketplace/listings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  /** PATCH /marketplace/listings/:id (REQ-7/8). */
+  updateListing: (
+    id: string,
+    body: {
+      quantity?: number;
+      priceMinor?: number;
+      currency?: string;
+      condition?: string | null;
+      location?: string;
+      note?: string | null;
+    }
+  ) =>
+    request<MarketplaceListing>(`/marketplace/listings/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  /** DELETE /marketplace/listings/:id (AC-8.3 / D9). */
+  deleteListing: (id: string) =>
+    request<void>(`/marketplace/listings/${id}`, { method: "DELETE" }),
 };
