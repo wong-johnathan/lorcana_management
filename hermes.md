@@ -45,8 +45,7 @@ The API is mounted under `/api`:
   - Price history reports `rangeStart` (the first priced point inside the selected range), so `changeAmount`/`changePercent` describe the whole window rather than the last two snapshots — a flat final day must not report 0.00% while the range moved.
   - It also reports `earliestSourceUpdatedAt`, `latestSourceUpdatedAt`, and `availableDays` (the day span the card's stored history actually covers). The chart hides range buttons wider than `availableDays` and offers `All` instead, so a window with no history is never selectable.
 - `/api/card-images/:cardId` — app-controlled card artwork URL; serves MinIO/S3 cached copies when present, otherwise fetches `Card.imageUrl`, stores the image, updates card cache metadata, and falls back to the original URL on cache failure.
-- `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, extras suggestions, keep policy/overrides, and bulk trim of extra copies.
-- `/api/extras-for-sale` — authenticated owner Extras for Sale listing CRUD plus bulk list/remove helpers.
+- `/api/inventory` — authenticated inventory CRUD, stats, CSV export, wipe, keep policy/overrides, and bulk trim of surplus copies.
 - `/api/sync` — authenticated card sync and price sync, with progress/status endpoints.
 - `/api/settings` — authenticated profile settings, currently public collection visibility.
 - `/api/public` — read-only public collection endpoint.
@@ -82,9 +81,7 @@ The API is mounted under `/api`:
 - `/inventory` — the user's collection.
   - Supports filters, stats, total value, missing-price count, per-set breakdown, CSV export, wipe, and item removal.
   - Supports both rows and grid views; the selected view is stored in localStorage.
-  - Bulk remove extras action trims owned normal/foil/holofoil counts down to the current keep policy/overrides and removes active/paused Extras listings.
-- `/extras-for-sale` — owner management for computed extras and explicit sale listings.
-  - Supports bulk list all extras, bulk remove all listings, and per-card/variant listing/edit/remove actions.
+  - Bulk trim (`POST /api/inventory/remove-extras`) cuts owned normal/foil/holofoil counts down to the current keep policy/overrides and reports `updatedEntries`, `deletedEntries`, and `removedCopies`.
 - `/settings` — profile settings.
   - Public collection toggle and copyable public URL.
 - Auth flows:
@@ -134,12 +131,8 @@ Prisma models live in `server/prisma/schema.prisma`:
 - `CardAnalysis` — per-card AI market analysis with status and timestamps.
 - `User` — username, optional password hash / Google identity, verified email timestamp, public sharing flag.
 - `UserProfile` — optional public profile fields and profile image URL/object key.
-- `UserReference` — user-managed visible references/links for public profiles.
 - `InventoryEntry` — one row per user/card with normal, foil, and holofoil counts.
-- `UserInventoryPolicy` / `CardRetentionOverride` — default and per-card keep quantities used to compute extras.
-- `ExtraForSaleListing` — active/paused/removed Extras listing with variant, desired quantity, note, custom price/currency, and seller pricing mode. Marketplace visibility is implicit: active Extras listings with available extra quantity appear in marketplace browse.
-- `MarketplaceEnquiry` / `EnquiryMessage` / `EnquiryOffer` / `MarketplaceReservation` — chat-first marketplace threads, optional OBO offers, and stock reservations. There are no separate transaction/review/report/FX/block tables in the simplified schema.
-- `Notification` — minimal in-app notifications with related target metadata.
+- `UserInventoryPolicy` / `CardRetentionOverride` — default and per-card keep quantities used by bulk trim.
 
 When schema changes, commit both `schema.prisma` and a matching migration directory under `server/prisma/migrations/`. CI/prod use `npx prisma migrate deploy`; a green TypeScript build does not prove migrations are correct.
 
@@ -159,9 +152,11 @@ High-level completed work in this repo:
 - Master-set cost calculator with variant/rarity selection, price-field selection, drilldown modals, and CSV export.
 - Production Docker Compose, nginx reverse proxy, GitHub Actions CI/CD, and DockerHub image publishing.
 - Old scanner flows were removed from this repo.
+- Marketplace, enquiry/messaging, in-app notifications, Extras for Sale listings, and profile trade references were removed end to end (code, routes, UI, tests, and tables) via the `20261010141500_remove_marketplace_and_messages` migration. The app is deliberately scoped to the card database, inventory, price tracking, AI analysis, and outbound links to TCGplayer/CardTrader/Cardmarket/eBay.
 
 ## Known constraints and traps
 
+- **Marketplace and messaging are intentionally absent.** Do not reintroduce listings, enquiries, offers, reservations, notifications, or profile references. `MarketplaceLink` is only the outbound card-shop link button; its name is legacy.
 - **Scanner code is intentionally absent.** Do not reintroduce Gemini scanning, no-LLM scanning, OpenCV/Tesseract deps, scanner routes, or `/scan` pages unless explicitly requested.
 - **LorcanaJSON coverage gap:** It covers expansion/quest sets, not all promos/championship/league/event exclusives. Promo support needs a supplemental source/seed plan.
 - **tcgcsv data can be partial:** Some group price endpoints return missing data. That is often upstream data absence, not a local bug.
@@ -206,7 +201,7 @@ docker compose config
 docker compose -f docker-compose.prod.yml config
 ```
 
-There are currently no configured `test` scripts in `client/package.json` or `server/package.json`; GitHub Actions skips unit tests when no test script exists.
+Both packages define `test:coverage` (Vitest) with a 90% branch/statement/function/line threshold. Client E2E uses Playwright: `cd client && npx playwright test`.
 
 ## Push / CI expectations
 

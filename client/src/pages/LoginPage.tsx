@@ -96,12 +96,12 @@ export default function LoginPage() {
           Lorcana Inventory
         </h1>
         <p className="text-gray-500 text-center mb-8">
-          Track your collection and trade extras
+          Track your collection and watch the market
         </p>
 
         <div className="space-y-4">
           <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 text-sm text-amber-100">
-            Marketplace access requires a verified Google email.
+            Sign in with a verified Google email to manage your collection.
           </div>
 
           {googleClientId ? (

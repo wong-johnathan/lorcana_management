@@ -8,9 +8,6 @@ import { syncRouter } from "./routes/sync.js";
 import { settingsRouter } from "./routes/settings.js";
 import { publicRouter } from "./routes/public.js";
 import { profileRouter } from "./routes/profile.js";
-import { extrasForSaleRouter } from "./routes/extrasForSale.js";
-import { marketplaceRouter } from "./routes/marketplace.js";
-import { notificationsRouter } from "./routes/notifications.js";
 import { LOCAL_UPLOAD_ROOT } from "./services/objectStorage.js";
 
 export function createApp() {
@@ -27,9 +24,6 @@ export function createApp() {
   app.use("/api/sync", syncRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/profile", profileRouter);
-  app.use("/api/extras-for-sale", extrasForSaleRouter);
-  app.use("/api/marketplace", marketplaceRouter);
-  app.use("/api/notifications", notificationsRouter);
   app.use("/api/public", publicRouter);
 
   app.get("/api/health", (_req, res) => {

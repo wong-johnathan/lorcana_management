@@ -37,7 +37,7 @@ describe("LoginPage", () => {
 
     await waitFor(() => expect(initialize).toHaveBeenCalledWith(expect.objectContaining({ client_id: "google-client-id" })));
     expect(renderButton).toHaveBeenCalled();
-    expect(screen.getByText("Marketplace access requires a verified Google email.")).toBeInTheDocument();
+    expect(screen.getByText("Sign in with a verified Google email to manage your collection.")).toBeInTheDocument();
     await waitFor(() => expect(authMock.loginWithGoogle).toHaveBeenCalledWith("google-id-token"));
   });
 

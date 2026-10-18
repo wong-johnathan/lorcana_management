@@ -3,16 +3,10 @@ import { PrismaClient } from "@prisma/client";
 import { authenticateToken, AuthRequest } from "../middleware/auth.js";
 import {
   DEFAULT_INVENTORY_POLICY,
-  calculateExtras,
-  referencePriceForVariant,
   resolveKeepCounts,
   type InventoryPolicyLike,
   type RetentionOverrideLike,
-} from "../services/extrasForSale.js";
-import {
-  ACTIVE_RESERVATION_CONFLICT_MESSAGE,
-  hasActiveReservationsForUserListings,
-} from "../services/marketplaceReservationGuards.js";
+} from "../services/inventoryPolicy.js";
 import {
   compareCardContainerByIndex,
   compareNullableNumber as compareNullableNumberByIndex,
@@ -96,7 +90,6 @@ function serializePolicy(policy: InventoryPolicyLike) {
     keepNormalQuantity: policy.keepNormalQuantity,
     keepFoilQuantity: policy.keepFoilQuantity,
     keepHolofoilQuantity: policy.keepHolofoilQuantity,
-    autoSuggestExtras: policy.autoSuggestExtras ?? true,
   };
 }
 
@@ -136,17 +129,6 @@ function emptyCounts() {
   return { quantity: 0, foilQuantity: 0, holofoilQuantity: 0 };
 }
 
-function parseInventoryVariant(value: string): InventoryVariant | null {
-  if (value === "normal" || value === "foil" || value === "holofoil") return value;
-  return null;
-}
-
-function getVariantCount(counts: ReturnType<typeof emptyCounts>, variant: InventoryVariant): number {
-  if (variant === "normal") return counts.quantity;
-  if (variant === "foil") return counts.foilQuantity;
-  return counts.holofoilQuantity;
-}
-
 function countsFromEntry(entry: { quantity: number; foilQuantity: number; holofoilQuantity: number } | null | undefined) {
   if (!entry) return emptyCounts();
   return {
@@ -154,36 +136,6 @@ function countsFromEntry(entry: { quantity: number; foilQuantity: number; holofo
     foilQuantity: entry.foilQuantity,
     holofoilQuantity: entry.holofoilQuantity,
   };
-}
-
-async function growActiveListingsForNewExtras(
-  userId: string,
-  cardId: string,
-  previousEntry: { quantity: number; foilQuantity: number; holofoilQuantity: number } | null | undefined,
-  nextEntry: { quantity: number; foilQuantity: number; holofoilQuantity: number }
-) {
-  const activeListings = await prisma.extraForSaleListing.findMany({ where: { userId, cardId, status: "active" } }) ?? [];
-  if (activeListings.length === 0) return;
-
-  const [policy, override] = await Promise.all([
-    getOrCreateInventoryPolicy(userId),
-    prisma.cardRetentionOverride.findUnique({ where: { userId_cardId: { userId, cardId } } }),
-  ]);
-  const keep = resolveKeepCounts(policy, override);
-  const previousExtras = calculateExtras(countsFromEntry(previousEntry), keep);
-  const nextExtras = calculateExtras(countsFromEntry(nextEntry), keep);
-
-  const updates = activeListings.flatMap((listing) => {
-    const variant = parseInventoryVariant(listing.variant);
-    if (!variant) return [];
-    const delta = getVariantCount(nextExtras, variant) - getVariantCount(previousExtras, variant);
-    if (delta <= 0) return [];
-    return prisma.extraForSaleListing.update({
-      where: { id: listing.id },
-      data: { desiredQuantity: { increment: delta } },
-    });
-  });
-  await Promise.all(updates);
 }
 
 inventoryRouter.use(authenticateToken);
@@ -214,21 +166,12 @@ inventoryRouter.patch("/policy", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    if (req.body.autoSuggestExtras !== undefined && typeof req.body.autoSuggestExtras !== "boolean") {
-      res.status(400).json({ error: "autoSuggestExtras must be a boolean" });
-      return;
-    }
 
-    if (await hasActiveReservationsForUserListings(prisma, userId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
 
     const data = {
       ...(keepNormalQuantity !== undefined && { keepNormalQuantity }),
       ...(keepFoilQuantity !== undefined && { keepFoilQuantity }),
       ...(keepHolofoilQuantity !== undefined && { keepHolofoilQuantity }),
-      ...(req.body.autoSuggestExtras !== undefined && { autoSuggestExtras: req.body.autoSuggestExtras }),
     };
 
     const policy = await prisma.userInventoryPolicy.upsert({
@@ -240,75 +183,6 @@ inventoryRouter.patch("/policy", async (req: AuthRequest, res: Response) => {
     res.json(serializePolicy(policy));
   } catch (error) {
     console.error("Inventory policy update error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-inventoryRouter.get("/extras", async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user!.userId;
-    const policy = await getOrCreateInventoryPolicy(userId);
-    const [overrides, listings, entries] = await Promise.all([
-      prisma.cardRetentionOverride.findMany({ where: { userId } }),
-      prisma.extraForSaleListing.findMany({ where: { userId, status: "active" } }),
-      prisma.inventoryEntry.findMany({
-        where: { userId },
-        include: { card: { include: { prices: true } } },
-      }),
-    ]);
-
-    const overrideByCardId = new Map(overrides.map((override) => [override.cardId, override]));
-    const listedVariantsByCardId = new Map<string, Set<InventoryVariant>>();
-    for (const listing of listings) {
-      const variant = parseInventoryVariant(listing.variant);
-      if (!variant) continue;
-      const variants = listedVariantsByCardId.get(listing.cardId) ?? new Set<InventoryVariant>();
-      variants.add(variant);
-      listedVariantsByCardId.set(listing.cardId, variants);
-    }
-
-    const cards = entries
-      .map((entry) => {
-        const owned = {
-          quantity: entry.quantity,
-          foilQuantity: entry.foilQuantity,
-          holofoilQuantity: entry.holofoilQuantity,
-        };
-        const keep = resolveKeepCounts(policy, overrideByCardId.get(entry.cardId));
-        const extras = calculateExtras(owned, keep);
-        const listedVariants = listedVariantsByCardId.get(entry.cardId) ?? new Set<InventoryVariant>();
-        const activeListings = {
-          quantity: listedVariants.has("normal") ? extras.quantity : 0,
-          foilQuantity: listedVariants.has("foil") ? extras.foilQuantity : 0,
-          holofoilQuantity: listedVariants.has("holofoil") ? extras.holofoilQuantity : 0,
-        };
-        const availableToList = {
-          quantity: listedVariants.has("normal") ? 0 : extras.quantity,
-          foilQuantity: listedVariants.has("foil") ? 0 : extras.foilQuantity,
-          holofoilQuantity: listedVariants.has("holofoil") ? 0 : extras.holofoilQuantity,
-        };
-        return {
-          card: entry.card,
-          owned,
-          keep,
-          extras,
-          activeListings,
-          availableToList,
-          referencePrices: {
-            normal: referencePriceForVariant(entry.card.prices, "normal"),
-            foil: referencePriceForVariant(entry.card.prices, "foil"),
-            holofoil: referencePriceForVariant(entry.card.prices, "holofoil"),
-          },
-        };
-      })
-      .filter((item) => (
-        item.availableToList.quantity + item.availableToList.foilQuantity + item.availableToList.holofoilQuantity > 0
-      ))
-      .sort(compareCardContainerByIndex);
-
-    res.json({ policy: serializePolicy(policy), cards });
-  } catch (error) {
-    console.error("Inventory extras error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -373,10 +247,6 @@ inventoryRouter.put("/retention/:cardId", async (req: AuthRequest, res: Response
       return;
     }
 
-    if (await hasActiveReservationsForUserListings(prisma, userId, cardId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
 
     const data = {
       ...(keepNormalQuantity !== undefined && { keepNormalQuantity }),
@@ -400,10 +270,6 @@ inventoryRouter.delete("/retention/:cardId", async (req: AuthRequest, res: Respo
   try {
     const userId = req.user!.userId;
     const { cardId } = req.params as { cardId: string };
-    if (await hasActiveReservationsForUserListings(prisma, userId, cardId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
     await prisma.cardRetentionOverride.deleteMany({ where: { userId, cardId } });
     res.status(204).send();
   } catch (error) {
@@ -415,10 +281,6 @@ inventoryRouter.delete("/retention/:cardId", async (req: AuthRequest, res: Respo
 inventoryRouter.post("/remove-extras", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    if (await hasActiveReservationsForUserListings(prisma, userId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
 
     const result = await prisma.$transaction(async (tx) => {
       const [policy, overrides, entries] = await Promise.all([
@@ -457,16 +319,11 @@ inventoryRouter.post("/remove-extras", async (req: AuthRequest, res: Response) =
         }
       }
 
-      const removedListings = await tx.extraForSaleListing.updateMany({
-        where: { userId, status: { in: ["active", "paused"] } },
-        data: { status: "removed" },
-      });
 
       return {
         updatedEntries,
         deletedEntries,
         removedCopies,
-        removedListings: removedListings.count,
       };
     });
 
@@ -591,10 +448,6 @@ inventoryRouter.get("/stats", async (req: AuthRequest, res: Response) => {
 inventoryRouter.delete("/", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    if (await hasActiveReservationsForUserListings(prisma, userId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
     const result = await prisma.inventoryEntry.deleteMany({ where: { userId } });
     res.json({ deleted: result.count });
   } catch (error) {
@@ -707,7 +560,6 @@ inventoryRouter.post("/", async (req: AuthRequest, res: Response) => {
       include: { card: { include: { prices: true } } },
     });
 
-    await growActiveListingsForNewExtras(userId, cardId, existingEntry, entry);
 
     res.status(201).json(entry);
   } catch (error) {
@@ -750,10 +602,6 @@ inventoryRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    if (await hasActiveReservationsForUserListings(prisma, userId, existing.cardId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
 
     const entry = await prisma.inventoryEntry.update({
       where: { id },
@@ -765,7 +613,6 @@ inventoryRouter.patch("/:id", async (req: AuthRequest, res: Response) => {
       include: { card: { include: { prices: true } } },
     });
 
-    await growActiveListingsForNewExtras(userId, existing.cardId, existing, entry);
 
     res.json(entry);
   } catch (error) {
@@ -787,10 +634,6 @@ inventoryRouter.delete("/:id", async (req: AuthRequest, res: Response) => {
       return;
     }
 
-    if (await hasActiveReservationsForUserListings(prisma, userId, existing.cardId)) {
-      res.status(409).json({ error: ACTIVE_RESERVATION_CONFLICT_MESSAGE });
-      return;
-    }
 
     await prisma.inventoryEntry.delete({ where: { id } });
     res.status(204).send();

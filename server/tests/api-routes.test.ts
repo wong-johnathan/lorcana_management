@@ -1177,54 +1177,6 @@ describe("inventory routes", () => {
     await auth(request(app).post("/api/inventory").send({ cardId: "card_1", quantity: 1, foilQuantity: 2, holofoilQuantity: 3 })).expect(201).expect((res) => expect(res.body.id).toBe("entry_1"));
   });
 
-  it("grows active extras listing quantities when newly added inventory becomes extra", async () => {
-    prismaMock.card.findUnique.mockResolvedValueOnce(card());
-    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 6, foilQuantity: 1, holofoilQuantity: 1 }));
-    prismaMock.inventoryEntry.upsert.mockResolvedValueOnce(entry({ quantity: 7, foilQuantity: 1, holofoilQuantity: 1 }));
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 2, status: "active" },
-    ]);
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
-    prismaMock.extraForSaleListing.update.mockResolvedValueOnce({});
-
-    await auth(request(app).post("/api/inventory").send({ cardId: "card_1", quantity: 1, foilQuantity: 0, holofoilQuantity: 0 }))
-      .expect(201)
-      .expect((res) => expect(res.body.quantity).toBe(7));
-
-    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledWith({
-      where: { id: "listing_1" },
-      data: { desiredQuantity: { increment: 1 } },
-    });
-  });
-
-  it("grows foil and holofoil listings on inventory updates and ignores invalid listing variants", async () => {
-    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry({ quantity: 4, foilQuantity: 1, holofoilQuantity: 1 }));
-    prismaMock.inventoryEntry.update.mockResolvedValueOnce(entry({ quantity: 4, foilQuantity: 2, holofoilQuantity: 2 }));
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "foil_listing", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, status: "active" },
-      { id: "holo_listing", userId: "user_1", cardId: "card_1", variant: "holofoil", desiredQuantity: 1, status: "active" },
-      { id: "bad_listing", userId: "user_1", cardId: "card_1", variant: "misprint", desiredQuantity: 1, status: "active" },
-    ]);
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findUnique.mockResolvedValueOnce(null);
-    prismaMock.extraForSaleListing.update.mockResolvedValue({});
-
-    await auth(request(app).patch("/api/inventory/entry_1").send({ foilQuantity: 2, holofoilQuantity: 2 }))
-      .expect(200)
-      .expect((res) => expect(res.body.foilQuantity).toBe(2));
-
-    expect(prismaMock.extraForSaleListing.update).toHaveBeenCalledTimes(2);
-    expect(prismaMock.extraForSaleListing.update).toHaveBeenNthCalledWith(1, {
-      where: { id: "foil_listing" },
-      data: { desiredQuantity: { increment: 1 } },
-    });
-    expect(prismaMock.extraForSaleListing.update).toHaveBeenNthCalledWith(2, {
-      where: { id: "holo_listing" },
-      data: { desiredQuantity: { increment: 1 } },
-    });
-  });
-
   it("updates and deletes inventory entries with ownership checks", async () => {
     await auth(request(app).patch("/api/inventory/entry_1").send({ quantity: "1" })).expect(400, { error: "Quantities must be non-negative integers" });
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(null);
@@ -1240,21 +1192,6 @@ describe("inventory routes", () => {
     prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry());
     prismaMock.inventoryEntry.delete.mockResolvedValueOnce({});
     await auth(request(app).delete("/api/inventory/entry_1")).expect(204);
-  });
-
-  it("blocks inventory and keep-policy mutations that would invalidate active reservations", async () => {
-    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce(entry());
-    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
-    await auth(request(app).patch("/api/inventory/entry_1").send({ quantity: 4 }))
-      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
-
-    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
-    await auth(request(app).delete("/api/inventory"))
-      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
-
-    prismaMock.marketplaceReservation.findMany.mockResolvedValueOnce([{ id: "reservation_1" }]);
-    await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: 8 }))
-      .expect(409, { error: "Active marketplace reservations must be resolved before changing reserved inventory" });
   });
 
   it("calculates inventory stats, wipe, CSV, and decklist outputs", async () => {
@@ -1280,21 +1217,53 @@ describe("inventory routes", () => {
     await auth(request(app).get("/api/inventory/export/decklist")).expect(200).expect("Content-Type", /text\/plain/).expect((res) => expect(res.text).toContain("6 Mickey Mouse - Brave Little Tailor"));
   });
 
-  it("gets and updates extras keep policy with safe defaults", async () => {
+  it("gets and updates the keep policy with safe defaults", async () => {
     prismaMock.userInventoryPolicy.upsert
-      .mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true })
-      .mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 8, keepFoilQuantity: 2, keepHolofoilQuantity: 0, autoSuggestExtras: false });
+      .mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1 })
+      .mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 8, keepFoilQuantity: 2, keepHolofoilQuantity: 0 });
 
     await auth(request(app).get("/api/inventory/policy"))
       .expect(200)
-      .expect((res) => expect(res.body).toEqual({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true }));
+      .expect((res) => expect(res.body).toEqual({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1 }));
 
-    await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: 8, keepFoilQuantity: 2, keepHolofoilQuantity: 0, autoSuggestExtras: false }))
+    await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: 8, keepFoilQuantity: 2, keepHolofoilQuantity: 0 }))
       .expect(200)
       .expect((res) => expect(res.body.keepNormalQuantity).toBe(8));
 
     await auth(request(app).patch("/api/inventory/policy").send({ keepNormalQuantity: -1 }))
       .expect(400, { error: "Keep quantities must be non-negative integers" });
+  });
+
+  it("bulk-trims inventory down to the keep policy, honouring per-card overrides", async () => {
+    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({
+      id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1,
+    });
+    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([
+      { cardId: "card_2", keepNormalQuantity: 0, keepFoilQuantity: null, keepHolofoilQuantity: null },
+    ]);
+    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
+      entry({ id: "entry_1", cardId: "card_1", quantity: 6, foilQuantity: 3, holofoilQuantity: 0 }),
+      entry({ id: "entry_2", cardId: "card_2", quantity: 5, foilQuantity: 0, holofoilQuantity: 0 }),
+      entry({ id: "entry_3", cardId: "card_3", quantity: 4, foilQuantity: 1, holofoilQuantity: 1 }),
+    ]);
+    prismaMock.inventoryEntry.update.mockResolvedValue({});
+    prismaMock.inventoryEntry.delete.mockResolvedValue({});
+
+    const res = await auth(request(app).post("/api/inventory/remove-extras")).expect(200);
+
+    expect(res.body).toEqual({
+      updatedEntries: 1,
+      deletedEntries: 1,
+      removedCopies: { quantity: 7, foilQuantity: 2, holofoilQuantity: 0 },
+    });
+    expect(prismaMock.inventoryEntry.delete).toHaveBeenCalledWith({ where: { id: "entry_2" } });
+  });
+
+  it("reports bulk-trim persistence failures", async () => {
+    prismaMock.userInventoryPolicy.upsert.mockRejectedValueOnce(new Error("db"));
+
+    await auth(request(app).post("/api/inventory/remove-extras"))
+      .expect(500, { error: "Internal server error" });
   });
 
   it("manages per-card retention overrides scoped to the owner", async () => {
@@ -1343,70 +1312,9 @@ describe("inventory routes", () => {
     await auth(request(app).get("/api/inventory/retention")).expect(500, { error: "Internal server error" });
   });
 
-  it("returns computed private extras with per-card overrides, listings, and reference prices", async () => {
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([
-      { id: "override_1", userId: "user_1", cardId: "card_1", keepNormalQuantity: 8, keepFoilQuantity: null, keepHolofoilQuantity: 0 },
-    ]);
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 1, status: "active" },
-    ]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ quantity: 10, foilQuantity: 2, holofoilQuantity: 1 }),
-    ]);
-
-    await auth(request(app).get("/api/inventory/extras"))
-      .expect(200)
-      .expect((res) => {
-        expect(res.body.policy).toEqual({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-        expect(res.body.cards).toHaveLength(1);
-        expect(res.body.cards[0]).toEqual(expect.objectContaining({
-          card: expect.objectContaining({ id: "card_1" }),
-          owned: { quantity: 10, foilQuantity: 2, holofoilQuantity: 1 },
-          keep: { quantity: 8, foilQuantity: 1, holofoilQuantity: 0 },
-          extras: { quantity: 2, foilQuantity: 1, holofoilQuantity: 1 },
-          activeListings: { quantity: 2, foilQuantity: 0, holofoilQuantity: 0 },
-          availableToList: { quantity: 0, foilQuantity: 1, holofoilQuantity: 1 },
-          referencePrices: { normal: 4, foil: 8, holofoil: 8 },
-        }));
-      });
-  });
-
-  it("does not suggest cards when every extra variant is already listed", async () => {
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 2, status: "active" },
-    ]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ quantity: 7, foilQuantity: 1, holofoilQuantity: 1 }),
-    ]);
-
-    await auth(request(app).get("/api/inventory/extras"))
-      .expect(200)
-      .expect((res) => expect(res.body.cards).toEqual([]));
-  });
-
-  it("sorts suggested extras by card index", async () => {
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ id: "entry_late", cardId: "card_late", quantity: 5, card: card({ id: "card_late", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Late" }) }),
-      entry({ id: "entry_early", cardId: "card_early", quantity: 5, card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) }),
-    ]);
-
-    await auth(request(app).get("/api/inventory/extras"))
-      .expect(200)
-      .expect((res) => expect(res.body.cards.map((item: { card: { id: string } }) => item.card.id)).toEqual(["card_early", "card_late"]));
-  });
-
-  it("covers extras policy, retention, and computed extras error/edge cases", async () => {
+  it("covers inventory policy and retention error cases", async () => {
     prismaMock.userInventoryPolicy.upsert.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).get("/api/inventory/policy")).expect(500, { error: "Internal server error" });
-
-    await auth(request(app).patch("/api/inventory/policy").send({ autoSuggestExtras: "yes" }))
-      .expect(400, { error: "autoSuggestExtras must be a boolean" });
 
     prismaMock.userInventoryPolicy.upsert.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).patch("/api/inventory/policy").send({ keepFoilQuantity: 2 }))
@@ -1426,23 +1334,6 @@ describe("inventory routes", () => {
 
     prismaMock.cardRetentionOverride.deleteMany.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).delete("/api/inventory/retention/card_1")).expect(500, { error: "Internal server error" });
-
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockRejectedValueOnce(new Error("db"));
-    await auth(request(app).get("/api/inventory/extras")).expect(500, { error: "Internal server error" });
-
-    prismaMock.userInventoryPolicy.upsert.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_foil", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, status: "active" },
-      { id: "listing_holo", userId: "user_1", cardId: "card_1", variant: "holofoil", desiredQuantity: 1, status: "active" },
-    ]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ quantity: 4, foilQuantity: 1, holofoilQuantity: 1 }),
-    ]);
-    await auth(request(app).get("/api/inventory/extras"))
-      .expect(200)
-      .expect((res) => expect(res.body.cards).toEqual([]));
   });
 
   it("returns 500 for inventory route persistence failures", async () => {
@@ -1541,88 +1432,6 @@ describe("settings, public collection, and sync routes", () => {
     expect(res.body.cards.map((c: any) => c.card.id)).toEqual(["a", "b", "z"]);
     expect(res.body.stats.missingPriceCount).toBe(3);
     expect(res.body.stats.totalValue).toBe(3);
-  });
-
-  it("returns public extras for sale only when collection is public and listing remains extra", async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: false });
-    await request(app).get("/api/public/collection/user_1/extras").expect(404, { error: "Collection not found" });
-
-    prismaMock.user.findUnique.mockResolvedValueOnce({
-      id: "user_1",
-      username: "jw",
-      publicEnabled: true,
-      profile: { telegram: "john", telegramVisible: true, email: "private@example.com", emailVisible: false },
-      references: [{ id: "ref_1", name: "Alice", description: "Trade ref", contactInfo: "@alice", visible: true }],
-    });
-    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([{ id: "override_1", userId: "user_1", cardId: "card_1", keepNormalQuantity: 0, keepFoilQuantity: null, keepHolofoilQuantity: null }]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ quantity: 2, foilQuantity: 1, holofoilQuantity: 0 }),
-    ]);
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_1", userId: "user_1", cardId: "card_1", variant: "normal", desiredQuantity: 5, note: "Meet near MRT", customPrice: 18, customPriceCurrency: "SGD", status: "active", card: card() },
-      { id: "listing_2", userId: "user_1", cardId: "card_1", variant: "foil", desiredQuantity: 1, note: null, status: "active", card: card() },
-    ]);
-
-    await request(app).get("/api/public/collection/user_1/extras")
-      .expect(200)
-      .expect((res) => {
-        expect(res.body.user).toEqual({ id: "user_1", username: "jw" });
-        expect(res.body.profile).toEqual({ telegram: "john", references: [{ id: "ref_1", name: "Alice", description: "Trade ref", contactInfo: "@alice" }] });
-        expect(res.body.listings).toHaveLength(1);
-        expect(res.body.listings[0]).toEqual(expect.objectContaining({
-          id: "listing_1",
-          variant: "normal",
-          quantity: 2,
-          referencePrice: 4,
-          referencePriceCurrency: "USD",
-          customPrice: 18,
-          customPriceCurrency: "SGD",
-          note: "Meet near MRT",
-        }));
-      });
-  });
-
-  it("sorts public extras for sale by card index", async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", username: "jw", publicEnabled: true, profile: null, references: [] });
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_late", userId: "user_1", cardId: "card_late", variant: "normal", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_late", setNumber: 2, collectorNumber: 1, cardNumber: "1/204", name: "Late" }) },
-      { id: "listing_early", userId: "user_1", cardId: "card_early", variant: "normal", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_early", setNumber: 1, collectorNumber: 2, cardNumber: "2/204", name: "Early" }) },
-    ]);
-    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce({ id: "policy_1", userId: "user_1", keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true });
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([
-      entry({ id: "entry_late", cardId: "card_late", quantity: 5 }),
-      entry({ id: "entry_early", cardId: "card_early", quantity: 5 }),
-    ]);
-
-    await request(app).get("/api/public/collection/user_1/extras")
-      .expect(200)
-      .expect((res) => expect(res.body.listings.map((item: { id: string }) => item.id)).toEqual(["listing_early", "listing_late"]));
-  });
-
-  it("hides public extras with invalid variants/no current extras and returns persistence errors", async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({
-      id: "user_1",
-      username: "jw",
-      publicEnabled: true,
-      profile: null,
-      references: [],
-    });
-    prismaMock.extraForSaleListing.findMany.mockResolvedValueOnce([
-      { id: "listing_bad", userId: "user_1", cardId: "card_1", variant: "misprint", desiredQuantity: 1, note: null, status: "active", card: card() },
-      { id: "listing_empty", userId: "user_1", cardId: "card_2", variant: "holofoil", desiredQuantity: 1, note: null, status: "active", card: card({ id: "card_2", prices: [{ variant: "Holofoil", marketPrice: 10 }] }) },
-    ]);
-    prismaMock.userInventoryPolicy.findUnique.mockResolvedValueOnce(null);
-    prismaMock.cardRetentionOverride.findMany.mockResolvedValueOnce([]);
-    prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([]);
-
-    await request(app).get("/api/public/collection/user_1/extras")
-      .expect(200)
-      .expect((res) => expect(res.body.listings).toEqual([]));
-
-    prismaMock.user.findUnique.mockRejectedValueOnce(new Error("db down"));
-    await request(app).get("/api/public/collection/user_1/extras").expect(500, { error: "Internal server error" });
   });
 
   it("exposes sync status and starts refresh/price sync with auth", async () => {

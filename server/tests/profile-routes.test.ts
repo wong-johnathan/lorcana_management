@@ -50,17 +50,6 @@ const privateProfile = {
   updatedAt: new Date("2026-01-02"),
 };
 
-const visibleReference = {
-  id: "ref_1",
-  userId: "user_1",
-  name: "Alice",
-  description: "Trade reference",
-  contactInfo: "@alice",
-  visible: true,
-  createdAt: new Date("2026-01-01"),
-  updatedAt: new Date("2026-01-02"),
-};
-
 beforeEach(() => {
   resetPrismaMock();
   prismaMock.user.findUnique.mockResolvedValue({ id: "user_1", emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z") });
@@ -68,25 +57,20 @@ beforeEach(() => {
 });
 
 describe("profile routes", () => {
-  it("requires auth and returns the owner profile with private fields and references", async () => {
+  it("requires auth and returns the owner profile with private fields", async () => {
     await request(app).get("/api/profile/me").expect(401, { error: "Authentication required" });
 
     prismaMock.userProfile.findUnique.mockResolvedValueOnce(privateProfile);
-    prismaMock.userReference.findMany.mockResolvedValueOnce([visibleReference]);
 
     const res = await auth(request(app).get("/api/profile/me")).expect(200);
 
     expect(res.body.email).toBe("john@example.com");
     expect(res.body.emailVisible).toBe(false);
-    expect(res.body.references).toEqual([
-      expect.objectContaining({ id: "ref_1", name: "Alice", visible: true }),
-    ]);
     expect(prismaMock.userProfile.findUnique).toHaveBeenCalledWith({ where: { userId: "user_1" } });
   });
 
   it("creates an empty owner profile response when profile rows do not exist yet", async () => {
     prismaMock.userProfile.findUnique.mockResolvedValueOnce(null);
-    prismaMock.userReference.findMany.mockResolvedValueOnce([]);
 
     const res = await auth(request(app).get("/api/profile/me")).expect(200);
 
@@ -98,7 +82,6 @@ describe("profile routes", () => {
       facebookVisible: false,
       emailVisible: false,
       phoneNumberVisible: false,
-      references: [],
     });
   });
 
@@ -108,7 +91,6 @@ describe("profile routes", () => {
       instagramVisible: false,
       emailVisible: false,
     });
-    prismaMock.userReference.findMany.mockResolvedValueOnce([]);
 
     await auth(request(app).put("/api/profile/me").send({
       displayName: "John",
@@ -180,7 +162,6 @@ describe("profile routes", () => {
     const dataUrl = `data:image/png;base64,${Buffer.from("edited-image").toString("base64")}`;
     prismaMock.userProfile.findUnique.mockResolvedValueOnce({ profileImageObjectKey: "old/key.png" });
     prismaMock.userProfile.upsert.mockResolvedValueOnce(privateProfile);
-    prismaMock.userReference.findMany.mockResolvedValueOnce([]);
 
     const res = await auth(request(app).post("/api/profile/me/photo").send({ dataUrl, contentType: "image/png" })).expect(200);
 
@@ -193,45 +174,7 @@ describe("profile routes", () => {
     expect(deleteProfileImage).toHaveBeenCalledWith("old/key.png");
   });
 
-  it("manages user supplied references with ownership checks", async () => {
-    prismaMock.userReference.create.mockResolvedValueOnce(visibleReference);
-    await auth(request(app).post("/api/profile/me/references").send({
-      name: "Alice",
-      description: "Trade reference",
-      contactInfo: "@alice",
-      visible: true,
-    })).expect(201).expect((res) => expect(res.body.name).toBe("Alice"));
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(null);
-    await auth(request(app).put("/api/profile/me/references/missing").send({ name: "Bob" })).expect(404, { error: "Reference not found" });
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(visibleReference);
-    prismaMock.userReference.update.mockResolvedValueOnce({ ...visibleReference, visible: false });
-    await auth(request(app).put("/api/profile/me/references/ref_1").send({ visible: false })).expect(200).expect((res) => expect(res.body.visible).toBe(false));
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(visibleReference);
-    prismaMock.userReference.delete.mockResolvedValueOnce(visibleReference);
-    await auth(request(app).delete("/api/profile/me/references/ref_1")).expect(204);
-  });
-
-  it("requires a verified email before creating visible trade references", async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ id: "user_1", emailVerifiedAt: null });
-
-    await auth(request(app).post("/api/profile/me/references").send({
-      name: "Alice",
-      contactInfo: "@alice",
-      visible: true,
-    })).expect(403, { error: "Verified email required" });
-
-    expect(prismaMock.userReference.create).not.toHaveBeenCalled();
-  });
-
-  it("rejects invalid references, deletes photos, and reports persistence failures", async () => {
-    await auth(request(app).post("/api/profile/me/references").send({ name: "" })).expect(400, { error: "Reference name is required" });
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(visibleReference);
-    await auth(request(app).put("/api/profile/me/references/ref_1").send({ name: "" })).expect(400, { error: "Reference name is required" });
-
+  it("deletes photos and reports persistence failures", async () => {
     prismaMock.userProfile.findUnique.mockResolvedValueOnce(null);
     await auth(request(app).delete("/api/profile/me/photo")).expect(204);
 
@@ -246,28 +189,22 @@ describe("profile routes", () => {
     prismaMock.userProfile.upsert.mockRejectedValueOnce(new Error("db"));
     await auth(request(app).put("/api/profile/me").send({ displayName: "John" })).expect(500, { error: "Internal server error" });
 
-    prismaMock.userReference.findMany.mockRejectedValueOnce(new Error("db"));
-    await auth(request(app).get("/api/profile/me/references")).expect(500, { error: "Internal server error" });
+    prismaMock.userProfile.findUnique.mockResolvedValueOnce({ profileImageObjectKey: "old/key.png" });
+    prismaMock.userProfile.update.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).delete("/api/profile/me/photo")).expect(500, { error: "Internal server error" });
 
-    prismaMock.userReference.create.mockRejectedValueOnce(new Error("db"));
-    await auth(request(app).post("/api/profile/me/references").send({ name: "Alice" })).expect(500, { error: "Internal server error" });
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(visibleReference);
-    prismaMock.userReference.update.mockRejectedValueOnce(new Error("db"));
-    await auth(request(app).put("/api/profile/me/references/ref_1").send({ visible: true })).expect(500, { error: "Internal server error" });
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(null);
-    await auth(request(app).delete("/api/profile/me/references/missing")).expect(404, { error: "Reference not found" });
-
-    prismaMock.userReference.findFirst.mockResolvedValueOnce(visibleReference);
-    prismaMock.userReference.delete.mockRejectedValueOnce(new Error("db"));
-    await auth(request(app).delete("/api/profile/me/references/ref_1")).expect(500, { error: "Internal server error" });
+    prismaMock.userProfile.findUnique.mockResolvedValueOnce(null);
+    prismaMock.userProfile.upsert.mockRejectedValueOnce(new Error("db"));
+    await auth(request(app).post("/api/profile/me/photo").send({
+      contentType: "image/png",
+      dataUrl: `data:image/png;base64,${Buffer.from("edited-image").toString("base64")}`,
+    })).expect(500, { error: "Internal server error" });
   });
 });
 
 describe("public collection profile payload", () => {
   it("builds empty and fully-visible public profile payloads", () => {
-    expect(buildPublicProfile(null, [])).toEqual({});
+    expect(buildPublicProfile(null)).toEqual({});
     expect(buildPublicProfile({
       displayName: "Jane",
       profileImageUrl: "https://img",
@@ -282,7 +219,7 @@ describe("public collection profile payload", () => {
       emailVisible: true,
       phoneNumber: "+6500000000",
       phoneNumberVisible: true,
-    }, [visibleReference])).toMatchObject({
+    })).toMatchObject({
       displayName: "Jane",
       profileImageUrl: "https://img",
       countryOfResidence: "Singapore",
@@ -291,21 +228,16 @@ describe("public collection profile payload", () => {
       facebook: "jane.fb",
       email: "jane@example.com",
       phoneNumber: "+6500000000",
-      references: [expect.objectContaining({ id: "ref_1" })],
     });
   });
 
-  it("returns only visible profile fields and visible user-provided references", async () => {
+  it("returns only visible profile fields", async () => {
     prismaMock.user.findUnique.mockResolvedValueOnce({
       id: "user_1",
       username: "jw",
       publicEnabled: true,
       emailVerifiedAt: new Date("2026-08-28T00:00:00.000Z"),
       profile: privateProfile,
-      references: [
-        visibleReference,
-        { ...visibleReference, id: "ref_2", name: "Private ref", visible: false },
-      ],
     });
     prismaMock.inventoryEntry.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     prismaMock.card.groupBy.mockResolvedValueOnce([]);
@@ -318,7 +250,6 @@ describe("public collection profile payload", () => {
       countryOfResidence: "Singapore",
       instagram: "john.cards",
       telegram: "johntelegram",
-      references: [{ id: "ref_1", name: "Alice", description: "Trade reference", contactInfo: "@alice" }],
     });
     expect(res.body.profile).not.toHaveProperty("email");
     expect(res.body.profile).not.toHaveProperty("phoneNumber");
@@ -332,7 +263,6 @@ describe("public collection profile payload", () => {
       publicEnabled: true,
       emailVerifiedAt: null,
       profile: privateProfile,
-      references: [visibleReference],
     });
 
     await request(app).get("/api/public/collection/user_1").expect(404, { error: "Collection not found" });

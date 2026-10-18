@@ -8,40 +8,39 @@ datasource db {
 }
 
 model Card {
-  id              String   @id @default(cuid())
-  externalId      Int      @unique
-  tcgPlayerId     Int?
-  cardTraderUrl   String?
-  cardmarketUrl   String?
-  displayPrice    Float?
-  name            String
-  subtitle        String   @default("")
-  character       String?
-  types           String[]
-  cardType        String   @default("")
-  color           String
-  setCode         String
-  setNumber       Int?
-  setName         String
-  rarity          String
-  inkCost         Int      @default(0)
-  strength        Int      @default(0)
-  willpower       Int      @default(0)
-  lore            Int      @default(0)
-  abilities       String   @default("")
-  cardNumber      String   @default("")
-  collectorNumber Int?
+  id               String    @id @default(cuid())
+  externalId       Int       @unique
+  tcgPlayerId      Int?
+  cardTraderUrl    String?
+  cardmarketUrl    String?
+  displayPrice     Float?
+  name             String
+  subtitle         String    @default("")
+  character        String?
+  types            String[]
+  cardType         String    @default("")
+  color            String
+  setCode          String
+  setNumber        Int?
+  setName          String
+  rarity           String
+  inkCost          Int       @default(0)
+  strength         Int       @default(0)
+  willpower        Int       @default(0)
+  lore             Int       @default(0)
+  abilities        String    @default("")
+  cardNumber       String    @default("")
+  collectorNumber  Int?
   foilTypes        String[]  @default([])
   imageUrl         String    @default("")
   imageObjectKey   String?
   imageCachedAt    DateTime?
   imageContentType String?
 
-  inventoryEntries       InventoryEntry[]
-  analysis               CardAnalysis?
-  prices                 CardPrice[]
-  retentionOverrides     CardRetentionOverride[]
-  extraForSaleListings   ExtraForSaleListing[]
+  inventoryEntries   InventoryEntry[]
+  analysis           CardAnalysis?
+  prices             CardPrice[]
+  retentionOverrides CardRetentionOverride[]
 
   @@index([name])
   @@index([color])
@@ -68,14 +67,8 @@ model User {
 
   inventoryEntries       InventoryEntry[]
   profile                UserProfile?
-  references             UserReference[]
   inventoryPolicy        UserInventoryPolicy?
   cardRetentionOverrides CardRetentionOverride[]
-  extraForSaleListings   ExtraForSaleListing[]
-  marketplaceEnquiries    MarketplaceEnquiry[] @relation("MarketplaceBuyerEnquiries")
-  enquiryMessages         EnquiryMessage[] @relation("MarketplaceMessageSender")
-  enquiryOffers           EnquiryOffer[] @relation("MarketplaceOfferProposer")
-  notifications           Notification[]
 }
 
 model UserInventoryPolicy {
@@ -85,7 +78,6 @@ model UserInventoryPolicy {
   keepNormalQuantity   Int      @default(4)
   keepFoilQuantity     Int      @default(1)
   keepHolofoilQuantity Int      @default(1)
-  autoSuggestExtras    Boolean  @default(true)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -109,120 +101,6 @@ model CardRetentionOverride {
   @@index([cardId])
 }
 
-model ExtraForSaleListing {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  cardId          String
-  card            Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  variant         String
-  desiredQuantity     Int
-  note                String?
-  customPrice         Float?
-  customPriceCurrency String  @default("SGD")
-  pricingMode         String  @default("FIXED")
-  status              String  @default("active")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  marketplaceEnquiries MarketplaceEnquiry[]
-  marketplaceReservations MarketplaceReservation[]
-
-  @@unique([userId, cardId, variant])
-  @@index([userId])
-  @@index([cardId])
-  @@index([status])
-}
-
-model MarketplaceEnquiry {
-  id             String              @id @default(cuid())
-  listingId      String
-  listing        ExtraForSaleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  buyerId        String
-  buyer          User                @relation("MarketplaceBuyerEnquiries", fields: [buyerId], references: [id], onDelete: Cascade)
-  quantity       Int?
-  status         String              @default("PENDING_SELLER")
-  lastActivityAt DateTime            @default(now())
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-
-  messages    EnquiryMessage[]
-  offers      EnquiryOffer[]
-  reservation MarketplaceReservation?
-
-  @@index([listingId])
-  @@index([buyerId])
-  @@index([status])
-  @@index([lastActivityAt])
-}
-
-model EnquiryMessage {
-  id        String             @id @default(cuid())
-  enquiryId String
-  enquiry   MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
-  senderId  String
-  sender    User               @relation("MarketplaceMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
-  message   String
-  createdAt DateTime           @default(now())
-
-  @@index([enquiryId])
-  @@index([senderId])
-  @@index([createdAt])
-}
-
-model EnquiryOffer {
-  id                 String             @id @default(cuid())
-  enquiryId          String
-  enquiry            MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
-  proposedByUserId   String
-  proposedByUser     User               @relation("MarketplaceOfferProposer", fields: [proposedByUserId], references: [id], onDelete: Cascade)
-  quantity           Int
-  unitPriceMinor     Int
-  currency           String
-  createdAt          DateTime           @default(now())
-
-  reservation MarketplaceReservation?
-
-  @@index([enquiryId])
-  @@index([proposedByUserId])
-}
-
-model MarketplaceReservation {
-  id                 String              @id @default(cuid())
-  listingId          String
-  listing            ExtraForSaleListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  enquiryId          String              @unique
-  enquiry            MarketplaceEnquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
-  acceptedOfferId    String?             @unique
-  acceptedOffer      EnquiryOffer?       @relation(fields: [acceptedOfferId], references: [id], onDelete: SetNull)
-  quantity           Int
-  unitPriceMinor     Int
-  currency           String
-  expiresAt          DateTime
-  status             String              @default("RESERVED")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-
-  @@index([listingId])
-  @@index([status])
-  @@index([expiresAt])
-}
-
-model Notification {
-  id          String    @id @default(cuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String
-  relatedType String?
-  relatedId   String?
-  readAt      DateTime?
-  createdAt   DateTime  @default(now())
-
-  @@index([userId])
-  @@index([readAt])
-  @@index([createdAt])
-}
-
 model UserProfile {
   id                    String   @id @default(cuid())
   userId                String   @unique
@@ -243,20 +121,6 @@ model UserProfile {
   phoneNumberVisible    Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
-
-  @@index([userId])
-}
-
-model UserReference {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  contactInfo String?
-  visible     Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
   @@index([userId])
 }

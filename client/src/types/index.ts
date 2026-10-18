@@ -88,14 +88,10 @@ export interface InventoryStats {
   setBreakdown: { setName: string; owned: number; total: number }[];
 }
 
-export type InventoryVariant = "normal" | "foil" | "holofoil";
-export type ListingCurrency = "USD" | "SGD" | "MYR" | "EUR" | "GBP" | "AUD" | "CAD" | "JPY";
-
 export interface InventoryPolicy {
   keepNormalQuantity: number;
   keepFoilQuantity: number;
   keepHolofoilQuantity: number;
-  autoSuggestExtras: boolean;
 }
 
 export interface CardRetentionOverride {
@@ -119,77 +115,15 @@ export interface InventoryCountSet {
   holofoilQuantity: number;
 }
 
-export interface InventoryExtrasCard {
-  card: Card;
-  owned: InventoryCountSet;
-  keep: InventoryCountSet;
-  extras: InventoryCountSet;
-  activeListings: InventoryCountSet;
-  availableToList: InventoryCountSet;
-  referencePrices: { normal: number | null; foil: number | null; holofoil: number | null };
-}
-
-export interface InventoryExtrasResponse {
-  policy: InventoryPolicy;
-  cards: InventoryExtrasCard[];
-}
-
 export interface InventoryRemoveExtrasSummary {
   updatedEntries: number;
   deletedEntries: number;
   removedCopies: InventoryCountSet;
-  removedListings: number;
-}
-
-export interface ExtrasForSaleBulkRemoveSummary {
-  removed: number;
-}
-
-export interface ExtraForSaleListing {
-  id: string;
-  cardId: string;
-  card: Card;
-  variant: InventoryVariant;
-  desiredQuantity: number;
-  publicQuantity: number;
-  referencePrice: number | null;
-  referencePriceCurrency: "USD";
-  customPrice: number | null;
-  customPriceCurrency: ListingCurrency;
-  note: string | null;
-  status: "active" | "paused";
-  pricingMode?: MarketplacePricingMode;
-}
-
-export interface PublicExtraForSaleListing {
-  id: string;
-  card: Card;
-  variant: InventoryVariant;
-  quantity: number;
-  referencePrice: number | null;
-  referencePriceCurrency: "USD";
-  customPrice: number | null;
-  customPriceCurrency: ListingCurrency;
-  note: string | null;
-}
-
-export interface PublicExtrasForSale {
-  user: User;
-  profile?: PublicUserProfile;
-  listings: PublicExtraForSaleListing[];
 }
 
 export interface UserSettings {
   publicEnabled: boolean;
   publicUrl: string;
-}
-
-export interface UserReference {
-  id: string;
-  name: string;
-  description: string | null;
-  contactInfo: string | null;
-  visible: boolean;
 }
 
 export interface UserProfile {
@@ -207,21 +141,13 @@ export interface UserProfile {
   emailVisible: boolean;
   phoneNumber: string | null;
   phoneNumberVisible: boolean;
-  references: UserReference[];
 }
 
-export type UserProfileUpdate = Omit<UserProfile, "profileImageUrl" | "profileImageObjectKey" | "references">;
+export type UserProfileUpdate = Omit<UserProfile, "profileImageUrl" | "profileImageObjectKey">;
 
 export interface ProfileImageUpload {
   dataUrl: string;
   contentType: "image/jpeg" | "image/png" | "image/webp";
-}
-
-export interface PublicReference {
-  id: string;
-  name: string;
-  description?: string | null;
-  contactInfo?: string | null;
 }
 
 export interface PublicUserProfile {
@@ -233,7 +159,6 @@ export interface PublicUserProfile {
   facebook?: string;
   email?: string;
   phoneNumber?: string;
-  references?: PublicReference[];
 }
 
 export interface PublicCollection {
@@ -241,148 +166,6 @@ export interface PublicCollection {
   profile?: PublicUserProfile;
   cards: { card: Card; quantity: number; foilQuantity: number; holofoilQuantity: number }[];
   stats: InventoryStats;
-}
-
-export type MarketplacePricingMode = "FIXED" | "ACCEPTS_OFFERS";
-export type MarketplaceEnquiryStatus =
-  | "PENDING_SELLER"
-  | "AWAITING_BUYER"
-  | "RESERVED"
-  | "AWAITING_BUYER_CONFIRMATION"
-  | "COMPLETED"
-  | "DECLINED"
-  | "WITHDRAWN"
-  | "CANCELLED"
-  | "EXPIRED"
-  | "DISPUTED";
-
-export interface MarketplaceMoney {
-  amountMinor: number;
-  currency: ListingCurrency;
-}
-
-export interface MarketplaceCardResult {
-  card: Card;
-  variant: InventoryVariant;
-  offersCount: number;
-  availableQuantity: number;
-  lowestPrice: MarketplaceMoney | null;
-  canFulfilToViewer: boolean;
-  offers: MarketplaceCardOffer[];
-}
-
-export interface MarketplaceListParams {
-  search?: string;
-  set?: string;
-  rarity?: string;
-  color?: string;
-  variant?: InventoryVariant;
-  availableOnly?: string;
-  page?: string;
-  limit?: string;
-}
-
-export interface MarketplaceListResponse {
-  results: MarketplaceCardResult[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-export interface MarketplaceCardOffer {
-  listingId: string;
-  seller: User;
-  sellerVerified: boolean;
-  variant: InventoryVariant;
-  availableQuantity: number;
-  pricingMode: MarketplacePricingMode;
-  askingPrice: MarketplaceMoney | null;
-  note?: string | null;
-  referencePrice: number | null;
-  referencePriceCurrency: "USD";
-}
-
-export interface MarketplaceCardOffersResponse {
-  card: Card;
-  offers: MarketplaceCardOffer[];
-}
-
-export interface MarketplaceEnquiryOfferSummary {
-  quantity: number;
-  unitPrice: MarketplaceMoney;
-}
-
-export interface MarketplaceEnquirySummary {
-  id: string;
-  status: MarketplaceEnquiryStatus;
-  listingId: string;
-  buyer: User;
-  seller: User;
-  card: Card;
-  variant: InventoryVariant;
-  quantity: number | null;
-  pricingMode: MarketplacePricingMode;
-  askingPrice: MarketplaceMoney | null;
-  lastActivityAt: string;
-  unreadCount: number;
-  latestOffer?: MarketplaceEnquiryOfferSummary | null;
-}
-
-export interface MarketplaceEnquiriesResponse {
-  enquiries: MarketplaceEnquirySummary[];
-}
-
-export interface MarketplaceEnquiryMessage {
-  id: string;
-  enquiryId: string;
-  sender: User;
-  message: string;
-  createdAt: string;
-}
-
-export interface MarketplaceEnquiryOffer extends MarketplaceEnquiryOfferSummary {
-  id: string;
-  enquiryId: string;
-  proposedBy: User;
-  createdAt: string;
-}
-
-export interface MarketplaceReservation {
-  id: string;
-  listingId: string;
-  enquiryId: string;
-  acceptedOfferId?: string | null;
-  quantity: number;
-  unitPriceMinor: number;
-  currency: ListingCurrency;
-  expiresAt: string;
-  status: "RESERVED" | "CANCELLED" | "EXPIRED" | "COMPLETED" | "DISPUTED" | "AWAITING_BUYER_CONFIRMATION";
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MarketplaceEnquiryDetail extends MarketplaceEnquirySummary {
-  messages: MarketplaceEnquiryMessage[];
-  offers: MarketplaceEnquiryOffer[];
-  reservation?: MarketplaceReservation | null;
-}
-
-export interface MarketplaceEnquiryDetailResponse {
-  enquiry: MarketplaceEnquiryDetail;
-}
-
-export interface MarketplaceCreateEnquiryPayload {
-  quantity?: number;
-  message?: string;
-  unitPriceMinor?: number;
-}
-
-export interface MarketplaceCreateOfferPayload {
-  quantity: number;
-  unitPriceMinor: number;
 }
 
 export interface PillarScore {
@@ -502,37 +285,6 @@ export interface PriceMoversResponse {
   losersCount?: number;
   items: PriceMoverItem[];
   emptyReason?: "NO_COMPLETED_RUNS" | "NO_COMPARISON_RUN" | "NO_MOVERS";
-}
-
-export interface AppNotification {
-  id: string;
-  type: string;
-  title: string;
-  body: string;
-  actionUrl: string;
-  relatedType: string | null;
-  relatedId: string | null;
-  isRead: boolean;
-  readAt: string | null;
-  createdAt: string;
-}
-
-export interface NotificationsResponse {
-  notifications: AppNotification[];
-  unreadCount: number;
-}
-
-export interface NotificationUnreadCountResponse {
-  unreadCount: number;
-}
-
-export interface NotificationMarkReadResponse {
-  updated: number;
-  readAt: string;
-}
-
-export interface NotificationMarkAllReadResponse {
-  updated: number;
 }
 
 export type MasterSetPriceField = "lowPrice" | "midPrice" | "highPrice" | "marketPrice";

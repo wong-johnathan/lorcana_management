@@ -13,13 +13,6 @@ export const prismaMock = {
     upsert: vi.fn(),
     update: vi.fn(),
   },
-  userReference: {
-    findMany: vi.fn(),
-    findFirst: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  },
   userInventoryPolicy: {
     findUnique: vi.fn(),
     upsert: vi.fn(),
@@ -30,35 +23,6 @@ export const prismaMock = {
     findMany: vi.fn(),
     upsert: vi.fn(),
     deleteMany: vi.fn(),
-  },
-  extraForSaleListing: {
-    findMany: vi.fn(),
-    findFirst: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
-  },
-  marketplaceEnquiry: {
-    findFirst: vi.fn(),
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  },
-  enquiryMessage: {
-    findMany: vi.fn(),
-    create: vi.fn(),
-  },
-  enquiryOffer: {
-    findMany: vi.fn(),
-    create: vi.fn(),
-  },
-  notification: {
-    create: vi.fn(),
-    findMany: vi.fn(),
-    count: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
   },
   card: {
     findMany: vi.fn(),
@@ -99,13 +63,6 @@ export const prismaMock = {
     update: vi.fn(),
     delete: vi.fn(),
     deleteMany: vi.fn(),
-  },
-  marketplaceReservation: {
-    findUnique: vi.fn(),
-    findMany: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateMany: vi.fn(),
   },
 };
 

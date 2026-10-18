@@ -123,7 +123,7 @@ export default function AccountSettingsPanel({ user, googleClientId, linking, de
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-red-200">Danger Zone</p>
-            <p className="text-sm text-red-300/80">Deleting your account removes your inventory, profile, listings, enquiries, and marketplace data.</p>
+            <p className="text-sm text-red-300/80">Deleting your account removes your inventory and profile data.</p>
           </div>
           <button
             type="button"
@@ -141,7 +141,7 @@ export default function AccountSettingsPanel({ user, googleClientId, linking, de
             <div>
               <h3 className="text-lg font-semibold text-red-200">Delete account?</h3>
               <p className="mt-2 text-sm text-gray-300">
-                This is permanent. Cascading deletion will remove your Lorcana inventory, profile, public collection, extras listings, and marketplace records.
+                This is permanent. Cascading deletion will remove your Lorcana inventory, keep policy, profile, and public collection.
               </p>
             </div>
 

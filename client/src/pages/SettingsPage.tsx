@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { inventory as inventoryApi, profile as profileApi, settings as settingsApi } from "../services/api";
-import type { InventoryPolicy, ProfileImageUpload, UserProfile, UserProfileUpdate, UserReference, UserSettings } from "../types";
+import type { InventoryPolicy, ProfileImageUpload, UserProfile, UserProfileUpdate, UserSettings } from "../types";
 import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
-import UserReferencesEditor from "../components/profile/UserReferencesEditor";
 import AccountSettingsPanel from "../components/profile/AccountSettingsPanel";
-import ExtrasSettingsPanel from "../components/extras/ExtrasSettingsPanel";
+import KeepPolicyPanel from "../components/inventory/KeepPolicyPanel";
 import { useAuth } from "../context/AuthContext";
 
 export default function SettingsPage() {
@@ -14,7 +13,7 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [extrasPolicy, setExtrasPolicy] = useState<InventoryPolicy | null>(null);
+  const [keepPolicy, setKeepPolicy] = useState<InventoryPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -29,7 +28,7 @@ export default function SettingsPage() {
       .then(([nextSettings, nextProfile, nextPolicy]) => {
         setSettings(nextSettings);
         setProfile(nextProfile);
-        setExtrasPolicy(nextPolicy);
+        setKeepPolicy(nextPolicy);
       })
       .catch((err) => setError(err?.message || "Failed to load settings"))
       .finally(() => setLoading(false));
@@ -68,15 +67,15 @@ export default function SettingsPage() {
     }
   };
 
-  const handleExtrasPolicySave = async (data: InventoryPolicy) => {
+  const handleKeepPolicySave = async (data: InventoryPolicy) => {
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      setExtrasPolicy(await inventoryApi.updatePolicy(data));
-      setSuccess("Extras for Sale settings saved");
+      setKeepPolicy(await inventoryApi.updatePolicy(data));
+      setSuccess("Keep policy saved");
     } catch (err: any) {
-      setError(err?.message || "Failed to save Extras for Sale settings");
+      setError(err?.message || "Failed to save keep policy");
     } finally {
       setSaving(false);
     }
@@ -106,52 +105,6 @@ export default function SettingsPage() {
       setError(err?.message || "Failed to delete profile picture");
     } finally {
       setUploading(false);
-    }
-  };
-
-  const refreshReference = (reference: UserReference) => {
-    setProfile((current) => current ? {
-      ...current,
-      references: current.references.some((item) => item.id === reference.id)
-        ? current.references.map((item) => item.id === reference.id ? reference : item)
-        : [...current.references, reference],
-    } : current);
-  };
-
-  const handleReferenceCreate = async (data: Omit<UserReference, "id">) => {
-    setSaving(true);
-    setError(null);
-    try {
-      refreshReference(await profileApi.createReference(data));
-    } catch (err: any) {
-      setError(err?.message || "Failed to add reference");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReferenceUpdate = async (id: string, data: Partial<Omit<UserReference, "id">>) => {
-    setSaving(true);
-    setError(null);
-    try {
-      refreshReference(await profileApi.updateReference(id, data));
-    } catch (err: any) {
-      setError(err?.message || "Failed to update reference");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReferenceDelete = async (id: string) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await profileApi.deleteReference(id);
-      setProfile((current) => current ? { ...current, references: current.references.filter((reference) => reference.id !== id) } : current);
-    } catch (err: any) {
-      setError(err?.message || "Failed to delete reference");
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -210,7 +163,7 @@ export default function SettingsPage() {
     );
   }
 
-  if (!settings || !profile || !extrasPolicy) {
+  if (!settings || !profile || !keepPolicy) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-red-400">{error || "Failed to load settings"}</div>
@@ -224,7 +177,7 @@ export default function SettingsPage() {
       <div className={`rounded-lg border p-3 text-sm ${user?.emailVerifiedAt ? "border-emerald-900 bg-emerald-950/40 text-emerald-300" : "border-amber-900 bg-amber-950/30 text-amber-200"}`}>
         {user?.emailVerifiedAt
           ? `Email verified${user.email ? `: ${user.email}` : ""}`
-          : "Verify your Google email before publishing your collection, contact fields, references, or Extras for Sale."}
+          : "Verify your Google email before publishing your collection or contact fields."}
       </div>
       {error && <div className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>}
       {success && <div className="rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-300">{success}</div>}
@@ -270,12 +223,10 @@ export default function SettingsPage() {
       </div>
 
       <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 space-y-4">
-        <ExtrasSettingsPanel
-          policy={extrasPolicy}
+        <KeepPolicyPanel
+          policy={keepPolicy}
           saving={saving}
-          publicEnabled={settings.publicEnabled}
-          showManageLink
-          onSave={handleExtrasPolicySave}
+          onSave={handleKeepPolicySave}
         />
       </div>
 
@@ -295,9 +246,6 @@ export default function SettingsPage() {
         <ProfileForm profile={profile} saving={saving} canExposeContactFields={Boolean(user?.emailVerifiedAt)} onSubmit={handleProfileSave} />
       </div>
 
-      <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
-        <UserReferencesEditor references={profile.references} saving={saving} canExposeReferences={Boolean(user?.emailVerifiedAt)} onCreate={handleReferenceCreate} onUpdate={handleReferenceUpdate} onDelete={handleReferenceDelete} />
-      </div>
     </div>
   );
 }

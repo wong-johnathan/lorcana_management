@@ -63,7 +63,6 @@ async function mockApi(page: Page) {
     emailVisible: false,
     phoneNumber: null,
     phoneNumberVisible: false,
-    references: [] as Array<{ id: string; name: string; description: string | null; contactInfo: string | null; visible: boolean }>,
   };
 
   await page.route("**/api/**", async (route) => {
@@ -162,58 +161,6 @@ async function mockApi(page: Page) {
     if (path === "/api/cards") {
       return route.fulfill({ json: { cards: [card], pagination: { page: 1, limit: 40, total: 1, totalPages: 1 } } });
     }
-    if (path === "/api/marketplace") {
-      return route.fulfill({
-        json: {
-          results: [{
-            card,
-            variant: "normal",
-            offersCount: 1,
-            availableQuantity: 2,
-            lowestPrice: { amountMinor: 1200, currency: "SGD" },
-            canFulfilToViewer: true,
-            offers: [{
-              listingId: "listing_1",
-              seller: { id: "seller_1", username: "seller", emailVerifiedAt: new Date().toISOString() },
-              sellerVerified: true,
-              variant: "normal",
-              availableQuantity: 2,
-              pricingMode: "FIXED",
-              askingPrice: { amountMinor: 1200, currency: "SGD" },
-              note: "Meet near MRT",
-              referencePrice: 4,
-              referencePriceCurrency: "USD",
-            }],
-          }],
-          pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
-        },
-      });
-    }
-    if (path === "/api/marketplace/cards/card_1/offers") {
-      return route.fulfill({
-        json: {
-          card,
-          offers: [{
-            listingId: "listing_1",
-            seller: { id: "seller_1", username: "seller", emailVerifiedAt: new Date().toISOString() },
-            sellerVerified: true,
-            variant: "normal",
-            availableQuantity: 2,
-            pricingMode: "FIXED",
-            askingPrice: { amountMinor: 1200, currency: "SGD" },
-            note: "Meet near MRT",
-            referencePrice: 4,
-            referencePriceCurrency: "USD",
-          }],
-        },
-      });
-    }
-    if (path === "/api/marketplace/listings/listing_1/enquiries") {
-      return route.fulfill({ status: 201, json: { enquiry: { id: "enquiry_1" } } });
-    }
-    if (path === "/api/marketplace/enquiries") {
-      return route.fulfill({ json: { enquiries: [] } });
-    }
     if (path === "/api/inventory/stats") {
       return route.fulfill({
         json: {
@@ -226,7 +173,7 @@ async function mockApi(page: Page) {
       });
     }
     if (path === "/api/inventory/policy") {
-      return route.fulfill({ json: { keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true } });
+      return route.fulfill({ json: { keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1 } });
     }
     if (path === "/api/inventory") {
       if (request.method() === "POST") return route.fulfill({ status: 201, json: inventoryEntry });
@@ -249,12 +196,6 @@ async function mockApi(page: Page) {
       };
       return route.fulfill({ json: savedProfile });
     }
-    if (path === "/api/profile/me/references") {
-      const body = await request.postDataJSON();
-      const reference = { id: "ref_1", name: body.name, description: body.description, contactInfo: body.contactInfo, visible: body.visible };
-      savedProfile = { ...savedProfile, references: [...savedProfile.references, reference] };
-      return route.fulfill({ status: 201, json: reference });
-    }
     if (path === "/api/public/collection/user_1") {
       return route.fulfill({
         json: {
@@ -268,7 +209,6 @@ async function mockApi(page: Page) {
             facebook: savedProfile.facebookVisible ? savedProfile.facebook : undefined,
             email: savedProfile.emailVisible ? savedProfile.email : undefined,
             phoneNumber: savedProfile.phoneNumberVisible ? savedProfile.phoneNumber : undefined,
-            references: savedProfile.references.filter((reference: any) => reference.visible),
           },
           cards: [{ card, quantity: 1, foilQuantity: 0, holofoilQuantity: 0 }],
           stats: {
@@ -324,21 +264,6 @@ test("anonymous user views phase-one price movers", async ({ page }) => {
   await expect(page.getByLabel("Rarity")).toHaveValue("Enchanted");
   await expect(page.getByLabel("Price field")).toHaveValue("lowPrice");
   await expect(page.getByRole("button", { name: "Top losers" })).toBeVisible();
-});
-
-test("anonymous user browses marketplace and sees gated enquiry CTA", async ({ page }) => {
-  await page.goto("/marketplace");
-  await expect(page.getByRole("heading", { name: "Marketplace" })).toBeVisible();
-  await expect(page.getByText("Mickey Mouse - Brave Little Tailor")).toBeVisible();
-  await expect(page.getByText("S$12.00")).toBeVisible();
-  await expect(page.getByText("2 available ·")).toBeVisible();
-  await expect(page.getByText("@seller")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Log in to chat" })).toBeVisible();
-
-  await page.getByRole("link", { name: "Mickey Mouse - Brave Little Tailor", exact: true }).click();
-  await expect(page).toHaveURL(/\/marketplace\/card\/card_1$/);
-  await expect(page.getByText("S$12.00")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Log in to chat" })).toBeVisible();
 });
 
 test("anonymous user browses database, opens card detail, and runs master-set estimate", async ({ page }) => {
@@ -404,18 +329,11 @@ test("user edits public profile and shared collection profile tab only shows vis
   await page.getByLabel("Show Telegram publicly").check();
   await page.getByRole("button", { name: "Save profile" }).click();
 
-  await page.getByLabel("Reference name").fill("Alice");
-  await page.getByLabel("Relationship / description").fill("Trade reference");
-  await page.getByLabel("Contact method or note").fill("@alice");
-  await page.getByLabel("Show this reference publicly").check();
-  await page.getByRole("button", { name: "Add reference" }).click();
-
   await page.goto("/collection/user_1?tab=profile");
   await expect(page.getByRole("tab", { name: "Profile" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("Singapore")).toBeVisible();
   await expect(page.getByRole("link", { name: "Instagram" })).toHaveAttribute("href", "https://instagram.com/john.cards");
   await expect(page.getByRole("link", { name: "Telegram" })).toHaveAttribute("href", "https://t.me/johntelegram");
-  await expect(page.getByText("Alice", { exact: true })).toBeVisible();
   await expect(page.getByText("john@example.com")).toHaveCount(0);
   await expect(page.getByText("+6599999999")).toHaveCount(0);
 });

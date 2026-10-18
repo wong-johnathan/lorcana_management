@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { availableInventoryVariants, isInventoryVariantAvailable, totalInventoryCount } from "../utils/cardVariants";
 import { formatTimeAgo } from "../utils/format";
-import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi, extrasForSale, marketplace, notifications } from "../services/api";
+import { auth, cards, inventory, sync, settings, publicCollection, analysis, profile as profileApi } from "../services/api";
 
 describe("client utility helpers", () => {
   it("derives inventory variants from foilTypes and totals quantities", () => {
@@ -62,11 +62,11 @@ describe("API client wrapper", () => {
   });
 
   it("attaches status and body to thrown API errors", async () => {
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: "An active enquiry already exists for this listing", enquiryId: "enquiry_existing" }) });
-    const error = await marketplace.createEnquiry("listing_1", { quantity: 1 }).catch((err: any) => err);
-    expect(error.message).toBe("An active enquiry already exists for this listing");
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ error: "Insufficient quantity", entryId: "entry_1" }) });
+    const error = await inventory.update("entry_1", { quantity: 2 }).catch((err: any) => err);
+    expect(error.message).toBe("Insufficient quantity");
     expect(error.status).toBe(409);
-    expect(error.body).toEqual({ error: "An active enquiry already exists for this listing", enquiryId: "enquiry_existing" });
+    expect(error.body).toEqual({ error: "Insufficient quantity", entryId: "entry_1" });
   });
 
 
@@ -105,33 +105,11 @@ describe("API client wrapper", () => {
       inventory.update("entry_1", { quantity: 2 }),
       inventory.wipe(),
       inventory.getPolicy(),
-      inventory.updatePolicy({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1, autoSuggestExtras: true }),
-      inventory.getExtras(),
+      inventory.updatePolicy({ keepNormalQuantity: 4, keepFoilQuantity: 1, keepHolofoilQuantity: 1 }),
       inventory.removeExtras(),
       inventory.getRetentionOverride("card_1"),
       inventory.updateRetentionOverride("card_1", { keepNormalQuantity: 8 }),
       inventory.deleteRetentionOverride("card_1"),
-      extrasForSale.list(),
-      extrasForSale.listAll(),
-      extrasForSale.removeAll(),
-      extrasForSale.create({ cardId: "card_1", variant: "normal", desiredQuantity: 1, note: null }),
-      extrasForSale.update("listing_1", { status: "paused" }),
-      extrasForSale.remove("listing_1"),
-      marketplace.list({ search: "Elsa" }),
-      marketplace.cardOffers("card_elsa"),
-      marketplace.createEnquiry("listing_1", { quantity: 1, message: "Is this available?" }),
-      marketplace.listEnquiries({ status: "PENDING_SELLER" }),
-      marketplace.getEnquiry("enquiry_1"),
-      marketplace.sendMessage("enquiry_1", "Meet up?"),
-      marketplace.createOffer("enquiry_1", { quantity: 1, unitPriceMinor: 18000 }),
-      marketplace.acceptEnquiry("enquiry_1"),
-      marketplace.declineEnquiry("enquiry_1"),
-      marketplace.withdrawEnquiry("enquiry_1"),
-      marketplace.cancelReservation("reservation_1"),
-      notifications.list(),
-      notifications.unreadCount(),
-      notifications.markRead("notification_1"),
-      notifications.markAllRead(),
       sync.refresh(),
       sync.refreshStatus(),
       sync.prices(),
@@ -155,11 +133,7 @@ describe("API client wrapper", () => {
       }),
       profileApi.uploadPhoto({ dataUrl: "data:image/png;base64,AAAA", contentType: "image/png" }),
       profileApi.deletePhoto(),
-      profileApi.createReference({ name: "Alice", description: null, contactInfo: null, visible: true }),
-      profileApi.updateReference("ref_1", { visible: false }),
-      profileApi.deleteReference("ref_1"),
       publicCollection.get("user_1", { rarity: "Common" }),
-      publicCollection.extras("user_1"),
       analysis.get("card_1"),
       analysis.analyze("card_1"),
       analysis.batchAnalyze(),
@@ -171,23 +145,6 @@ describe("API client wrapper", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/link-google", expect.objectContaining({ method: "POST", body: JSON.stringify({ credential: "google-link-token" }) }));
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/me", expect.objectContaining({ method: "DELETE", body: JSON.stringify({ confirmUsername: "jw", confirmText: "DELETE" }) }));
     expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1?rarity=Common", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/public/collection/user_1/extras", expect.any(Object));
     expect(fetchMock).toHaveBeenCalledWith("/api/inventory/remove-extras", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale/list-all", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/extras-for-sale", expect.objectContaining({ method: "DELETE" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace?search=Elsa", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/cards/card_elsa/offers", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/listings/listing_1/enquiries", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries?status=PENDING_SELLER", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/messages", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/offers", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/accept", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/decline", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/enquiries/enquiry_1/withdraw", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/marketplace/reservations/reservation_1/cancel", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/notifications", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/notifications/unread-count", expect.any(Object));
-    expect(fetchMock).toHaveBeenCalledWith("/api/notifications/notification_1/read", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenCalledWith("/api/notifications/read-all", expect.objectContaining({ method: "POST" }));
   });
 });
