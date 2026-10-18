@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { resolveFallbackTcgPlayerIds } from "./tcgPlayerIdMatcher.js";
+import { resolveFallbackTcgPlayerIds, isFallbackMatchSet } from "./tcgPlayerIdMatcher.js";
 
 const prisma = new PrismaClient();
 
@@ -39,6 +39,8 @@ export interface PriceSyncResult {
   skipped?: boolean;
   status?: "COMPLETED" | "PARTIAL" | "FAILED";
   fallbackVariantMismatches?: number;
+  fallbackResolved?: number;
+  fallbackSkipped?: number;
 }
 
 export type PriceSyncProgressCallback = (info: {
@@ -237,6 +239,24 @@ export async function syncGroupPrices(
   });
 
   if (existingRun?.status === "COMPLETED") {
+    // The fallback matcher backfills Card.tcgPlayerId independently of snapshot
+    // capture, so it must still run when the snapshot run is already complete.
+    let fallbackResolved = 0;
+    let fallbackSkipped = 0;
+    let fallbackVariantMismatches = 0;
+    for (const group of groups) {
+      if (!isFallbackMatchSet(group.name)) continue;
+      try {
+        const products = await fetchGroupProducts(group.groupId);
+        const prices = await fetchGroupPrices(group.groupId);
+        const fallback = await resolveFallbackTcgPlayerIds(prisma, group.name, products, prices);
+        fallbackResolved += fallback.resolved;
+        fallbackSkipped += fallback.skipped;
+        fallbackVariantMismatches += fallback.variantMismatches;
+      } catch (err) {
+        console.error("Fallback backfill failed for group", group.groupId, err);
+      }
+    }
     return {
       groups: groups.length,
       matched: 0,
@@ -244,6 +264,9 @@ export async function syncGroupPrices(
       rowCount: existingRun.rowCount,
       skipped: true,
       status: "COMPLETED",
+      fallbackResolved,
+      fallbackSkipped,
+      fallbackVariantMismatches,
     };
   }
 
@@ -274,6 +297,8 @@ export async function syncGroupPrices(
   let rowCount = 0;
   let successfulGroups = 0;
   let failedGroups = 0;
+  let fallbackResolved = 0;
+  let fallbackSkipped = 0;
   let fallbackVariantMismatches = 0;
   const errors: { groupId: number; name: string; error: string }[] = [];
 
@@ -283,6 +308,8 @@ export async function syncGroupPrices(
       const products = await fetchGroupProducts(group.groupId);
       const prices = await fetchGroupPrices(group.groupId);
       const fallback = await resolveFallbackTcgPlayerIds(prisma, group.name, products, prices);
+      fallbackResolved += fallback.resolved;
+      fallbackSkipped += fallback.skipped;
       fallbackVariantMismatches += fallback.variantMismatches;
       const result = await persistGroupSnapshotAndCurrentPrices(run.id, group.groupId, products, prices);
       matched += result.matched;
@@ -319,5 +346,5 @@ export async function syncGroupPrices(
     errorSummary: errors,
   });
 
-  return { groups: groups.length, matched, unmatched, rowCount, skipped: false, status, fallbackVariantMismatches };
+  return { groups: groups.length, matched, unmatched, rowCount, skipped: false, status, fallbackResolved, fallbackSkipped, fallbackVariantMismatches };
 }

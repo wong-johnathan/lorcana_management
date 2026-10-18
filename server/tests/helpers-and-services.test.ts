@@ -249,9 +249,69 @@ describe("card and price sync services", () => {
       rowCount: 99,
       skipped: true,
       status: "COMPLETED",
+      fallbackResolved: 0,
+      fallbackSkipped: 0,
+      fallbackVariantMismatches: 0,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("https://tcgcsv.com/last-updated.txt", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
+    expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
+  });
+
+  it("runs the fallback backfill even when the snapshot run is already completed", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            { productId: 100, name: "Alpha", extendedData: [
+              { name: "Number", value: "1/204" },
+              { name: "Rarity", value: "Common" },
+            ] },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            { productId: 100, subTypeName: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
+          ],
+        }),
+      });
+    prismaMock.tcgcsvPriceSnapshotRun.findUnique.mockResolvedValueOnce({
+      id: 12,
+      categoryId: 71,
+      sourceUpdatedAt: new Date("2026-09-25T20:05:42Z"),
+      status: "COMPLETED",
+      rowCount: 99,
+    });
+    prismaMock.card.findMany.mockImplementation(async ({ where }: any) => {
+      if (where.setName === "Hyperia City") {
+        return [
+          { id: "hc_1", tcgPlayerId: null, setName: "Hyperia City", cardNumber: "1/204 • EN • 14", name: "Alpha", subtitle: "", rarity: "Common", foilTypes: ["None"] },
+        ];
+      }
+      return [];
+    });
+    prismaMock.card.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(syncGroupPrices([{ groupId: 24740, name: "Hyperia City" }])).resolves.toEqual({
+      groups: 1,
+      matched: 0,
+      unmatched: 0,
+      rowCount: 99,
+      skipped: true,
+      status: "COMPLETED",
+      fallbackResolved: 1,
+      fallbackSkipped: 0,
+      fallbackVariantMismatches: 0,
+    });
+    expect(prismaMock.card.updateMany).toHaveBeenCalledWith({
+      where: { id: "hc_1", tcgPlayerId: null },
+      data: { tcgPlayerId: 100 },
+    });
     expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
   });
 
@@ -286,7 +346,7 @@ describe("card and price sync services", () => {
     const progress = vi.fn();
 
     await expect(syncGroupPrices([{ groupId: 10, name: "A" }, { groupId: 11, name: "B" }], progress))
-      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1, rowCount: 3, skipped: false, status: "PARTIAL", fallbackVariantMismatches: 0 });
+      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1, rowCount: 3, skipped: false, status: "PARTIAL", fallbackResolved: 0, fallbackSkipped: 0, fallbackVariantMismatches: 0 });
     expect(fetchMock).toHaveBeenNthCalledWith(1, "https://tcgcsv.com/last-updated.txt", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://tcgcsv.com/tcgplayer/71/10/products", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
     expect(fetchMock).toHaveBeenNthCalledWith(3, "https://tcgcsv.com/tcgplayer/71/10/prices", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
@@ -399,6 +459,8 @@ describe("card and price sync services", () => {
       rowCount: 0,
       skipped: false,
       status: "FAILED",
+      fallbackResolved: 0,
+      fallbackSkipped: 0,
       fallbackVariantMismatches: 0,
     });
     expect(prismaMock.cardPrice.deleteMany).not.toHaveBeenCalled();
@@ -433,6 +495,8 @@ describe("card and price sync services", () => {
       rowCount: 0,
       skipped: false,
       status: "COMPLETED",
+      fallbackResolved: 0,
+      fallbackSkipped: 0,
       fallbackVariantMismatches: 0,
     });
     expect(prismaMock.tcgcsvPriceSnapshot.deleteMany).toHaveBeenCalledWith({ where: { runId: 77, groupId: 10 } });

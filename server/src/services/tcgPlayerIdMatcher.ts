@@ -48,6 +48,10 @@ interface FallbackPrismaClient {
 
 const FALLBACK_MATCH_SET_NAMES = ["Hyperia City"];
 
+export function isFallbackMatchSet(groupName: string): boolean {
+  return FALLBACK_MATCH_SET_NAMES.includes(groupName);
+}
+
 const ALLOWED_RARITIES = new Set([
   "Common",
   "Uncommon",
