@@ -38,6 +38,7 @@ export interface PriceSyncResult {
   rowCount?: number;
   skipped?: boolean;
   status?: "COMPLETED" | "PARTIAL" | "FAILED";
+  fallbackVariantMismatches?: number;
 }
 
 export type PriceSyncProgressCallback = (info: {
@@ -273,6 +274,7 @@ export async function syncGroupPrices(
   let rowCount = 0;
   let successfulGroups = 0;
   let failedGroups = 0;
+  let fallbackVariantMismatches = 0;
   const errors: { groupId: number; name: string; error: string }[] = [];
 
   for (let i = 0; i < groups.length; i++) {
@@ -280,7 +282,8 @@ export async function syncGroupPrices(
     try {
       const products = await fetchGroupProducts(group.groupId);
       const prices = await fetchGroupPrices(group.groupId);
-      await resolveFallbackTcgPlayerIds(prisma, group.name, products);
+      const fallback = await resolveFallbackTcgPlayerIds(prisma, group.name, products, prices);
+      fallbackVariantMismatches += fallback.variantMismatches;
       const result = await persistGroupSnapshotAndCurrentPrices(run.id, group.groupId, products, prices);
       matched += result.matched;
       unmatched += result.unmatched;
@@ -316,5 +319,5 @@ export async function syncGroupPrices(
     errorSummary: errors,
   });
 
-  return { groups: groups.length, matched, unmatched, rowCount, skipped: false, status };
+  return { groups: groups.length, matched, unmatched, rowCount, skipped: false, status, fallbackVariantMismatches };
 }

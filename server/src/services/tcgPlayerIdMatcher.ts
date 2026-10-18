@@ -24,6 +24,11 @@ export interface FallbackCard {
 
 export type FallbackSkipReason = "excluded" | "ambiguous";
 
+export interface TcgcsvPriceRow {
+  productId: number;
+  subTypeName: string;
+}
+
 export interface FallbackMatchResult {
   resolved: { cardId: string; productId: number }[];
   skipped: { cardId: string; reason: FallbackSkipReason }[];
@@ -121,6 +126,39 @@ export function areVariantsConsistent(foilTypes: string[], subTypeNames: string[
     if (!available.has(name)) return false;
   }
   return true;
+}
+
+export interface FallbackVariantMismatch {
+  cardId: string;
+  productId: number;
+  cardFoilTypes: string[];
+  productSubTypes: string[];
+}
+
+// Soft, non-gating check over already-resolved matches (see design "Variant
+// mapping"): returns the resolved cards whose available variants (from
+// foilTypes) are NOT a subset of the product's price subTypeNames. Used only
+// for WARN logging + run-result surfacing; it never affects resolution.
+export function findVariantMismatches(
+  resolved: { cardId: string; productId: number }[],
+  cardsById: Map<string, FallbackCard>,
+  subTypeNamesByProduct: Map<number, string[]>
+): FallbackVariantMismatch[] {
+  const mismatches: FallbackVariantMismatch[] = [];
+  for (const match of resolved) {
+    const card = cardsById.get(match.cardId);
+    if (!card) continue;
+    const subTypes = subTypeNamesByProduct.get(match.productId) ?? [];
+    if (!areVariantsConsistent(card.foilTypes, subTypes)) {
+      mismatches.push({
+        cardId: match.cardId,
+        productId: match.productId,
+        cardFoilTypes: card.foilTypes,
+        productSubTypes: subTypes,
+      });
+    }
+  }
+  return mismatches;
 }
 
 function parseCardNumber(
@@ -243,10 +281,11 @@ export function matchFallbackCards(
 export async function resolveFallbackTcgPlayerIds(
   prisma: FallbackPrismaClient,
   groupName: string,
-  products: TcgcsvProduct[]
-): Promise<{ resolved: number; skipped: number }> {
+  products: TcgcsvProduct[],
+  prices: TcgcsvPriceRow[] = []
+): Promise<{ resolved: number; skipped: number; variantMismatches: number }> {
   if (!FALLBACK_MATCH_SET_NAMES.includes(groupName)) {
-    return { resolved: 0, skipped: 0 };
+    return { resolved: 0, skipped: 0, variantMismatches: 0 };
   }
 
   const cards = await prisma.card.findMany({
@@ -255,6 +294,25 @@ export async function resolveFallbackTcgPlayerIds(
 
   const result = matchFallbackCards(cards, products);
 
+  // Soft, non-gating variant-consistency check (design "Variant mapping"):
+  // a resolved card whose available variants (from foilTypes) are not a subset
+  // of the product's price subTypeNames is WARN-logged and counted so it is
+  // surfaced in the run result, but the match is never blocked.
+  const subTypeNamesByProduct = new Map<number, string[]>();
+  for (const price of prices) {
+    const list = subTypeNamesByProduct.get(price.productId) ?? [];
+    if (!list.includes(price.subTypeName)) list.push(price.subTypeName);
+    subTypeNamesByProduct.set(price.productId, list);
+  }
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const mismatches = findVariantMismatches(result.resolved, cardsById, subTypeNamesByProduct);
+  for (const mismatch of mismatches) {
+    console.warn(
+      `[fallback-matcher] variant mismatch for card ${mismatch.cardId} -> product ${mismatch.productId}: ` +
+        `foilTypes [${mismatch.cardFoilTypes.join(", ")}] not a subset of price subTypes [${mismatch.productSubTypes.join(", ")}]`
+    );
+  }
+
   for (const match of result.resolved) {
     await prisma.card.updateMany({
       where: { id: match.cardId, tcgPlayerId: null },
@@ -262,5 +320,9 @@ export async function resolveFallbackTcgPlayerIds(
     });
   }
 
-  return { resolved: result.resolved.length, skipped: result.skipped.length };
+  return {
+    resolved: result.resolved.length,
+    skipped: result.skipped.length,
+    variantMismatches: mismatches.length,
+  };
 }

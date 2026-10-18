@@ -225,6 +225,53 @@ describe("matching ambiguity and false-match prevention", () => {
     ]);
   });
 
+  it("excludes a presale product even when Number and Rarity are present (presale guard isolation)", () => {
+    const presaleProduct = product({
+      productId: 100,
+      name: "Fru Fru - VIP Guest",
+      extendedData: [
+        { name: "Number", value: "1/204" },
+        { name: "Rarity", value: "Common" },
+      ],
+      presaleInfo: { isPresale: true },
+    });
+
+    // The presale guard must exclude the product from the index on its own;
+    // the product carries a complete Number+Rarity+name so it would otherwise
+    // be eligible and would match the card below.
+    expect(buildProductIndex([presaleProduct]).size).toBe(0);
+
+    const result = matchFallbackCards([card({ id: "a" })], [presaleProduct]);
+    expect(result.resolved).toEqual([]);
+    expect(result.skipped).toEqual([{ cardId: "a", reason: "ambiguous" }]);
+  });
+
+  it("excludes a non-204-denominator card even when rarity is allowlisted (denominator gate isolation)", () => {
+    const products = [
+      product({
+        productId: 100,
+        name: "Rare Promo",
+        extendedData: [
+          { name: "Number", value: "5/RPH" },
+          { name: "Rarity", value: "Rare" },
+        ],
+      }),
+    ];
+    const rphRare = card({
+      id: "rph-rare",
+      name: "Rare Promo",
+      subtitle: "",
+      cardNumber: "5/RPH • EN • 14",
+      rarity: "Rare",
+    });
+
+    // Rarity "Rare" is allowlisted, so only the denominator==204 gate can
+    // exclude this card. Without that gate the card would resolve to product 100.
+    const result = matchFallbackCards([rphRare], products);
+    expect(result.resolved).toEqual([]);
+    expect(result.skipped).toEqual([{ cardId: "rph-rare", reason: "excluded" }]);
+  });
+
   it("builds a product index keyed on number|denominator|rarity|name, skipping ineligible products", () => {
     const index = buildProductIndex([
       product({ productId: 100 }),
@@ -321,7 +368,7 @@ describe("resolveFallbackTcgPlayerIds (DB wrapper)", () => {
 
   it("no-ops when the group name is not allowlisted (no card.findMany call)", async () => {
     const result = await resolveFallbackTcgPlayerIds(prismaMock as any, "Other Set", []);
-    expect(result).toEqual({ resolved: 0, skipped: 0 });
+    expect(result).toEqual({ resolved: 0, skipped: 0, variantMismatches: 0 });
     expect(prismaMock.card.findMany).not.toHaveBeenCalled();
     expect((prismaMock.card as any).updateMany).not.toHaveBeenCalled();
   });
@@ -344,8 +391,16 @@ describe("resolveFallbackTcgPlayerIds (DB wrapper)", () => {
         ],
       }),
     ];
+    // Both cards default to foilTypes ["None", "Silver"], which is consistent
+    // with Normal + Cold Foil price rows, so no variant mismatch is surfaced.
+    const prices = [
+      { productId: 722351, subTypeName: "Normal" },
+      { productId: 722351, subTypeName: "Cold Foil" },
+      { productId: 722352, subTypeName: "Normal" },
+      { productId: 722352, subTypeName: "Cold Foil" },
+    ];
 
-    const result = await resolveFallbackTcgPlayerIds(prismaMock as any, ALLOWLISTED_SET, products);
+    const result = await resolveFallbackTcgPlayerIds(prismaMock as any, ALLOWLISTED_SET, products, prices);
 
     expect(prismaMock.card.findMany).toHaveBeenCalledWith({
       where: { setName: ALLOWLISTED_SET, tcgPlayerId: null },
@@ -359,7 +414,39 @@ describe("resolveFallbackTcgPlayerIds (DB wrapper)", () => {
       where: { id: "b", tcgPlayerId: null },
       data: { tcgPlayerId: 722352 },
     });
-    expect(result).toEqual({ resolved: 2, skipped: 0 });
+    expect(result).toEqual({ resolved: 2, skipped: 0, variantMismatches: 0 });
+  });
+
+  it("still resolves a variant-mismatched match and surfaces it at WARN (non-gating)", async () => {
+    prismaMock.card.findMany.mockResolvedValueOnce([
+      card({ id: "a", foilTypes: ["Satin"] }),
+    ]);
+    (prismaMock.card as any).updateMany.mockResolvedValue({ count: 1 });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // "Satin" is a holofoil-only premium treatment, but the product only has a
+    // "Normal" price row, so the variants are inconsistent. The match must
+    // still resolve; the mismatch is WARN-logged and counted, never gating.
+    const products = [product({ productId: 722351 })];
+    const prices = [{ productId: 722351, subTypeName: "Normal" }];
+
+    const result = await resolveFallbackTcgPlayerIds(
+      prismaMock as any,
+      ALLOWLISTED_SET,
+      products,
+      prices
+    );
+
+    expect((prismaMock.card as any).updateMany).toHaveBeenCalledWith({
+      where: { id: "a", tcgPlayerId: null },
+      data: { tcgPlayerId: 722351 },
+    });
+    expect(result.resolved).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.variantMismatches).toBe(1);
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 
   it("skips cards that already have a non-null tcgPlayerId (canonical-wins)", async () => {

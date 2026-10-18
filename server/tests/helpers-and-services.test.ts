@@ -286,7 +286,7 @@ describe("card and price sync services", () => {
     const progress = vi.fn();
 
     await expect(syncGroupPrices([{ groupId: 10, name: "A" }, { groupId: 11, name: "B" }], progress))
-      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1, rowCount: 3, skipped: false, status: "PARTIAL" });
+      .resolves.toEqual({ groups: 2, matched: 3, unmatched: 1, rowCount: 3, skipped: false, status: "PARTIAL", fallbackVariantMismatches: 0 });
     expect(fetchMock).toHaveBeenNthCalledWith(1, "https://tcgcsv.com/last-updated.txt", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "https://tcgcsv.com/tcgplayer/71/10/products", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
     expect(fetchMock).toHaveBeenNthCalledWith(3, "https://tcgcsv.com/tcgplayer/71/10/prices", { headers: { "User-Agent": "LorcanaInventory/1.0.0" } });
@@ -331,6 +331,7 @@ describe("card and price sync services", () => {
       rowCount: 0,
       skipped: false,
       status: "FAILED",
+      fallbackVariantMismatches: 0,
     });
     expect(prismaMock.cardPrice.deleteMany).not.toHaveBeenCalled();
     expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
@@ -364,6 +365,7 @@ describe("card and price sync services", () => {
       rowCount: 0,
       skipped: false,
       status: "COMPLETED",
+      fallbackVariantMismatches: 0,
     });
     expect(prismaMock.tcgcsvPriceSnapshot.deleteMany).toHaveBeenCalledWith({ where: { runId: 77, groupId: 10 } });
     expect(prismaMock.tcgcsvPriceSnapshot.createMany).not.toHaveBeenCalled();
