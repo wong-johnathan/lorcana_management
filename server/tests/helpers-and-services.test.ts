@@ -315,6 +315,74 @@ describe("card and price sync services", () => {
     expect(progress).toHaveBeenLastCalledWith({ groupName: "B", groupIndex: 2, totalGroups: 2 });
   });
 
+  it("surfaces a non-zero fallbackVariantMismatches for an allowlisted Hyperia City group and forwards fetched prices to the matcher", async () => {
+    // The D5 mutation guard: this test pins BOTH the aggregation line
+    // (`fallbackVariantMismatches += fallback.variantMismatches`) and the
+    // forwarding of `prices` into resolveFallbackTcgPlayerIds.
+    //
+    // The two Hyperia City cards below resolve to the two products, but card
+    // hc_2 declares foilTypes ["None", "Silver"], so it expects a "Cold Foil"
+    // price variant that product 200's rows lack (only "Normal"). With the
+    // fetched prices forwarded, exactly ONE mismatch is surfaced (hc_2); had
+    // `prices` been dropped from the resolveFallbackTcgPlayerIds call the
+    // matcher would see no subTypeNames at all and report BOTH cards as
+    // mismatched (2), and removing the aggregation line would leave the
+    // result at 0. Asserting === 1 therefore fails on either regression.
+    fetchMock
+      .mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            { productId: 100, name: "Alpha", extendedData: [
+              { name: "Number", value: "1/204" },
+              { name: "Rarity", value: "Common" },
+            ] },
+            { productId: 200, name: "Beta", extendedData: [
+              { name: "Number", value: "2/204" },
+              { name: "Rarity", value: "Common" },
+            ] },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            { productId: 100, subTypeName: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
+            { productId: 200, subTypeName: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 },
+          ],
+        }),
+      });
+    prismaMock.tcgcsvPriceSnapshotRun.findUnique.mockResolvedValueOnce(null);
+    prismaMock.tcgcsvPriceSnapshotRun.create.mockResolvedValueOnce({ id: 123 });
+    prismaMock.tcgcsvPriceSnapshotRun.update.mockResolvedValue({});
+    prismaMock.tcgcsvPriceSnapshot.deleteMany.mockResolvedValue({});
+    prismaMock.tcgcsvPriceSnapshot.createMany.mockResolvedValue({ count: 2 });
+    // First call is the fallback matcher's card lookup (by setName); the later
+    // persistence-loop lookups (by tcgPlayerId) find no pre-existing cards.
+    prismaMock.card.findMany.mockImplementation(async ({ where }: any) => {
+      if (where.setName === "Hyperia City") {
+        return [
+          { id: "hc_1", tcgPlayerId: null, setName: "Hyperia City", cardNumber: "1/204 • EN • 14", name: "Alpha", subtitle: "", rarity: "Common", foilTypes: ["None"] },
+          { id: "hc_2", tcgPlayerId: null, setName: "Hyperia City", cardNumber: "2/204 • EN • 14", name: "Beta", subtitle: "", rarity: "Common", foilTypes: ["None", "Silver"] },
+        ];
+      }
+      return [];
+    });
+    prismaMock.card.updateMany.mockResolvedValue({ count: 1 });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const result = await syncGroupPrices([{ groupId: 24740, name: "Hyperia City" }]);
+
+    expect(result.fallbackVariantMismatches).toBe(1);
+    // Both cards resolved and were each written via the null-guarded updateMany.
+    expect(prismaMock.card.updateMany).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+
+    warnSpy.mockRestore();
+  });
+
   it("marks historical price sync failed when every group price fetch fails without clearing current prices", async () => {
     fetchMock
       .mockResolvedValueOnce({ ok: true, text: async () => "2026-09-25T20:05:42+0000" })

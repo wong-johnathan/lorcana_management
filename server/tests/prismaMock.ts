@@ -67,6 +67,7 @@ export const prismaMock = {
     groupBy: vi.fn(),
     update: vi.fn(),
     upsert: vi.fn(),
+    updateMany: vi.fn(),
   },
   cardPrice: {
     upsert: vi.fn(),
