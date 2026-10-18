@@ -8,6 +8,7 @@ import { syncRouter } from "./routes/sync.js";
 import { settingsRouter } from "./routes/settings.js";
 import { publicRouter } from "./routes/public.js";
 import { profileRouter } from "./routes/profile.js";
+import { marketplaceRouter } from "./routes/marketplace.js";
 import { LOCAL_UPLOAD_ROOT } from "./services/objectStorage.js";
 
 export function createApp() {
@@ -25,6 +26,7 @@ export function createApp() {
   app.use("/api/settings", settingsRouter);
   app.use("/api/profile", profileRouter);
   app.use("/api/public", publicRouter);
+  app.use("/api/marketplace", marketplaceRouter);
 
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });

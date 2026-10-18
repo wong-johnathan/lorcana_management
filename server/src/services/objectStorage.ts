@@ -7,6 +7,10 @@ export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 export const ALLOWED_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 export const LOCAL_UPLOAD_ROOT = process.env.LOCAL_UPLOAD_ROOT || path.resolve(process.cwd(), "uploads");
 
+/** Lean-V2 listing photo limits (design D7): 8 photos, 5 MiB each, image MIME allowlist. */
+export const MAX_LISTING_PHOTO_COUNT = 8;
+export const MAX_LISTING_PHOTO_BYTES = 5 * 1024 * 1024;
+
 const DEFAULT_CARD_IMAGE_CONTENT_TYPE = "image/jpeg";
 
 type UploadProfileImageInput = {
@@ -143,6 +147,42 @@ export async function uploadProfileImage(input: UploadProfileImageInput): Promis
   await mkdir(path.dirname(target), { recursive: true });
   await writeFile(target, buffer);
   return { objectKey, publicUrl: localPublicUrl(objectKey) };
+}
+
+function makeListingPhotoObjectKey(listingId: string, contentType: string, buffer: Buffer): string {
+  const ext = extensionForContentType(contentType);
+  const digest = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+  return `listing-photos/${listingId}/${Date.now()}-${digest}-${randomUUID()}.${ext}`;
+}
+
+export async function uploadListingPhoto(input: {
+  listingId: string;
+  buffer: Buffer;
+  contentType: string;
+}): Promise<{ objectKey: string; publicUrl: string }> {
+  const { listingId, buffer, contentType } = input;
+  const objectKey = makeListingPhotoObjectKey(listingId, contentType, buffer);
+
+  if (process.env.OBJECT_STORAGE_DRIVER === "s3") {
+    const bucket = s3Bucket();
+    await s3Client().send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000, immutable",
+    }));
+    return { objectKey, publicUrl: s3PublicUrl(bucket, objectKey) };
+  }
+
+  const target = path.join(LOCAL_UPLOAD_ROOT, objectKey);
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, buffer);
+  return { objectKey, publicUrl: localPublicUrl(objectKey) };
+}
+
+export async function deleteListingPhoto(objectKey: string | null | undefined): Promise<void> {
+  return deleteProfileImage(objectKey);
 }
 
 export async function uploadCardImage(input: UploadCardImageInput): Promise<UploadCardImageResult> {
