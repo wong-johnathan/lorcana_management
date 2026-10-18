@@ -23,6 +23,12 @@ import type {
   CardRetentionOverride,
   CardRetentionOverrideListItem,
   InventoryRemoveExtrasSummary,
+  MarketplaceListingsResponse,
+  MarketplaceListingDetail,
+  MarketplaceSellerProfile,
+  MarketplaceReview,
+  UserReference,
+  MarketplaceReport,
 } from "../types";
 
 const API_BASE = "/api";
@@ -204,4 +210,60 @@ export const analysis = {
     }),
   batchStatus: () =>
     request<{ status: string; total: number; completed: number; failed: number; currentCard: string | null; startedAt: string | null }>("/cards/analyze-batch/status"),
+};
+
+/**
+ * Lorcana Marketplace (Lean V2).
+ *
+ * F1 owns the public/read surface plus the report write (REQ-22) and the vouch
+ * write (REQ-20, see the F1 card + plan.md ownership matrix). F2 appends the
+ * remaining authed write functions (enquire/messages/mark-sold/confirm/cancel/
+ * adjust/review/photo-upload) onto this namespace without re-defining these.
+ */
+export const marketplace = {
+  listings: (params?: {
+    q?: string;
+    variant?: string;
+    condition?: string;
+    priceMin?: string;
+    priceMax?: string;
+    currency?: string;
+    sellerId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const query = params
+      ? "?" +
+        new URLSearchParams(
+          Object.fromEntries(
+            Object.entries(params)
+              .filter(([, value]) => value != null && value !== "")
+              .map(([key, value]) => [key, String(value)])
+          )
+        ).toString()
+      : "";
+    return request<MarketplaceListingsResponse>(`/marketplace/listings${query}`);
+  },
+  listing: (id: string) =>
+    request<MarketplaceListingDetail>(`/marketplace/listings/${id}`),
+  seller: (userId: string) =>
+    request<MarketplaceSellerProfile>(`/marketplace/sellers/${userId}`),
+  reviews: (userId: string) =>
+    request<{ reviews: MarketplaceReview[] }>(`/marketplace/users/${userId}/reviews`),
+  references: (userId: string) =>
+    request<{ references: UserReference[] }>(`/marketplace/users/${userId}/references`),
+  vouch: (userId: string, comment: string) =>
+    request<UserReference>(`/marketplace/users/${userId}/references`, {
+      method: "POST",
+      body: JSON.stringify({ comment }),
+    }),
+  report: (body: {
+    targetType: "LISTING" | "USER";
+    targetId: string;
+    reason: string;
+  }) =>
+    request<MarketplaceReport>("/marketplace/reports", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
