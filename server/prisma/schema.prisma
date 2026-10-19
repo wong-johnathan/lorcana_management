@@ -25,6 +25,7 @@ model Card {
   setName          String
   rarity           String
   inkCost          Int       @default(0)
+  inkable          Boolean   @default(false)
   strength         Int       @default(0)
   willpower        Int       @default(0)
   lore             Int       @default(0)
@@ -46,6 +47,8 @@ model Card {
 
   @@index([name])
   @@index([color])
+  @@index([inkCost])
+  @@index([cardType])
   @@index([setName])
   @@index([setNumber])
   @@index([collectorNumber])

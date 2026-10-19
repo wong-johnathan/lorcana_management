@@ -228,12 +228,13 @@ cardsRouter.get("/", async (req: Request, res: Response) => {
 
 cardsRouter.get("/filters", async (_req: Request, res: Response) => {
   try {
-    const [colors, sets, rarities, cardTypes, typeValues] = await Promise.all([
+    const [colors, sets, rarities, cardTypes, typeValues, costValues] = await Promise.all([
       prisma.card.findMany({ select: { color: true }, distinct: ["color"], orderBy: { color: "asc" } }),
       prisma.card.findMany({ select: { setName: true, setCode: true }, distinct: ["setName"] }),
       prisma.card.findMany({ select: { rarity: true }, distinct: ["rarity"], orderBy: { rarity: "asc" } }),
       prisma.card.findMany({ select: { cardType: true }, distinct: ["cardType"], orderBy: { cardType: "asc" } }),
       prisma.card.findMany({ select: { types: true } }),
+      prisma.card.findMany({ select: { inkCost: true }, distinct: ["inkCost"], orderBy: { inkCost: "asc" } }),
     ]);
 
     const allSubtypes = [...new Set(typeValues.flatMap((t) => t.types))].sort();
@@ -244,6 +245,8 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
       rarities: rarities.map((r) => r.rarity),
       cardTypes: cardTypes.map((t) => t.cardType),
       types: allSubtypes,
+      costs: costValues.map((c) => c.inkCost),
+      inkable: ["inkable", "non-inkable"],
     });
   } catch (error) {
     console.error("Filters error:", error);

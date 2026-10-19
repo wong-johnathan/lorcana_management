@@ -20,6 +20,7 @@ export interface LorcanaCard {
   setCode?: string;
   rarity?: string;
   cost?: number;
+  inkwell?: boolean;
   strength?: number;
   willpower?: number;
   lore?: number;
@@ -67,6 +68,52 @@ export function parseCollectorNumber(card: LorcanaCard): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/**
+ * Pure mapping from a LorcanaJSON card to the Prisma `Card` scalar fields.
+ * Shared by the sync and seed backfill paths so `inkwell` → `inkable` is
+ * written in exactly one place. `externalId` is intentionally omitted: the
+ * caller sets it on create and uses it as the upsert key.
+ */
+export function toCardData(
+  card: LorcanaCard,
+  setMap: Record<string, LorcanaSet>
+) {
+  const setCode = card.setCode || "";
+  const setNumber = parseSetNumber(setCode);
+  const collectorNumber = parseCollectorNumber(card);
+  const setName = setMap[setCode]?.name || `Set ${setCode}`;
+  const abilitiesText =
+    card.fullText ||
+    card.abilities?.map((a) => a.fullText).join("\n") ||
+    "";
+
+  return {
+    tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
+    cardTraderUrl: card.externalLinks?.cardTraderUrl ?? null,
+    cardmarketUrl: card.externalLinks?.cardmarketUrl ?? null,
+    name: card.name || "",
+    subtitle: card.version || "",
+    character: card.name || null,
+    types: card.subtypes || [],
+    cardType: card.type || "",
+    color: card.color || "",
+    setCode,
+    setNumber,
+    setName,
+    rarity: card.rarity || "",
+    inkCost: card.cost || 0,
+    inkable: card.inkwell ?? false,
+    strength: card.strength || 0,
+    willpower: card.willpower || 0,
+    lore: card.lore || 0,
+    abilities: abilitiesText,
+    cardNumber: card.fullIdentifier || String(card.number || ""),
+    collectorNumber,
+    foilTypes: card.foilTypes || [],
+    imageUrl: card.images?.full || "",
+  };
+}
+
 export async function upsertCards(
   data: LorcanaData,
   onProgress?: UpsertProgressCallback
@@ -83,66 +130,11 @@ export async function upsertCards(
     }
 
     try {
-      const setCode = card.setCode || "";
-      const setNumber = parseSetNumber(setCode);
-      const collectorNumber = parseCollectorNumber(card);
-      const setName = setMap[setCode]?.name || `Set ${setCode}`;
-      const abilitiesText =
-        card.fullText ||
-        card.abilities?.map((a) => a.fullText).join("\n") ||
-        "";
-
+      const cardData = toCardData(card, setMap);
       await prisma.card.upsert({
         where: { externalId: card.id },
-        create: {
-          externalId: card.id,
-          tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
-          cardTraderUrl: card.externalLinks?.cardTraderUrl ?? null,
-          cardmarketUrl: card.externalLinks?.cardmarketUrl ?? null,
-          name: card.name || "",
-          subtitle: card.version || "",
-          character: card.name || null,
-          types: card.subtypes || [],
-          cardType: card.type || "",
-          color: card.color || "",
-          setCode,
-          setNumber,
-          setName,
-          rarity: card.rarity || "",
-          inkCost: card.cost || 0,
-          strength: card.strength || 0,
-          willpower: card.willpower || 0,
-          lore: card.lore || 0,
-          abilities: abilitiesText,
-          cardNumber: card.fullIdentifier || String(card.number || ""),
-          collectorNumber,
-          foilTypes: card.foilTypes || [],
-          imageUrl: card.images?.full || "",
-        },
-        update: {
-          tcgPlayerId: card.externalLinks?.tcgPlayerId ?? null,
-          cardTraderUrl: card.externalLinks?.cardTraderUrl ?? null,
-          cardmarketUrl: card.externalLinks?.cardmarketUrl ?? null,
-          name: card.name || "",
-          subtitle: card.version || "",
-          character: card.name || null,
-          types: card.subtypes || [],
-          cardType: card.type || "",
-          color: card.color || "",
-          setCode,
-          setNumber,
-          setName,
-          rarity: card.rarity || "",
-          inkCost: card.cost || 0,
-          strength: card.strength || 0,
-          willpower: card.willpower || 0,
-          lore: card.lore || 0,
-          abilities: abilitiesText,
-          cardNumber: card.fullIdentifier || String(card.number || ""),
-          collectorNumber,
-          foilTypes: card.foilTypes || [],
-          imageUrl: card.images?.full || "",
-        },
+        create: { externalId: card.id, ...cardData },
+        update: cardData,
       });
       seeded++;
     } catch (err) {

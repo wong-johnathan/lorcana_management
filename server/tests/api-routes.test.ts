@@ -364,13 +364,14 @@ describe("cards routes", () => {
     await request(app).get("/api/cards").expect(500, { error: "Internal server error" });
   });
 
-  it("returns filters sorted by set code and deduped subtypes", async () => {
+  it("returns filters sorted by set code and deduped subtypes, plus costs and inkable", async () => {
     prismaMock.card.findMany
       .mockResolvedValueOnce([{ color: "Amber" }, { color: "Ruby" }])
       .mockResolvedValueOnce([{ setName: "Second", setCode: "SET2" }, { setName: "First", setCode: "SET1" }])
       .mockResolvedValueOnce([{ rarity: "Common" }])
       .mockResolvedValueOnce([{ cardType: "Character" }])
-      .mockResolvedValueOnce([{ types: ["Hero", "Dreamborn"] }, { types: ["Hero"] }]);
+      .mockResolvedValueOnce([{ types: ["Hero", "Dreamborn"] }, { types: ["Hero"] }])
+      .mockResolvedValueOnce([{ inkCost: 0 }, { inkCost: 2 }, { inkCost: 8 }]);
 
     const res = await request(app).get("/api/cards/filters").expect(200);
     expect(res.body).toEqual({
@@ -379,6 +380,15 @@ describe("cards routes", () => {
       rarities: ["Common"],
       cardTypes: ["Character"],
       types: ["Dreamborn", "Hero"],
+      costs: [0, 2, 8],
+      inkable: ["inkable", "non-inkable"],
+    });
+
+    // AC-FILT-5.1: costs are distinct inkCost values ordered ascending in SQL.
+    expect(prismaMock.card.findMany).toHaveBeenNthCalledWith(6, {
+      select: { inkCost: true },
+      distinct: ["inkCost"],
+      orderBy: { inkCost: "asc" },
     });
   });
 
