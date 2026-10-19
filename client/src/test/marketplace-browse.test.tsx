@@ -101,6 +101,66 @@ describe("MarketplaceListingCard", () => {
       "/marketplace/seller/seller_1"
     );
   });
+
+  it("falls back to the card image when no condition photo is present", () => {
+    render(
+      <MemoryRouter>
+        <MarketplaceListingCard listing={{ ...listing, photos: [] }} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+      "src",
+      "/api/card-images/card_elsa"
+    );
+  });
+
+  it("renders the condition photo as the primary image", () => {
+    const withPhoto = {
+      ...listing,
+      photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1 }],
+    };
+    render(
+      <MemoryRouter>
+        <MarketplaceListingCard listing={withPhoto} />
+      </MemoryRouter>
+    );
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen — condition photo" })).toHaveAttribute(
+      "src",
+      "https://img.example/cond.jpg"
+    );
+  });
+
+  it("renders a no-photo placeholder when the card and photo are absent", () => {
+    render(
+      <MemoryRouter>
+        <MarketplaceListingCard
+          listing={{ ...listing, photos: [], card: null, seller: null, condition: null, location: "" }}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.getByText("No photo")).toBeInTheDocument();
+    expect(screen.getByText("Unknown card")).toBeInTheDocument();
+    expect(screen.queryByText(/Sold by/)).not.toBeInTheDocument();
+  });
+
+  it("omits optional subtitle, rarity, condition, location and seller", () => {
+    render(
+      <MemoryRouter>
+        <MarketplaceListingCard
+          listing={{
+            ...listing,
+            card: { ...card, subtitle: null as never, rarity: "" },
+            condition: null,
+            location: "",
+            seller: null,
+          }}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.queryByText("Ice Queen")).not.toBeInTheDocument();
+    expect(screen.queryByText("NM")).not.toBeInTheDocument();
+    expect(screen.queryByText("London")).not.toBeInTheDocument();
+  });
 });
 
 describe("MarketplacePage", () => {

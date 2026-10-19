@@ -136,4 +136,83 @@ describe("TransactionCard", () => {
 
     await waitFor(() => expect(postReviewMock).toHaveBeenCalledWith("tx_1", 4, "great"));
   });
+
+  it("renders the loading state while the transaction is fetched", () => {
+    getTransactionMock.mockReturnValue(new Promise(() => undefined));
+    render(
+      <TransactionCard transactionId="tx_1" currentUserId="buyer_1" />
+    );
+    expect(screen.getByText(/Loading transaction/)).toBeInTheDocument();
+  });
+
+  it("renders a fallback error when the transaction fails to load", async () => {
+    getTransactionMock.mockRejectedValue(new Error("boom"));
+    render(<TransactionCard transactionId="tx_1" currentUserId="buyer_1" />);
+    expect(await screen.findByText("boom")).toBeInTheDocument();
+  });
+
+  it("renders a not-found fallback when no transaction is returned", async () => {
+    getTransactionMock.mockResolvedValue(false as never);
+    render(<TransactionCard transactionId="tx_1" currentUserId="buyer_1" />);
+    expect(await screen.findByText("Transaction not found")).toBeInTheDocument();
+  });
+
+  it("shows the seller a completed-deal review form (review the buyer)", async () => {
+    renderCard("seller_1", {
+      ...baseTransaction,
+      status: "COMPLETED",
+      completedCause: "BUYER_CONFIRM",
+      confirmedAt: "2026-10-31T00:00:00.000Z",
+    });
+    expect(await screen.findByText(/Review the buyer/)).toBeInTheDocument();
+    expect(screen.getByText(/Bought by/)).toBeInTheDocument();
+    expect(screen.getByText("bob")).toBeInTheDocument();
+  });
+
+  it("renders a cancelled status with the cancelling party", async () => {
+    renderCard("buyer_1", {
+      ...baseTransaction,
+      status: "CANCELLED",
+      cancelledBy: "seller",
+    });
+    expect(await screen.findByText(/Cancelled by seller/)).toBeInTheDocument();
+  });
+
+  it("renders a cancelled status without a cancelling party", async () => {
+    renderCard("buyer_1", { ...baseTransaction, status: "CANCELLED", cancelledBy: null });
+    expect(await screen.findByText("Cancelled")).toBeInTheDocument();
+  });
+
+  it("renders a completed card with no counterpart role (neither buyer nor seller)", async () => {
+    renderCard("bystander", {
+      ...baseTransaction,
+      status: "COMPLETED",
+      completedCause: "AUTO_TRANSFER",
+      confirmedAt: "2026-10-31T00:00:00.000Z",
+    });
+    expect(await screen.findByText(/Auto-transferred/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sold by/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bought by/)).not.toBeInTheDocument();
+  });
+
+  it("rejects a non-positive or fractional adjustment quantity locally", async () => {
+    renderCard("seller_1", baseTransaction);
+    const quantity = await screen.findByLabelText("Quantity");
+
+    fireEvent.change(quantity, { target: { value: "0" } });
+    await userEvent.click(screen.getByRole("button", { name: "Adjust" }));
+    expect(await screen.findByText(/whole number of at least 1/)).toBeInTheDocument();
+
+    fireEvent.change(quantity, { target: { value: "1.5" } });
+    await userEvent.click(screen.getByRole("button", { name: "Adjust" }));
+    expect(screen.getByText(/whole number of at least 1/)).toBeInTheDocument();
+    expect(adjustQuantityMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces action errors from a failed confirm", async () => {
+    confirmMock.mockRejectedValue(new Error("Already confirmed"));
+    renderCard("buyer_1", baseTransaction);
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm receipt" }));
+    expect(await screen.findByText("Already confirmed")).toBeInTheDocument();
+  });
 });
