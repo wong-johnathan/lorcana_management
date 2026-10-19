@@ -65,4 +65,40 @@ describe("ReportModal", () => {
     );
     expect(await screen.findByText(/Report submitted/)).toBeInTheDocument();
   });
+
+  it("surfaces a submission error and stays open", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "u1", username: "bob" } } as any);
+    reportMock.mockRejectedValue(new Error("Report already exists"));
+    renderModal();
+
+    await userEvent.click(screen.getByRole("button", { name: "Report listing" }));
+    await userEvent.type(await screen.findByLabelText("Reason"), "duplicate");
+    await userEvent.click(screen.getByRole("button", { name: "Submit report" }));
+
+    expect(await screen.findByText("Report already exists")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("defaults the trigger label for USER targets and does not close while submitting", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "u1", username: "bob" } } as any);
+    let resolveReport: (value: unknown) => void = () => undefined;
+    reportMock.mockImplementation(() => new Promise((resolve) => { resolveReport = resolve; }));
+    render(
+      <MemoryRouter>
+        <ReportModal targetType="USER" targetId="user_1" />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("button", { name: "Report user" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Report user" }));
+    await userEvent.type(await screen.findByLabelText("Reason"), "spam");
+    await userEvent.click(screen.getByRole("button", { name: "Submit report" }));
+
+    // While submitting, the backdrop cannot close the modal.
+    await userEvent.click(screen.getByText("Reason").closest("[role=dialog]")!.parentElement!);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    resolveReport({ id: "report_1" });
+    expect(await screen.findByText(/Report submitted/)).toBeInTheDocument();
+  });
 });

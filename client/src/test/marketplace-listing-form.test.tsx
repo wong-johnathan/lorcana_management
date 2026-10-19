@@ -264,4 +264,223 @@ describe("ListingForm", () => {
     expect(body).not.toHaveProperty("priceMinor");
     expect(body).not.toHaveProperty("currency");
   });
+
+  it("renders the edit-mode card summary and premium rarity hint", () => {
+    const premiumListing = {
+      ...editListing,
+      card: { ...card, rarity: "Enchanted" },
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 }],
+    };
+    render(
+      <ListingForm
+        mode="edit"
+        listing={premiumListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Card:")).toBeInTheDocument();
+    expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
+    expect(screen.getByText(/Enchanted cards are high-value/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
+  });
+
+  it("shows an owned-copy hint with singular/plural phrasing", async () => {
+    const { rerender } = render(
+      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    expect(screen.getByText(/You own 3 Normal copies/)).toBeInTheDocument();
+
+    rerender(
+      <ListingForm
+        mode="create"
+        inventory={[{ ...inventory[0], quantity: 1, foilQuantity: 0, holofoilQuantity: 0 }]}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    expect(screen.getByText(/You own 1 Normal copy/)).toBeInTheDocument();
+  });
+
+  it("requires a card before creating", async () => {
+    render(<ListingForm mode="create" inventory={[]} policy={policy} onSaved={vi.fn()} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+    expect(await screen.findByText("Select a card to list")).toBeInTheDocument();
+  });
+
+  it("requires a valid price before creating", async () => {
+    render(
+      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+    expect(await screen.findByText("Enter a valid price")).toBeInTheDocument();
+  });
+
+  it("uploads buffered photos after a successful create", async () => {
+    createListingMock.mockResolvedValue(editListing);
+    uploadPhotoMock.mockResolvedValue({ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 });
+    const onSaved = vi.fn();
+    render(
+      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={onSaved} />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
+    await userEvent.upload(
+      screen.getByLabelText("Add photos"),
+      new File(["x"], "a.jpg", { type: "image/jpeg" })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+
+    await waitFor(() => expect(createListingMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(uploadPhotoMock).toHaveBeenCalled());
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it("surfaces a create error without calling onSaved", async () => {
+    createListingMock.mockRejectedValue(new Error("Listing limit reached"));
+    const onSaved = vi.fn();
+    render(
+      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={onSaved} />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+
+    expect(await screen.findByText("Listing limit reached")).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("uploads photos immediately in edit mode and removes them", async () => {
+    updateListingMock.mockResolvedValue(editListing);
+    uploadPhotoMock.mockResolvedValue({ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 });
+    deletePhotoMock.mockResolvedValue(undefined);
+    render(
+      <ListingForm
+        mode="edit"
+        listing={editListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.upload(
+      screen.getByLabelText("Add photos"),
+      new File(["x"], "a.jpg", { type: "image/jpeg" })
+    );
+    await waitFor(() => expect(uploadPhotoMock).toHaveBeenCalledWith("listing_1", expect.any(Object)));
+    expect(await screen.findByText("Saved photo")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(deletePhotoMock).toHaveBeenCalledWith("listing_1", "photo_1"));
+  });
+
+  it("surfaces a photo upload error in edit mode", async () => {
+    uploadPhotoMock.mockRejectedValue(new Error("Upload failed"));
+    render(
+      <ListingForm
+        mode="edit"
+        listing={editListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.upload(
+      screen.getByLabelText("Add photos"),
+      new File(["x"], "a.jpg", { type: "image/jpeg" })
+    );
+    expect(await screen.findByText("Upload failed")).toBeInTheDocument();
+  });
+
+  it("deletes the listing and invokes onDeleted", async () => {
+    deleteListingMock.mockResolvedValue(undefined);
+    const onDeleted = vi.fn();
+    render(
+      <ListingForm
+        mode="edit"
+        listing={editListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+        onDeleted={onDeleted}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete listing" }));
+    await waitFor(() => expect(deleteListingMock).toHaveBeenCalledWith("listing_1"));
+    await waitFor(() => expect(onDeleted).toHaveBeenCalled());
+  });
+
+  it("surfaces a delete error and keeps the form usable", async () => {
+    deleteListingMock.mockRejectedValue(new Error("Cannot delete"));
+    const onDeleted = vi.fn();
+    render(
+      <ListingForm
+        mode="edit"
+        listing={editListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+        onDeleted={onDeleted}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete listing" }));
+    expect(await screen.findByText("Cannot delete")).toBeInTheDocument();
+    expect(onDeleted).not.toHaveBeenCalled();
+  });
+
+  it("renders a cancel button that calls onCancel", async () => {
+    const onCancel = vi.fn();
+    render(
+      <ListingForm
+        mode="edit"
+        listing={editListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+        onCancel={onCancel}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("re-bases the variant when switching to a card without the current variant", async () => {
+    render(
+      <ListingForm
+        mode="create"
+        inventory={[
+          inventory[0],
+          {
+            ...inventory[0],
+            id: "inv_2",
+            cardId: "card_holo",
+            card: { ...card, foilTypes: ["Lava"] },
+          },
+        ]}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    await userEvent.selectOptions(screen.getByLabelText("Variant"), "foil");
+    // Switch to the holofoil-only card, which has no "foil" variant.
+    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_holo");
+    expect(screen.getByLabelText("Variant")).toHaveValue("holofoil");
+  });
 });

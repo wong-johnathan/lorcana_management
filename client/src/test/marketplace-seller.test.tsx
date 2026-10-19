@@ -120,4 +120,36 @@ describe("ReferenceForm", () => {
     await waitFor(() => expect(vouchMock).toHaveBeenCalledWith("seller_1", "Trustworthy trader"));
     expect(await screen.findByText("Reference saved.")).toBeInTheDocument();
   });
+
+  it("surfaces a vouch submission error", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "u1", username: "bob" } } as any);
+    vouchMock.mockRejectedValue(new Error("Cannot vouch for yourself"));
+    render(
+      <MemoryRouter>
+        <ReferenceForm subjectId="seller_1" />
+      </MemoryRouter>
+    );
+
+    await userEvent.type(screen.getByLabelText("Your reference"), "self-vouch");
+    await userEvent.click(screen.getByRole("button", { name: "Leave reference" }));
+
+    expect(await screen.findByText("Cannot vouch for yourself")).toBeInTheDocument();
+  });
+
+  it("invokes the onSubmitted callback with the created reference", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "u1", username: "bob" } } as any);
+    const reference = { id: "ref_new", hasCompletedDeal: true };
+    vouchMock.mockResolvedValue(reference);
+    const onSubmitted = vi.fn();
+    render(
+      <MemoryRouter>
+        <ReferenceForm subjectId="seller_1" onSubmitted={onSubmitted} />
+      </MemoryRouter>
+    );
+
+    await userEvent.type(screen.getByLabelText("Your reference"), "Great");
+    await userEvent.click(screen.getByRole("button", { name: "Leave reference" }));
+
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(reference));
+  });
 });
