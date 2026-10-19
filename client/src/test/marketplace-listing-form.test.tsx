@@ -101,9 +101,15 @@ describe("ListingForm", () => {
     deletePhotoMock.mockReset();
   });
 
-  it("offers variant, condition, and currency dropdowns", async () => {
+  it("offers variant, condition, and currency dropdowns with the preselected card", async () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
     // Condition + currency options are always present.
@@ -115,18 +121,85 @@ describe("ListingForm", () => {
     expect(screen.getByRole("option", { name: "EUR" })).toBeInTheDocument();
 
     // Variants are constrained to the selected card's foil types.
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     expect(screen.getByRole("option", { name: "Normal" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Foil" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Holofoil" })).not.toBeInTheDocument();
   });
 
-  it("caps quantity at the owned count and rejects the overshoot (AC-4.x)", async () => {
+  it("shows a locked-card summary with name and set, and no card <select>", () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
+    expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
+    expect(screen.getByText("The First Chapter")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Card")).not.toBeInTheDocument();
+  });
+
+  it("defaults the variant to the first available variant (holofoil-only card)", () => {
+    const holoCard = { ...card, id: "card_holo", foilTypes: ["Lava"] };
+    const holoInventory: InventoryEntry[] = [
+      {
+        id: "inv_holo",
+        userId: "u1",
+        cardId: "card_holo",
+        quantity: 0,
+        foilQuantity: 0,
+        holofoilQuantity: 3,
+        card: holoCard,
+      },
+    ];
+
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_holo"
+        inventory={holoInventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Variant")).toHaveValue("holofoil");
+    expect(screen.queryByRole("option", { name: "Normal" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Foil" })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Holofoil" })).toBeInTheDocument();
+  });
+
+  it("renders a Back button that calls onBack", async () => {
+    const onBack = vi.fn();
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onBack={onBack}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onBack).toHaveBeenCalled();
+  });
+
+  it("caps quantity at the owned count and rejects the overshoot (AC-4.x)", async () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
     fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "4" } });
     fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
@@ -138,10 +211,15 @@ describe("ListingForm", () => {
   it("submits a valid quantity within the owned cap", async () => {
     createListingMock.mockResolvedValue(editListing);
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "3" } });
     fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
@@ -160,10 +238,15 @@ describe("ListingForm", () => {
 
   it("shows a surplus hint when owned exceeds the keep policy (REQ-5)", async () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     await userEvent.selectOptions(screen.getByLabelText("Variant"), "foil");
 
     expect(
@@ -173,7 +256,13 @@ describe("ListingForm", () => {
 
   it("rejects a photo larger than 5 MiB before upload (AC-23.x)", async () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
     const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "big.jpg", {
@@ -189,7 +278,13 @@ describe("ListingForm", () => {
 
   it("rejects an unsupported photo MIME type (AC-23.x)", async () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
     const gif = new File(["GIF89a"], "anim.gif", { type: "image/gif" });
@@ -205,7 +300,13 @@ describe("ListingForm", () => {
 
   it("caps the photo count at 8 (AC-23.x)", async () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
 
     const files = Array.from(
@@ -287,22 +388,27 @@ describe("ListingForm", () => {
     expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
   });
 
-  it("shows an owned-copy hint with singular/plural phrasing", async () => {
+  it("shows an owned-copy hint with singular/plural phrasing", () => {
     const { rerender } = render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     expect(screen.getByText(/You own 3 Normal copies/)).toBeInTheDocument();
 
     rerender(
       <ListingForm
         mode="create"
+        preselectedCardId="card_1"
         inventory={[{ ...inventory[0], quantity: 1, foilQuantity: 0, holofoilQuantity: 0 }]}
         policy={policy}
         onSaved={vi.fn()}
       />
     );
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     expect(screen.getByText(/You own 1 Normal copy/)).toBeInTheDocument();
   });
 
@@ -315,9 +421,14 @@ describe("ListingForm", () => {
 
   it("requires a valid price before creating", async () => {
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={vi.fn()} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
     );
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
     expect(await screen.findByText("Enter a valid price")).toBeInTheDocument();
   });
@@ -327,10 +438,15 @@ describe("ListingForm", () => {
     uploadPhotoMock.mockResolvedValue({ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 });
     const onSaved = vi.fn();
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={onSaved} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={onSaved}
+      />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
     await userEvent.upload(
@@ -348,10 +464,15 @@ describe("ListingForm", () => {
     createListingMock.mockRejectedValue(new Error("Listing limit reached"));
     const onSaved = vi.fn();
     render(
-      <ListingForm mode="create" inventory={inventory} policy={policy} onSaved={onSaved} />
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={onSaved}
+      />
     );
 
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
     fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
@@ -457,30 +578,5 @@ describe("ListingForm", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
-  });
-
-  it("re-bases the variant when switching to a card without the current variant", async () => {
-    render(
-      <ListingForm
-        mode="create"
-        inventory={[
-          inventory[0],
-          {
-            ...inventory[0],
-            id: "inv_2",
-            cardId: "card_holo",
-            card: { ...card, foilTypes: ["Lava"] },
-          },
-        ]}
-        policy={policy}
-        onSaved={vi.fn()}
-      />
-    );
-
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_1");
-    await userEvent.selectOptions(screen.getByLabelText("Variant"), "foil");
-    // Switch to the holofoil-only card, which has no "foil" variant.
-    await userEvent.selectOptions(screen.getByLabelText("Card"), "card_holo");
-    expect(screen.getByLabelText("Variant")).toHaveValue("holofoil");
   });
 });

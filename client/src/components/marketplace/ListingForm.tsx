@@ -23,6 +23,7 @@ import {
   priceMinorFromMajor,
 } from "../../utils/marketplaceParams";
 import { INVENTORY_VARIANT_LABELS } from "../../utils/cardVariants";
+import { cardImageUrl } from "../../utils/cardImages";
 
 /** REQ-6: high-value printings where condition photos matter most. */
 const PREMIUM_RARITIES = ["Enchanted", "Iconic"];
@@ -37,6 +38,10 @@ interface ListingFormProps {
   inventory: InventoryEntry[];
   /** Keep policy for the surplus hint (REQ-5); advisory, may be null. */
   policy: InventoryPolicy | null;
+  /** Create mode only — the card chosen in Step 1 of the picker (REQ-UX-5). */
+  preselectedCardId?: string;
+  /** Create mode only — return to Step 1 to re-pick (REQ-UX-9). */
+  onBack?: () => void;
   onSaved: (listing: MarketplaceListing) => void;
   onDeleted?: () => void;
   onCancel?: () => void;
@@ -54,14 +59,26 @@ export default function ListingForm({
   locked = false,
   inventory,
   policy,
+  preselectedCardId,
+  onBack,
   onSaved,
   onDeleted,
   onCancel,
 }: ListingFormProps) {
-  const [cardId, setCardId] = useState<string>(listing?.cardId ?? "");
-  const [variant, setVariant] = useState<MarketplaceVariant>(
-    listing ? (listing.variant as MarketplaceVariant) : "normal"
+  const [cardId] = useState<string>(
+    listing?.cardId ?? preselectedCardId ?? ""
   );
+  const [variant, setVariant] = useState<MarketplaceVariant>(() => {
+    if (listing) return listing.variant as MarketplaceVariant;
+    if (mode === "create" && preselectedCardId) {
+      const entry = inventory.find((item) => item.cardId === preselectedCardId);
+      if (entry) {
+        const allowed = availableInventoryVariants(entry.card);
+        return allowed[0] ?? "normal";
+      }
+    }
+    return "normal";
+  });
   const [quantity, setQuantity] = useState<string>(
     listing ? String(listing.quantity) : "1"
   );
@@ -94,16 +111,6 @@ export default function ListingForm({
   const surplus = policy ? surplusForVariant(owned, keep) : 0;
 
   const totalPhotos = photos.length + pendingFiles.length;
-
-  const selectCard = (nextCardId: string) => {
-    setCardId(nextCardId);
-    const entry = inventory.find((item) => item.cardId === nextCardId);
-    if (entry) {
-      const allowed = availableInventoryVariants(entry.card);
-      const current = allowed.includes(variant) ? variant : allowed[0] ?? "normal";
-      setVariant(current);
-    }
-  };
 
   const validateQuantity = (): number | null => {
     const parsed = Number(quantity);
@@ -246,22 +253,29 @@ export default function ListingForm({
       className="space-y-4"
     >
       {mode === "create" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm text-gray-300">
-            Card
-            <select
-              value={cardId}
-              onChange={(event) => selectCard(event.target.value)}
-              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 focus:border-amber-500 focus:outline-none"
-            >
-              <option value="">Select a card from your collection…</option>
-              {inventory.map((entry) => (
-                <option key={entry.cardId} value={entry.cardId}>
-                  {entry.card.name} — {entry.card.setName}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-4">
+          {/* Locked-card summary (REQ-UX-5): art + name + set, NO card <select>. */}
+          <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-sm">
+            {card?.imageUrl ? (
+              <img
+                src={cardImageUrl(card)}
+                alt={`${card.name} - ${card.subtitle}`}
+                className="h-16 w-12 shrink-0 rounded object-cover"
+              />
+            ) : (
+              <div className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-800 p-1 text-center text-[10px] text-gray-500">
+                No image
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-gray-100">
+                {card?.name ?? "Unknown card"}
+              </p>
+              {card?.setName ? (
+                <p className="truncate text-xs text-gray-400">{card.setName}</p>
+              ) : null}
+            </div>
+          </div>
 
           <label className="block text-sm text-gray-300">
             Variant
@@ -482,6 +496,17 @@ export default function ListingForm({
         >
           {submitting ? "Saving…" : mode === "create" ? "Create listing" : "Save changes"}
         </button>
+
+        {mode === "create" && onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={submitting || deleting}
+            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:border-gray-500 disabled:opacity-50"
+          >
+            Back
+          </button>
+        )}
 
         {onCancel && (
           <button

@@ -6,12 +6,18 @@ interface FilterBarProps {
   filters: Record<string, string>;
   onChange: (filters: Record<string, string>) => void;
   showOwnership?: boolean;
+  /** "picker" renders only search + color/set/rarity (listing picker, REQ-UX-4). */
+  mode?: "full" | "picker";
+  /** When provided, used as the option set and `cardsApi.filters()` is skipped. */
+  optionSource?: FilterOptions;
 }
 
 export default function FilterBar({
   filters,
   onChange,
   showOwnership = false,
+  mode = "full",
+  optionSource,
 }: FilterBarProps) {
   const [options, setOptions] = useState<FilterOptions | null>(null);
   const [rarityOpen, setRarityOpen] = useState(false);
@@ -24,8 +30,9 @@ export default function FilterBar({
   const typeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (optionSource) return;
     cardsApi.filters().then(setOptions).catch(console.error);
-  }, []);
+  }, [optionSource]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -116,7 +123,10 @@ export default function FilterBar({
     update("type", Array.from(set).join(","));
   };
 
-  if (!options) return null;
+  const resolvedOptions = optionSource ?? options;
+  const isPicker = mode === "picker";
+
+  if (!resolvedOptions) return null;
 
   const activeFilterCount = Object.keys(filters).filter(
     (k) => filters[k] && filters[k] !== ""
@@ -147,7 +157,7 @@ export default function FilterBar({
         </button>
         {colorOpen && (
           <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-30 py-1 min-w-[160px]">
-            {options.colors.map((c) => {
+            {resolvedOptions.colors.map((c) => {
               const checked = selectedColors.includes(c);
               return (
                 <label
@@ -168,41 +178,43 @@ export default function FilterBar({
         )}
       </div>
 
-      {/* Types (subtypes) multi-select */}
-      <div ref={typeRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setTypeOpen((o) => !o)}
-          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 hover:border-gray-600 focus:outline-none focus:border-amber-500 min-w-[130px] text-left whitespace-nowrap"
-        >
-          {selectedTypes.length === 0
-            ? "All Types"
-            : selectedTypes.length === 1
-              ? selectedTypes[0]
-              : `${selectedTypes.length} selected`}
-        </button>
-        {typeOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-30 py-1 min-w-[180px] max-h-64 overflow-y-auto">
-            {options.types.map((t) => {
-              const checked = selectedTypes.includes(t);
-              return (
-                <label
-                  key={t}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700 cursor-pointer text-sm text-gray-100"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleType(t)}
-                    className="rounded accent-amber-500"
-                  />
-                  {t}
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Types (subtypes) multi-select — hidden in picker mode */}
+      {!isPicker && (
+        <div ref={typeRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setTypeOpen((o) => !o)}
+            className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 hover:border-gray-600 focus:outline-none focus:border-amber-500 min-w-[130px] text-left whitespace-nowrap"
+          >
+            {selectedTypes.length === 0
+              ? "All Types"
+              : selectedTypes.length === 1
+                ? selectedTypes[0]
+                : `${selectedTypes.length} selected`}
+          </button>
+          {typeOpen && (
+            <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-30 py-1 min-w-[180px] max-h-64 overflow-y-auto">
+              {resolvedOptions.types.map((t) => {
+                const checked = selectedTypes.includes(t);
+                return (
+                  <label
+                    key={t}
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700 cursor-pointer text-sm text-gray-100"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleType(t)}
+                      className="rounded accent-amber-500"
+                    />
+                    {t}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Set multi-select */}
       <div ref={setRef} className="relative">
@@ -219,7 +231,7 @@ export default function FilterBar({
         </button>
         {setOpen && (
           <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-30 py-1 min-w-[220px] max-h-64 overflow-y-auto">
-            {options.sets.map((s) => {
+            {resolvedOptions.sets.map((s) => {
               const checked = selectedSets.includes(s);
               return (
                 <label
@@ -255,7 +267,7 @@ export default function FilterBar({
         </button>
         {rarityOpen && (
           <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-30 py-1 min-w-[180px]">
-            {options.rarities.map((r) => {
+            {resolvedOptions.rarities.map((r) => {
               const checked = selectedRarities.includes(r);
               return (
                 <label
@@ -276,41 +288,47 @@ export default function FilterBar({
         )}
       </div>
 
-      {/* Card type (Character/Action/Item) single-select */}
-      <select
-        value={filters.cardType || ""}
-        onChange={(e) => update("cardType", e.target.value)}
-        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
-      >
-        <option value="">Card Type</option>
-        {options.cardTypes.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
+      {/* Card type (Character/Action/Item) single-select — hidden in picker mode */}
+      {!isPicker && (
+        <select
+          value={filters.cardType || ""}
+          onChange={(e) => update("cardType", e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
+        >
+          <option value="">Card Type</option>
+          {resolvedOptions.cardTypes.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      )}
 
-      <select
-        value={filters.analyzed || ""}
-        onChange={(e) => update("analyzed", e.target.value)}
-        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
-      >
-        <option value="">AI Analysis</option>
-        <option value="yes">Analyzed</option>
-        <option value="no">Not Analyzed</option>
-      </select>
+      {!isPicker && (
+        <select
+          value={filters.analyzed || ""}
+          onChange={(e) => update("analyzed", e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
+        >
+          <option value="">AI Analysis</option>
+          <option value="yes">Analyzed</option>
+          <option value="no">Not Analyzed</option>
+        </select>
+      )}
 
-      <select
-        value={filters.sort || ""}
-        onChange={(e) => update("sort", e.target.value)}
-        className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
-      >
-        <option value="">Sort: Default</option>
-        <option value="price_asc">Price: Low to High</option>
-        <option value="price_desc">Price: High to Low</option>
-      </select>
+      {!isPicker && (
+        <select
+          value={filters.sort || ""}
+          onChange={(e) => update("sort", e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-amber-500"
+        >
+          <option value="">Sort: Default</option>
+          <option value="price_asc">Price: Low to High</option>
+          <option value="price_desc">Price: High to Low</option>
+        </select>
+      )}
 
-      {showOwnership && (
+      {!isPicker && showOwnership && (
         <select
           value={filters.ownership || ""}
           onChange={(e) => update("ownership", e.target.value)}

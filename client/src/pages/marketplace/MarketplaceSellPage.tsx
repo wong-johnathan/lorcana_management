@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
 import ListingForm from "../../components/marketplace/ListingForm";
+import ListingPicker from "../../components/marketplace/ListingPicker";
 import { inventory as inventoryApi, marketplace } from "../../services/api";
 import type {
   InventoryEntry,
@@ -31,6 +32,8 @@ export default function MarketplaceSellPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [pickerFilters, setPickerFilters] = useState<Record<string, string>>({});
 
   const load = async () => {
     if (!user) return;
@@ -70,6 +73,12 @@ export default function MarketplaceSellPage() {
 
   const editingListing = editingId ? listings?.find((l) => l.id === editingId) ?? null : null;
 
+  const cancelCreate = () => {
+    setCreating(false);
+    setSelectedCardId(null);
+    setPickerFilters({});
+  };
+
   return (
     <RequireAuth>
       <div className="mx-auto max-w-3xl px-4 py-6 space-y-6">
@@ -95,19 +104,40 @@ export default function MarketplaceSellPage() {
           </div>
         )}
 
-        {creating && (
+        {creating && !selectedCardId && (
+          <section className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+            <h2 className="text-lg font-semibold text-gray-100">Create a listing</h2>
+            <div className="mt-4">
+              <ListingPicker
+                inventory={inventory}
+                policy={policy}
+                loading={loading}
+                filters={pickerFilters}
+                onFiltersChange={setPickerFilters}
+                onSelectCard={(card) => setSelectedCardId(card.id)}
+                onCancel={cancelCreate}
+              />
+            </div>
+          </section>
+        )}
+
+        {creating && selectedCardId && (
           <section className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
             <h2 className="text-lg font-semibold text-gray-100">Create a listing</h2>
             <div className="mt-4">
               <ListingForm
                 mode="create"
+                preselectedCardId={selectedCardId}
                 inventory={inventory}
                 policy={policy}
+                onBack={() => setSelectedCardId(null)}
                 onSaved={() => {
                   setCreating(false);
+                  setSelectedCardId(null);
+                  setPickerFilters({});
                   void load();
                 }}
-                onCancel={() => setCreating(false)}
+                onCancel={cancelCreate}
               />
             </div>
           </section>
