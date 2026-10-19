@@ -54,6 +54,7 @@ const card = {
   setName: "The First Chapter",
   rarity: "Legendary",
   inkCost: 5,
+  inkable: true,
   strength: 3,
   willpower: 3,
   lore: 2,

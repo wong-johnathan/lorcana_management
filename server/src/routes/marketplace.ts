@@ -77,6 +77,53 @@ function parsePage(query: Record<string, unknown>): {
   return { page, limit, skip: (page - 1) * limit };
 }
 
+/** Split a CSV query value into trimmed, non-empty tokens; non-strings → []. */
+function parseCsv(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/** `costs` = CSV of non-negative integers; non-integer/negative tokens are dropped. */
+function parseCosts(value: unknown): number[] {
+  if (typeof value !== "string") return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 0);
+}
+
+/** `inkable` tri-state: "inkable" → true, "non-inkable" → false, else no constraint. */
+function parseInkable(value: unknown): boolean | undefined {
+  if (value === "inkable") return true;
+  if (value === "non-inkable") return false;
+  return undefined;
+}
+
+/**
+ * `cardTypes` predicate with the synthetic "Song" type (D7): a card matches
+ * "Song" when it is an Action carrying the "Song" subtype.
+ */
+function cardTypesPredicate(selected: string[]) {
+  const nonSong = selected.filter((type) => type !== "Song");
+  if (selected.includes("Song") && nonSong.length > 0) {
+    return {
+      OR: [
+        { cardType: { in: nonSong } },
+        { cardType: "Action", types: { hasSome: ["Song"] } },
+      ],
+    };
+  }
+  if (selected.includes("Song")) {
+    return { cardType: "Action", types: { hasSome: ["Song"] } };
+  }
+  return { cardType: { in: selected } };
+}
+
 function parseListingPhotoDataUrl(
   dataUrl: unknown,
   contentType: unknown
@@ -216,15 +263,33 @@ marketplaceRouter.get(
       if (Number.isInteger(priceMax) && priceMax >= 0) priceRange.lte = priceMax;
       if (Object.keys(priceRange).length > 0) where.priceMinor = priceRange;
 
+      const cardAnd: any[] = [];
       if (typeof query.q === "string" && query.q.trim()) {
         const term = query.q.trim();
-        where.card = {
+        cardAnd.push({
           OR: [
             { name: { contains: term, mode: "insensitive" } },
             { setName: { contains: term, mode: "insensitive" } },
           ],
-        };
+        });
       }
+
+      const costs = parseCosts(query.costs);
+      if (costs.length > 0) cardAnd.push({ inkCost: { in: costs } });
+
+      const inkable = parseInkable(query.inkable);
+      if (inkable !== undefined) cardAnd.push({ inkable });
+
+      const subtypes = parseCsv(query.subtypes);
+      if (subtypes.length > 0) cardAnd.push({ types: { hasSome: subtypes } });
+
+      const cardTypes = parseCsv(query.cardTypes);
+      if (cardTypes.length > 0) cardAnd.push(cardTypesPredicate(cardTypes));
+
+      // D5: enhanced predicates AND with the existing `q` OR-block (never
+      // overwrite it). Built only when at least one card predicate applies so
+      // omitting every new param keeps `where` byte-for-byte unchanged.
+      if (cardAnd.length > 0) where.card = { AND: cardAnd };
 
       const { page, limit, skip } = parsePage(query);
       const [listings, total] = await Promise.all([

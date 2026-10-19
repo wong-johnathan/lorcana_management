@@ -34,6 +34,12 @@ export function filterOwnedInventory(
   const colors = splitFilter(filters.color);
   const sets = splitFilter(filters.set);
   const rarities = splitFilter(filters.rarity);
+  const costs = splitFilter(filters.cost)
+    .map((token) => parseInt(token, 10))
+    .filter((n) => Number.isInteger(n));
+  const inkable = filters.inkable ?? "";
+  const cardTypes = splitFilter(filters.cardType);
+  const subtypes = splitFilter(filters.subtype);
 
   return entries.filter((entry) => {
     if (!isOwnedEntry(entry)) return false;
@@ -47,6 +53,25 @@ export function filterOwnedInventory(
     if (colors.length > 0 && !colors.includes(card.color)) return false;
     if (sets.length > 0 && !sets.includes(card.setName)) return false;
     if (rarities.length > 0 && !rarities.includes(card.rarity)) return false;
+
+    if (costs.length > 0 && !costs.includes(card.inkCost)) return false;
+
+    if (inkable === "inkable" && !card.inkable) return false;
+    if (inkable === "non-inkable" && card.inkable) return false;
+
+    if (cardTypes.length > 0) {
+      const matchesType = cardTypes.includes(card.cardType);
+      const matchesSong =
+        cardTypes.includes("Song") &&
+        card.cardType === "Action" &&
+        (card.types ?? []).includes("Song");
+      if (!matchesType && !matchesSong) return false;
+    }
+
+    if (subtypes.length > 0) {
+      const cardTypeList = card.types ?? [];
+      if (!subtypes.some((subtype) => cardTypeList.includes(subtype))) return false;
+    }
 
     return true;
   });
@@ -62,6 +87,8 @@ export function ownedFilterOptions(entries: InventoryEntry[]): FilterOptions {
   const rarities = new Set<string>();
   const cardTypes = new Set<string>();
   const types = new Set<string>();
+  const costs = new Set<number>();
+  let hasSong = false;
 
   for (const entry of entries) {
     if (!isOwnedEntry(entry)) continue;
@@ -70,17 +97,28 @@ export function ownedFilterOptions(entries: InventoryEntry[]): FilterOptions {
     if (card.setName) sets.add(card.setName);
     if (card.rarity) rarities.add(card.rarity);
     if (card.cardType) cardTypes.add(card.cardType);
+    costs.add(card.inkCost);
     for (const type of card.types ?? []) {
       if (type) types.add(type);
     }
+    if (card.cardType === "Action" && (card.types ?? []).includes("Song")) {
+      hasSong = true;
+    }
+  }
+
+  const sortedCardTypes = [...cardTypes].sort();
+  if (hasSong && !sortedCardTypes.includes("Song")) {
+    sortedCardTypes.push("Song");
   }
 
   return {
     colors: [...colors].sort(),
     sets: [...sets].sort(),
     rarities: [...rarities].sort(),
-    cardTypes: [...cardTypes].sort(),
+    cardTypes: sortedCardTypes,
     types: [...types].sort(),
+    costs: [...costs].sort((a, b) => a - b),
+    inkable: ["inkable", "non-inkable"],
   };
 }
 

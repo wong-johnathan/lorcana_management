@@ -22,6 +22,18 @@ describe("FilterBar", () => {
     sets: ["The First Chapter", "Rise of the Floodborn"],
     rarities: ["Common", "Legendary"],
     cardTypes: ["Character", "Action"],
+    costs: [],
+    inkable: [],
+  };
+
+  const pickerOptions = {
+    colors: ["Amber", "Ruby"],
+    types: ["Hero", "Song"],
+    sets: ["The First Chapter"],
+    rarities: ["Legendary"],
+    cardTypes: ["Character", "Action", "Song"],
+    costs: [0, 1, 5],
+    inkable: ["inkable", "non-inkable"],
   };
 
   beforeEach(() => {
@@ -60,8 +72,6 @@ describe("FilterBar", () => {
     expect(onChange).toHaveBeenLastCalledWith({});
   });
 
-
-
   it("toggles set, rarity, and type multi-select values", async () => {
     const onChange = vi.fn();
     const { rerender } = render(<FilterBar filters={{}} onChange={onChange} />);
@@ -92,14 +102,7 @@ describe("FilterBar", () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "price_asc" }));
   });
 
-  it("picker mode hides subtype/cardType/analyzed/sort/ownership and keeps search+color/set/rarity", () => {
-    const pickerOptions = {
-      colors: ["Amber"],
-      types: ["Hero"],
-      sets: ["The First Chapter"],
-      rarities: ["Legendary"],
-      cardTypes: ["Character"],
-    };
+  it("picker mode renders the enhanced filters and keeps the searchable color/set/rarity", () => {
     render(
       <FilterBar
         mode="picker"
@@ -111,17 +114,77 @@ describe("FilterBar", () => {
     );
 
     expect(screen.getByPlaceholderText("Search by name...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Costs" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Types" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Classifications" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All Colors" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All Sets" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All Rarities" })).toBeInTheDocument();
+    // Inkable tri-state is a fixed All/Inkable/Non-inkable group.
+    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Inkable" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Non-inkable" })).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: "All Types" })).not.toBeInTheDocument();
+    // Full-mode-only controls must not render in picker mode (AC-FILT-14).
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.queryByText("Card Type")).not.toBeInTheDocument();
     expect(screen.queryByText("AI Analysis")).not.toBeInTheDocument();
     expect(screen.queryByText("Sort: Default")).not.toBeInTheDocument();
     expect(screen.queryByText("All Cards")).not.toBeInTheDocument();
     expect(cards.filters).not.toHaveBeenCalled();
+  });
+
+  it("picker mode emits cost, inkable, type, and classification changes", async () => {
+    const onChange = vi.fn();
+    render(<FilterBar mode="picker" optionSource={pickerOptions} filters={{}} onChange={onChange} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "All Costs" }));
+    await userEvent.click(screen.getByLabelText("5"));
+    expect(onChange).toHaveBeenLastCalledWith({ cost: "5" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Inkable" }));
+    expect(onChange).toHaveBeenLastCalledWith({ inkable: "inkable" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Non-inkable" }));
+    expect(onChange).toHaveBeenLastCalledWith({ inkable: "non-inkable" });
+
+    await userEvent.click(screen.getByRole("button", { name: "All Types" }));
+    await userEvent.click(screen.getByLabelText("Song"));
+    expect(onChange).toHaveBeenLastCalledWith({ cardType: "Song" });
+
+    await userEvent.click(screen.getByRole("button", { name: "All Classifications" }));
+    await userEvent.click(screen.getByLabelText("Hero"));
+    expect(onChange).toHaveBeenLastCalledWith({ subtype: "Hero" });
+  });
+
+  it("picker search clear-x clears only the search text", async () => {
+    const onChange = vi.fn();
+    render(
+      <FilterBar
+        mode="picker"
+        optionSource={pickerOptions}
+        filters={{ search: "elsa", color: "Amber", cost: "5" }}
+        onChange={onChange}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(onChange).toHaveBeenLastCalledWith({ color: "Amber", cost: "5" });
+  });
+
+  it("picker clear-all resets the new keys and the search in one step", async () => {
+    const onChange = vi.fn();
+    render(
+      <FilterBar
+        mode="picker"
+        optionSource={pickerOptions}
+        filters={{ search: "elsa", cost: "0,5", inkable: "non-inkable", cardType: "Action", subtype: "Hero", color: "Amber" }}
+        onChange={onChange}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /clear all/i }));
+    expect(onChange).toHaveBeenLastCalledWith({});
   });
 
   it("uses optionSource without calling cardsApi.filters", () => {
@@ -131,6 +194,8 @@ describe("FilterBar", () => {
       sets: ["Set X"],
       rarities: ["Rare"],
       cardTypes: [],
+      costs: [],
+      inkable: [],
     };
     render(<FilterBar mode="picker" optionSource={optionSource} filters={{}} onChange={vi.fn()} />);
 

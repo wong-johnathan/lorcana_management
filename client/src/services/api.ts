@@ -243,6 +243,10 @@ export const marketplace = {
     priceMin?: string;
     priceMax?: string;
     currency?: string;
+    costs?: string;
+    inkable?: string;
+    cardTypes?: string;
+    subtypes?: string;
     sellerId?: string;
     page?: number;
     limit?: number;

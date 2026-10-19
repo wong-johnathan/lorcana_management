@@ -3,8 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import MarketplaceFilterBar from "../../components/marketplace/MarketplaceFilterBar";
 import MarketplaceListingCard from "../../components/marketplace/MarketplaceListingCard";
 import { useAuth } from "../../context/AuthContext";
-import { marketplace } from "../../services/api";
-import type { MarketplaceListingsResponse } from "../../types";
+import { cards, marketplace } from "../../services/api";
+import type { FilterOptions, MarketplaceListingsResponse } from "../../types";
 import {
   marketplaceControlsFromParams,
   marketplaceParamsFromControls,
@@ -21,6 +21,28 @@ export default function MarketplacePage() {
   const [data, setData] = useState<MarketplaceListingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
+
+  // Catalog-stable option source (REQ-FILT-19): loaded once, with the synthetic
+  // "Song" card type appended client-side (never written to the server).
+  useEffect(() => {
+    let active = true;
+    cards
+      .filters()
+      .then((options) => {
+        if (!active) return;
+        setFilterOptions({
+          ...options,
+          cardTypes: options.cardTypes.includes("Song")
+            ? options.cardTypes
+            : [...options.cardTypes, "Song"],
+        });
+      })
+      .catch((err) => console.error(err));
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const updateControls = useCallback(
     (patch: Partial<MarketplaceControls>) => {
@@ -50,6 +72,10 @@ export default function MarketplacePage() {
         currency: controls.currency || undefined,
         priceMin: priceMin != null ? String(priceMin) : undefined,
         priceMax: priceMax != null ? String(priceMax) : undefined,
+        costs: controls.costs || undefined,
+        inkable: controls.inkable || undefined,
+        cardTypes: controls.cardTypes || undefined,
+        subtypes: controls.subtypes || undefined,
         page: controls.page,
         limit: PAGE_SIZE,
       })
@@ -72,6 +98,10 @@ export default function MarketplacePage() {
     controls.currency,
     controls.priceMin,
     controls.priceMax,
+    controls.costs,
+    controls.inkable,
+    controls.cardTypes,
+    controls.subtypes,
     controls.page,
   ]);
 
@@ -99,7 +129,7 @@ export default function MarketplacePage() {
         )}
       </div>
 
-      <MarketplaceFilterBar controls={controls} onChange={updateControls} />
+      <MarketplaceFilterBar controls={controls} onChange={updateControls} optionSource={filterOptions} />
 
       {loading ? (
         <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">

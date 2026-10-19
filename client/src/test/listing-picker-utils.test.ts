@@ -24,6 +24,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     setName: "The First Chapter",
     rarity: "Legendary",
     inkCost: 5,
+    inkable: true,
     strength: 3,
     willpower: 3,
     lore: 2,
@@ -143,6 +144,69 @@ describe("filterOwnedInventory", () => {
   it("ignores unknown filter keys", () => {
     expect(filterOwnedInventory(entries, { sort: "price_asc" })).toHaveLength(3);
   });
+
+  it("filters by cost with OR-within semantics", () => {
+    const cards = [
+      makeEntry(makeCard({ id: "c0", inkCost: 0 })),
+      makeEntry(makeCard({ id: "c5", inkCost: 5 })),
+      makeEntry(makeCard({ id: "c12", inkCost: 12 })),
+    ];
+    expect(filterOwnedInventory(cards, { cost: "0,5" }).map((e) => e.card.id).sort()).toEqual(["c0", "c5"]);
+    expect(filterOwnedInventory(cards, { cost: "12" }).map((e) => e.card.id)).toEqual(["c12"]);
+    expect(filterOwnedInventory(cards, { cost: "bogus,-1" })).toHaveLength(0);
+    expect(filterOwnedInventory(cards, { cost: "" })).toHaveLength(3);
+  });
+
+  it("filters by inkable tri-state", () => {
+    const cards = [
+      makeEntry(makeCard({ id: "ink", inkable: true })),
+      makeEntry(makeCard({ id: "nonink", inkable: false })),
+    ];
+    expect(filterOwnedInventory(cards, { inkable: "inkable" }).map((e) => e.card.id)).toEqual(["ink"]);
+    expect(filterOwnedInventory(cards, { inkable: "non-inkable" }).map((e) => e.card.id)).toEqual(["nonink"]);
+    expect(filterOwnedInventory(cards, { inkable: "" })).toHaveLength(2);
+    expect(filterOwnedInventory(cards, { inkable: "bogus" })).toHaveLength(2);
+  });
+
+  it("filters by card type including the synthetic Song type", () => {
+    const cards = [
+      makeEntry(makeCard({ id: "song", cardType: "Action", types: ["Song"] })),
+      makeEntry(makeCard({ id: "action", cardType: "Action", types: ["Hero"] })),
+      makeEntry(makeCard({ id: "char", cardType: "Character", types: ["Hero"] })),
+    ];
+    expect(filterOwnedInventory(cards, { cardType: "Action" }).map((e) => e.card.id).sort()).toEqual(["action", "song"]);
+    expect(filterOwnedInventory(cards, { cardType: "Song" }).map((e) => e.card.id)).toEqual(["song"]);
+    expect(filterOwnedInventory(cards, { cardType: "Character" }).map((e) => e.card.id)).toEqual(["char"]);
+    // Song matches Action + Song subtype only — not a non-Song Action, not a Character.
+    const songMatches = filterOwnedInventory(cards, { cardType: "Song" });
+    expect(songMatches.every((e) => e.card.cardType === "Action" && e.card.types.includes("Song"))).toBe(true);
+  });
+
+  it("filters by classification with OR-within semantics", () => {
+    const cards = [
+      makeEntry(makeCard({ id: "a", types: ["Hero", "Song"] })),
+      makeEntry(makeCard({ id: "b", types: ["Villain"] })),
+      makeEntry(makeCard({ id: "c", types: ["Hero", "Princess"] })),
+    ];
+    expect(filterOwnedInventory(cards, { subtype: "Hero" }).map((e) => e.card.id).sort()).toEqual(["a", "c"]);
+    expect(filterOwnedInventory(cards, { subtype: "Villain,Song" }).map((e) => e.card.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("combines new filters with AND across filters", () => {
+    const cards = [
+      makeEntry(makeCard({ id: "hit", inkCost: 5, inkable: true, cardType: "Action", types: ["Song"] })),
+      makeEntry(makeCard({ id: "wrongCost", inkCost: 6, inkable: true, cardType: "Action", types: ["Song"] })),
+      makeEntry(makeCard({ id: "wrongInkable", inkCost: 5, inkable: false, cardType: "Action", types: ["Song"] })),
+      makeEntry(makeCard({ id: "wrongType", inkCost: 5, inkable: true, cardType: "Character", types: ["Song"] })),
+    ];
+    const result = filterOwnedInventory(cards, {
+      cost: "5",
+      inkable: "inkable",
+      cardType: "Song",
+      subtype: "Song",
+    });
+    expect(result.map((e) => e.card.id)).toEqual(["hit"]);
+  });
 });
 
 describe("ownedFilterOptions", () => {
@@ -172,6 +236,8 @@ describe("ownedFilterOptions", () => {
       rarities: [],
       cardTypes: [],
       types: [],
+      costs: [],
+      inkable: ["inkable", "non-inkable"],
     });
   });
 
@@ -194,6 +260,35 @@ describe("ownedFilterOptions", () => {
     expect(options.rarities).toEqual([]);
     expect(options.cardTypes).toEqual([]);
     expect(options.types).toEqual([]);
+  });
+
+  it("derives distinct ascending cost options from owned cards only", () => {
+    const entries = [
+      makeEntry(makeCard({ id: "a", inkCost: 5 })),
+      makeEntry(makeCard({ id: "b", inkCost: 0 })),
+      makeEntry(makeCard({ id: "c", inkCost: 5 })),
+      makeEntry(makeCard({ id: "d", inkCost: 12 }), {
+        quantity: 0,
+        foilQuantity: 0,
+        holofoilQuantity: 0,
+      }),
+    ];
+    const options = ownedFilterOptions(entries);
+    expect(options.costs).toEqual([0, 5]);
+    expect(options.inkable).toEqual(["inkable", "non-inkable"]);
+  });
+
+  it("appends Song to card type options only when an owned Action card carries Song", () => {
+    const entries = [
+      makeEntry(makeCard({ id: "a", cardType: "Character", types: ["Hero"] })),
+      makeEntry(makeCard({ id: "b", cardType: "Action", types: ["Song"] })),
+    ];
+    expect(ownedFilterOptions(entries).cardTypes).toEqual(["Action", "Character", "Song"]);
+
+    const noSong = ownedFilterOptions([
+      makeEntry(makeCard({ id: "c", cardType: "Action", types: ["Hero"] })),
+    ]);
+    expect(noSong.cardTypes).toEqual(["Action"]);
   });
 });
 

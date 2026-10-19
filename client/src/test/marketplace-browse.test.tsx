@@ -7,12 +7,14 @@ import MarketplacePage from "../pages/marketplace/MarketplacePage";
 import { useAuth } from "../context/AuthContext";
 import { marketplace } from "../services/api";
 
-const { listingsMock } = vi.hoisted(() => ({
+const { listingsMock, cardsFiltersMock } = vi.hoisted(() => ({
   listingsMock: vi.fn(),
+  cardsFiltersMock: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({
   marketplace: { listings: listingsMock },
+  cards: { filters: cardsFiltersMock },
 }));
 
 vi.mock("../context/AuthContext", () => ({
@@ -35,6 +37,7 @@ const card = {
   setName: "The First Chapter",
   rarity: "Legendary",
   inkCost: 5,
+  inkable: true,
   strength: 3,
   willpower: 3,
   lore: 2,
@@ -168,10 +171,22 @@ describe("MarketplaceListingCard", () => {
   });
 });
 
+const filterOptions = {
+  colors: ["Amethyst"],
+  sets: ["The First Chapter"],
+  rarities: ["Legendary"],
+  cardTypes: ["Character", "Action"],
+  types: ["Hero"],
+  costs: [0, 5],
+  inkable: ["inkable", "non-inkable"],
+};
+
 describe("MarketplacePage", () => {
   beforeEach(() => {
     listingsMock.mockReset();
     listingsMock.mockResolvedValue(response);
+    cardsFiltersMock.mockReset();
+    cardsFiltersMock.mockResolvedValue(filterOptions);
     vi.mocked(useAuth).mockReturnValue({ user: null } as never);
   });
 
@@ -242,6 +257,34 @@ describe("MarketplacePage", () => {
     expect(await screen.findByRole("link", { name: "Sell / List a card" })).toHaveAttribute(
       "href",
       "/marketplace/sell"
+    );
+  });
+
+  it("loads filter options from the API and appends Song to the Type options", async () => {
+    renderPage();
+
+    await waitFor(() => expect(cardsFiltersMock).toHaveBeenCalled());
+
+    // The Type multi-select becomes available once options resolve.
+    const typeButton = await screen.findByRole("button", { name: "All Types" });
+    await userEvent.click(typeButton);
+    expect(screen.getByLabelText("Character")).toBeInTheDocument();
+    expect(screen.getByLabelText("Action")).toBeInTheDocument();
+    expect(screen.getByLabelText("Song")).toBeInTheDocument();
+  });
+
+  it("forwards the enhanced filter params to the listings endpoint", async () => {
+    renderPage("/marketplace?costs=0,5&inkable=inkable&cardTypes=Action&subtypes=Hero");
+
+    await waitFor(() =>
+      expect(listingsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          costs: "0,5",
+          inkable: "inkable",
+          cardTypes: "Action",
+          subtypes: "Hero",
+        })
+      )
     );
   });
 });

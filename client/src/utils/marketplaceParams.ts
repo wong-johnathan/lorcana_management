@@ -63,6 +63,10 @@ export interface MarketplaceControls {
   priceMin: string; // major units, "" = no lower bound
   priceMax: string; // major units, "" = no upper bound
   currency: string; // "" = all currencies
+  costs: string; // CSV ints, "" = all ink costs
+  inkable: string; // "" | "inkable" | "non-inkable"
+  cardTypes: string; // CSV incl "Song"
+  subtypes: string; // CSV keywords
   page: number; // 1-based
 }
 
@@ -73,11 +77,37 @@ export const MARKETPLACE_DEFAULTS: MarketplaceControls = {
   priceMin: "",
   priceMax: "",
   currency: "",
+  costs: "",
+  inkable: "",
+  cardTypes: "",
+  subtypes: "",
   page: 1,
 };
 
 /** Allows in-progress input like "1." and "10.5"; rejects negatives and junk. */
 const PRICE_PATTERN = /^\d*\.?\d*$/;
+
+/** CSV of non-negative integers; invalid tokens are dropped (AC-FILT-20.2). */
+const INT_PATTERN = /^\d+$/;
+
+function pickCsvInts(raw: string | null): string {
+  return (raw ?? "")
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => INT_PATTERN.test(token))
+    .join(",");
+}
+
+/** Inkable accepts only the two fixed literals; anything else degrades to "". */
+function pickInkable(raw: string | null): string {
+  const trimmed = (raw ?? "").trim();
+  return trimmed === "inkable" || trimmed === "non-inkable" ? trimmed : "";
+}
+
+/** Free-text CSV passthrough (server ignores unknown values); trimmed. */
+function pickCsv(raw: string | null): string {
+  return (raw ?? "").trim();
+}
 
 const VARIANT_VALUES = new Set<string>(MARKETPLACE_VARIANT_OPTIONS.map((option) => option.value));
 const CONDITION_VALUES = new Set<string>(MARKETPLACE_CONDITION_OPTIONS.map((option) => option.value));
@@ -110,6 +140,10 @@ export function marketplaceControlsFromParams(params: URLSearchParams): Marketpl
     priceMin: pickPrice(params.get("priceMin")),
     priceMax: pickPrice(params.get("priceMax")),
     currency: pick(params.get("currency"), CURRENCY_VALUES),
+    costs: pickCsvInts(params.get("costs")),
+    inkable: pickInkable(params.get("inkable")),
+    cardTypes: pickCsv(params.get("cardTypes")),
+    subtypes: pickCsv(params.get("subtypes")),
     page: pickPage(params.get("page")),
   };
 }
@@ -122,6 +156,10 @@ export function marketplaceParamsFromControls(controls: MarketplaceControls): UR
   if (controls.currency) params.set("currency", controls.currency);
   if (controls.priceMin) params.set("priceMin", controls.priceMin);
   if (controls.priceMax) params.set("priceMax", controls.priceMax);
+  if (controls.costs) params.set("costs", controls.costs);
+  if (controls.inkable) params.set("inkable", controls.inkable);
+  if (controls.cardTypes) params.set("cardTypes", controls.cardTypes);
+  if (controls.subtypes) params.set("subtypes", controls.subtypes);
   if (controls.page !== MARKETPLACE_DEFAULTS.page) params.set("page", String(controls.page));
   return params;
 }

@@ -148,9 +148,13 @@ describe("marketplace public browse/detail/seller (REQ-1)", () => {
           currency: "USD",
           priceMinor: { gte: 100, lte: 500 },
           card: {
-            OR: [
-              { name: { contains: "Mickey", mode: "insensitive" } },
-              { setName: { contains: "Mickey", mode: "insensitive" } },
+            AND: [
+              {
+                OR: [
+                  { name: { contains: "Mickey", mode: "insensitive" } },
+                  { setName: { contains: "Mickey", mode: "insensitive" } },
+                ],
+              },
             ],
           },
         }),
@@ -194,6 +198,173 @@ describe("marketplace public browse/detail/seller (REQ-1)", () => {
     expect(res.body.user.id).toBe("seller1");
     expect(res.body.listings).toHaveLength(1);
     expect(res.body.references[0].hasCompletedDeal).toBe(true);
+  });
+});
+
+describe("marketplace enhanced listing filters (REQ-FILT-17/18)", () => {
+  it("filters by costs as inkCost IN (AC-FILT-18.1)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ costs: "0,2,12" }).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ inkCost: { in: [0, 2, 12] } }] } }),
+      })
+    );
+  });
+
+  it.each([
+    ["inkable", true],
+    ["non-inkable", false],
+  ])("filters by inkable=%s (AC-FILT-18.4)", async (param, expected) => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ inkable: param }).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ inkable: expected }] } }),
+      })
+    );
+  });
+
+  it.each([
+    ["Character", { cardType: { in: ["Character"] } }],
+    ["Song", { cardType: "Action", types: { hasSome: ["Song"] } }],
+    [
+      "Character,Song",
+      {
+        OR: [
+          { cardType: { in: ["Character"] } },
+          { cardType: "Action", types: { hasSome: ["Song"] } },
+        ],
+      },
+    ],
+  ])("builds the cardTypes predicate for %s (AC-FILT-18.3)", async (param, predicate) => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ cardTypes: param }).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [predicate] } }),
+      })
+    );
+  });
+
+  it("filters by subtypes with hasSome (AC-FILT-18.5)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ subtypes: "Hero,Alien" }).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ types: { hasSome: ["Hero", "Alien"] } }] } }),
+      })
+    );
+  });
+
+  it("ignores invalid/unknown filter values without erroring (AC-FILT-17.2)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    const res = await request(app)
+      .get("/api/marketplace/listings")
+      .query({ costs: "abc,-1,1.5", inkable: "bogus", cardTypes: "NotARealType", subtypes: "NotASubtype" })
+      .expect(200);
+
+    expect(res.body.pagination.total).toBe(0);
+    // Invalid costs/inkable produce no constraint; unknown cardTypes/subtypes
+    // become free-text predicates that simply match nothing (never a 500).
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          card: {
+            AND: [
+              { types: { hasSome: ["NotASubtype"] } },
+              { cardType: { in: ["NotARealType"] } },
+            ],
+          },
+        }),
+      })
+    );
+  });
+
+  it("AND-combines q with the enhanced filters (AC-FILT-18.2)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app)
+      .get("/api/marketplace/listings")
+      .query({ q: "Mickey", costs: "1,2", inkable: "inkable", cardTypes: "Character", subtypes: "Hero" })
+      .expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          card: {
+            AND: [
+              {
+                OR: [
+                  { name: { contains: "Mickey", mode: "insensitive" } },
+                  { setName: { contains: "Mickey", mode: "insensitive" } },
+                ],
+              },
+              { inkCost: { in: [1, 2] } },
+              { inkable: true },
+              { types: { hasSome: ["Hero"] } },
+              { cardType: { in: ["Character"] } },
+            ],
+          },
+        }),
+      })
+    );
+  });
+
+  it("keeps own-listing exclusion alongside enhanced filters (REQ-10)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await auth(request(app).get("/api/marketplace/listings").query({ costs: "1" }), sellerToken).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          sellerId: { not: "seller1" },
+          card: { AND: [{ inkCost: { in: [1] } }] },
+        }),
+      })
+    );
+  });
+
+  it("computes count over the fully filtered set (AC-FILT-18.6)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([listing()]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(7);
+
+    const res = await request(app).get("/api/marketplace/listings").query({ costs: "3,4" }).expect(200);
+
+    expect(res.body.pagination.total).toBe(7);
+    expect(prismaMock.marketplaceListing.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ inkCost: { in: [3, 4] } }] } }),
+      })
+    );
+  });
+
+  it("omits where.card entirely when no card filter params are present (AC-FILT-17.3)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ variant: "foil" }).expect(200);
+
+    const call = prismaMock.marketplaceListing.findMany.mock.calls[0][0] as any;
+    expect(call.where.card).toBeUndefined();
+    expect(call.where.variant).toBe("foil");
   });
 });
 

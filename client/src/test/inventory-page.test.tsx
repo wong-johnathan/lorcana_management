@@ -42,6 +42,7 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     setName: "The First Chapter",
     rarity: "Legendary",
     inkCost: 8,
+    inkable: true,
     strength: 5,
     willpower: 5,
     lore: 4,
