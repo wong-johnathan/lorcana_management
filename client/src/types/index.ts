@@ -460,6 +460,8 @@ export interface MarketplaceEnquirySummary {
   buyer: { id: string; username: string };
   seller: { id: string; username: string };
   lastMessageAt: string;
+  unread: boolean;
+  unreadCount: number;
 }
 
 export interface EnquiryMessage {
@@ -524,6 +526,11 @@ export interface MarketplaceMyListingsResponse {
 /** GET /marketplace/enquiries — the seller/buyer inbox. */
 export interface MarketplaceEnquiriesResponse {
   enquiries: MarketplaceEnquirySummary[];
+}
+
+/** GET /marketplace/enquiries/unread-count — unread-thread count for the nav badge. */
+export interface MarketplaceUnreadCountResponse {
+  count: number;
 }
 
 /**

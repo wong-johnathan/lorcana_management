@@ -175,6 +175,43 @@ describe("MarketplaceChatThreadPage", () => {
     expect(await screen.findByText("Sounds good")).toBeInTheDocument();
   });
 
+  it("dispatches unread:refresh after the thread loads (AC-NOTIF-7.1)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    const listener = vi.fn();
+    window.addEventListener("unread:refresh", listener);
+
+    renderThread("buyer_1", []);
+
+    await screen.findByText("Elsa, Snow Queen");
+    await waitFor(() => expect(listener).toHaveBeenCalledTimes(1));
+
+    window.removeEventListener("unread:refresh", listener);
+  });
+
+  it("dispatches unread:refresh after sending a message (AC-NOTIF-7.2)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    postMessageMock.mockResolvedValue({
+      id: "m2",
+      enquiryId: "enq_1",
+      senderId: "buyer_1",
+      body: "hello",
+      createdAt: "2026-10-18T00:02:00.000Z",
+    });
+    const listener = vi.fn();
+    window.addEventListener("unread:refresh", listener);
+
+    renderThread("buyer_1", []);
+    await screen.findByText("Elsa, Snow Queen");
+
+    const input = await screen.findByPlaceholderText("Type a message…");
+    await userEvent.type(input, "hello");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(listener).toHaveBeenCalledTimes(2));
+
+    window.removeEventListener("unread:refresh", listener);
+  });
+
   it("prompts anonymous visitors to sign in (REQ-2)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: null } as never);
     render(

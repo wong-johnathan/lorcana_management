@@ -45,9 +45,17 @@ export default function MarketplaceChatPage() {
   return (
     <RequireAuth>
       <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-amber-400">Messages</p>
-          <h1 className="text-2xl font-bold text-gray-100">Conversations</h1>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-amber-400">Messages</p>
+            <h1 className="text-2xl font-bold text-gray-100">Conversations</h1>
+          </div>
+          <Link
+            to="/marketplace/transactions"
+            className="text-sm text-amber-400 hover:text-amber-300"
+          >
+            Transactions
+          </Link>
         </div>
 
         {loading ? (
@@ -77,7 +85,11 @@ export default function MarketplaceChatPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate font-semibold text-gray-100">
+                        <span
+                          className={`truncate ${
+                            enquiry.unread ? "font-bold" : "font-semibold"
+                          } text-gray-100`}
+                        >
                           {card?.name ?? "Card"}
                         </span>
                         <span className="shrink-0 text-xs text-gray-500">
@@ -94,6 +106,24 @@ export default function MarketplaceChatPage() {
                         requested {enquiry.requestedQuantity}
                       </p>
                     </div>
+                    {enquiry.unread && (
+                      <span
+                        data-testid="unread-indicator"
+                        aria-label={
+                          enquiry.unreadCount > 0
+                            ? `${enquiry.unreadCount} unread messages`
+                            : "unread"
+                        }
+                        className="shrink-0 flex items-center gap-1.5"
+                      >
+                        <span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />
+                        {enquiry.unreadCount > 0 && (
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-300">
+                            {enquiry.unreadCount}
+                          </span>
+                        )}
+                      </span>
+                    )}
                     {archived && (
                       <span className="shrink-0 rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400">
                         Archived

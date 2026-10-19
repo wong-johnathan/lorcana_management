@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 
 vi.mock("../services/api", () => ({
   cards: { filters: vi.fn() },
+  marketplace: { getUnreadCount: vi.fn().mockResolvedValue({ count: 0 }) },
 }));
 
 vi.mock("../context/AuthContext", () => ({

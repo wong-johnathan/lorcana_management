@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
 import ListingForm from "../../components/marketplace/ListingForm";
@@ -95,15 +96,23 @@ export default function MarketplaceSellPage() {
             <p className="text-xs uppercase tracking-widest text-amber-400">Sell</p>
             <h1 className="text-2xl font-bold text-gray-100">Your listings</h1>
           </div>
-          {!creating && !editingId && (
-            <button
-              type="button"
-              onClick={() => setCreating(true)}
-              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400"
+          <div className="flex items-center gap-3">
+            <Link
+              to="/marketplace/transactions"
+              className="text-sm text-amber-400 hover:text-amber-300"
             >
-              Create listing
-            </button>
-          )}
+              Transactions
+            </Link>
+            {!creating && !editingId && (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400"
+              >
+                Create listing
+              </button>
+            )}
+          </div>
         </div>
 
         {error && (

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
 import MarketplaceSellPage from "../pages/marketplace/MarketplaceSellPage";
@@ -150,6 +151,14 @@ const secondInventoryEntry: InventoryEntry = {
   card: secondCard,
 };
 
+function renderSellPage() {
+  return render(
+    <MemoryRouter>
+      <MarketplaceSellPage />
+    </MemoryRouter>
+  );
+}
+
 describe("MarketplaceSellPage", () => {
   beforeEach(() => {
     inventoryListMock.mockReset();
@@ -159,6 +168,21 @@ describe("MarketplaceSellPage", () => {
     createListingMock.mockReset();
   });
 
+  it("renders a Transactions link to /marketplace/transactions (AC-NOTIF-2.2)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([]);
+    getPolicyMock.mockResolvedValue(null);
+    getMyListingsMock.mockResolvedValue({ listings: [] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    renderSellPage();
+
+    expect(await screen.findByRole("link", { name: "Transactions" })).toHaveAttribute(
+      "href",
+      "/marketplace/transactions"
+    );
+  });
+
   it("lists a CLOSED (sold-out) listing as editable (D2)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
     inventoryListMock.mockResolvedValue([]);
@@ -166,7 +190,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [closedListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     expect(await screen.findByText("Elsa, Snow Queen")).toBeInTheDocument();
     expect(screen.getByText("Closed")).toBeInTheDocument();
@@ -181,7 +205,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     expect(await screen.findByText("Elsa, Snow Queen")).toBeInTheDocument();
     expect(screen.getByText("The First Chapter · 1/204")).toBeInTheDocument();
@@ -195,7 +219,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     expect(await screen.findByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
       "src",
@@ -220,7 +244,7 @@ describe("MarketplaceSellPage", () => {
     });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     await userEvent.click(await screen.findByRole("button", { name: "View Elsa, Snow Queen" }));
 
@@ -249,7 +273,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     // Wait for initial load, then enter the create flow.
     await screen.findByText("You have no listings yet. Create one to start selling.");
@@ -286,7 +310,7 @@ describe("MarketplaceSellPage", () => {
     getTransactionsMock.mockResolvedValue({ transactions: [] });
     createListingMock.mockResolvedValue({ ...closedListing, status: "ACTIVE", quantity: 1 });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     await screen.findByText("You have no listings yet. Create one to start selling.");
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
@@ -314,7 +338,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [pendingTransaction] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     expect(await screen.findByText("Pending sale — price/quantity locked")).toBeInTheDocument();
 
@@ -331,7 +355,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     await screen.findByText("You have no listings yet. Create one to start selling.");
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
@@ -352,7 +376,7 @@ describe("MarketplaceSellPage", () => {
     getMyListingsMock.mockResolvedValue({ listings: [] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
-    render(<MarketplaceSellPage />);
+    renderSellPage();
 
     await screen.findByText("You have no listings yet. Create one to start selling.");
     await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
