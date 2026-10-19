@@ -1407,6 +1407,94 @@ describe("marketplace enquiry detail (REQ-12)", () => {
   });
 });
 
+describe("marketplace enquiry detail myReview (REQ-TX-4)", () => {
+  const transaction = (overrides: Record<string, unknown> = {}) => ({
+    id: "tx1",
+    status: "COMPLETED",
+    quantity: 2,
+    soldAt: new Date("2026-10-02T00:00:00Z"),
+    confirmedAt: new Date("2026-10-03T00:00:00Z"),
+    ...overrides,
+  });
+
+  const enquiryWithTransactions = (transactions: unknown[]) => ({
+    id: "enq1",
+    listingId: "listing1",
+    buyerId: "buyer1",
+    sellerId: "seller1",
+    requestedQuantity: 2,
+    status: "ACTIVE",
+    createdAt: new Date("2026-10-01T00:00:00Z"),
+    updatedAt: new Date("2026-10-01T00:00:00Z"),
+    listing: { id: "listing1", card: { id: "card1" }, photos: [] },
+    buyer: { id: "buyer1", username: "buyer" },
+    seller: { id: "seller1", username: "seller" },
+    messages: [],
+    transactions,
+  });
+
+  it("returns myReview: null per embedded transaction and batches the review query", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiryWithTransactions([transaction(), transaction({ id: "tx2" })])
+    );
+    prismaMock.marketplaceReview.findMany.mockResolvedValueOnce([]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);
+
+    expect(prismaMock.marketplaceReview.findMany).toHaveBeenCalledWith({
+      where: { reviewerId: "buyer1", transactionId: { in: ["tx1", "tx2"] } },
+    });
+
+    expect(res.body.transactions).toHaveLength(2);
+    expect(res.body.transactions[0]).toEqual({
+      id: "tx1",
+      status: "COMPLETED",
+      quantity: 2,
+      soldAt: "2026-10-02T00:00:00.000Z",
+      confirmedAt: "2026-10-03T00:00:00.000Z",
+      myReview: null,
+    });
+    expect(res.body.transactions[1].myReview).toBeNull();
+  });
+
+  it("returns myReview: { rating, comment } when the caller already reviewed", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiryWithTransactions([transaction()])
+    );
+    prismaMock.marketplaceReview.findMany.mockResolvedValueOnce([
+      { transactionId: "tx1", reviewerId: "buyer1", rating: 5, comment: "great" },
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);
+
+    expect(res.body.transactions[0].myReview).toEqual({ rating: 5, comment: "great" });
+  });
+
+  it("returns myReview with a null comment when the caller left no comment", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiryWithTransactions([transaction()])
+    );
+    prismaMock.marketplaceReview.findMany.mockResolvedValueOnce([
+      { transactionId: "tx1", reviewerId: "buyer1", rating: 4, comment: null },
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);
+
+    expect(res.body.transactions[0].myReview).toEqual({ rating: 4, comment: null });
+  });
+
+  it("skips the review query when there are zero transactions", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiryWithTransactions([])
+    );
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);
+
+    expect(res.body.transactions).toEqual([]);
+    expect(prismaMock.marketplaceReview.findMany).not.toHaveBeenCalled();
+  });
+});
+
 describe("marketplace message validation edges", () => {
   it("returns 404 for a missing enquiry", async () => {
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(null);

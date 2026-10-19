@@ -559,6 +559,7 @@ export interface EnquiryTransaction {
   quantity: number;
   soldAt: string;
   confirmedAt: string | null;
+  myReview: { rating: number; comment: string | null } | null;
 }
 
 export interface MarketplaceEnquiryDetailResponse {
