@@ -33,6 +33,10 @@ import {
 } from "../services/objectStorage.js";
 import { normalizePhotoLabel } from "../utils/photoPositionLabels.js";
 import { buildPublicProfile } from "./public.js";
+import {
+  isUnread,
+  unreadMessageCount,
+} from "../services/marketplaceUnread.js";
 
 const prisma = new PrismaClient();
 export const marketplaceRouter = Router();
@@ -759,16 +763,26 @@ marketplaceRouter.post("/listings/:id/enquire", async (req: AuthRequest, res: Re
 
     // REQ-11: one thread per (buyer, listing) — @@unique([buyerId, listingId]).
     // Re-enquiring reuses the thread and re-activates an ARCHIVED thread (D3).
-    const enquiry = await prisma.marketplaceEnquiry.upsert({
-      where: { buyerId_listingId: { buyerId: userId, listingId: id } },
-      create: {
-        listingId: id,
-        buyerId: userId,
-        sellerId: listing.sellerId,
-        requestedQuantity,
-        status: "ACTIVE",
-      },
-      update: { requestedQuantity, status: "ACTIVE" },
+    // REQ-NOTIF-3.4: the buyer's own thread is atomically marked read at
+    // creation so their own enquiry never counts as unread for them.
+    const enquiry = await prisma.$transaction(async (tx) => {
+      const e = await tx.marketplaceEnquiry.upsert({
+        where: { buyerId_listingId: { buyerId: userId, listingId: id } },
+        create: {
+          listingId: id,
+          buyerId: userId,
+          sellerId: listing.sellerId,
+          requestedQuantity,
+          status: "ACTIVE",
+        },
+        update: { requestedQuantity, status: "ACTIVE" },
+      });
+      await tx.enquiryReadState.upsert({
+        where: { enquiryId_userId: { enquiryId: e.id, userId } },
+        create: { enquiryId: e.id, userId },
+        update: { lastReadAt: new Date() },
+      });
+      return e;
     });
 
     res.status(201).json({ enquiryId: enquiry.id });
@@ -791,13 +805,32 @@ marketplaceRouter.get("/enquiries", async (req: AuthRequest, res: Response) => {
     });
 
     const enquiryIds = enquiries.map((enquiry) => enquiry.id);
+    const readStates = enquiryIds.length
+      ? await prisma.enquiryReadState.findMany({
+          where: { userId, enquiryId: { in: enquiryIds } },
+          select: { enquiryId: true, lastReadAt: true },
+        })
+      : [];
     const messages = enquiryIds.length
       ? await prisma.enquiryMessage.findMany({
           where: { enquiryId: { in: enquiryIds } },
-          select: { enquiryId: true, createdAt: true },
+          select: { enquiryId: true, senderId: true, createdAt: true },
           orderBy: { createdAt: "desc" },
         })
       : [];
+
+    const lastReadAt = new Map<string, Date | null>();
+    for (const row of readStates) {
+      lastReadAt.set(row.enquiryId, row.lastReadAt);
+    }
+
+    const messagesByEnquiry = new Map<string, { senderId: string; createdAt: Date }[]>();
+    for (const message of messages) {
+      const list = messagesByEnquiry.get(message.enquiryId) ?? [];
+      list.push(message);
+      messagesByEnquiry.set(message.enquiryId, list);
+    }
+
     const lastMessageAt = new Map<string, Date>();
     for (const message of messages) {
       if (!lastMessageAt.has(message.enquiryId)) {
@@ -806,20 +839,26 @@ marketplaceRouter.get("/enquiries", async (req: AuthRequest, res: Response) => {
     }
 
     const items = enquiries
-      .map((enquiry: any) => ({
-        id: enquiry.id,
-        listingId: enquiry.listingId,
-        buyerId: enquiry.buyerId,
-        sellerId: enquiry.sellerId,
-        requestedQuantity: enquiry.requestedQuantity,
-        status: enquiry.status,
-        createdAt: enquiry.createdAt,
-        updatedAt: enquiry.updatedAt,
-        listing: enquiry.listing,
-        buyer: enquiry.buyer,
-        seller: enquiry.seller,
-        lastMessageAt: lastMessageAt.get(enquiry.id) ?? enquiry.updatedAt ?? enquiry.createdAt,
-      }))
+      .map((enquiry: any) => {
+        const enquiryMessages = messagesByEnquiry.get(enquiry.id) ?? [];
+        const readAt = lastReadAt.get(enquiry.id) ?? null;
+        return {
+          id: enquiry.id,
+          listingId: enquiry.listingId,
+          buyerId: enquiry.buyerId,
+          sellerId: enquiry.sellerId,
+          requestedQuantity: enquiry.requestedQuantity,
+          status: enquiry.status,
+          createdAt: enquiry.createdAt,
+          updatedAt: enquiry.updatedAt,
+          listing: enquiry.listing,
+          buyer: enquiry.buyer,
+          seller: enquiry.seller,
+          lastMessageAt: lastMessageAt.get(enquiry.id) ?? enquiry.updatedAt ?? enquiry.createdAt,
+          unread: isUnread(enquiry, userId, enquiryMessages, readAt),
+          unreadCount: unreadMessageCount(enquiry, userId, enquiryMessages, readAt),
+        };
+      })
       .sort(
         (a, b) =>
           new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
@@ -831,11 +870,61 @@ marketplaceRouter.get("/enquiries", async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Lightweight unread-thread count for the nav badge (REQ-NOTIF-5). Registered
+// BEFORE `/enquiries/:id` so the literal `unread-count` segment wins over the
+// `:id` param (mirrors `/listings/mine`-before-`/listings/:id`). Three
+// index-backed reads over the caller's own threads, no listing/card joins.
+marketplaceRouter.get("/enquiries/unread-count", async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const enquiries = await prisma.marketplaceEnquiry.findMany({
+      where: { OR: [{ buyerId: userId }, { sellerId: userId }] },
+      select: { id: true, buyerId: true, sellerId: true, createdAt: true, updatedAt: true },
+    });
+    const enquiryIds = enquiries.map((enquiry) => enquiry.id);
+    const readStates = enquiryIds.length
+      ? await prisma.enquiryReadState.findMany({
+          where: { userId, enquiryId: { in: enquiryIds } },
+          select: { enquiryId: true, lastReadAt: true },
+        })
+      : [];
+    const messages = enquiryIds.length
+      ? await prisma.enquiryMessage.findMany({
+          where: { enquiryId: { in: enquiryIds }, senderId: { not: userId } },
+          select: { enquiryId: true, senderId: true, createdAt: true },
+        })
+      : [];
+
+    const lastReadAt = new Map<string, Date | null>();
+    for (const row of readStates) {
+      lastReadAt.set(row.enquiryId, row.lastReadAt);
+    }
+    const messagesByEnquiry = new Map<string, { senderId: string; createdAt: Date }[]>();
+    for (const message of messages) {
+      const list = messagesByEnquiry.get(message.enquiryId) ?? [];
+      list.push(message);
+      messagesByEnquiry.set(message.enquiryId, list);
+    }
+
+    let count = 0;
+    for (const enquiry of enquiries) {
+      const enquiryMessages = messagesByEnquiry.get(enquiry.id) ?? [];
+      const readAt = lastReadAt.get(enquiry.id) ?? null;
+      if (isUnread(enquiry, userId, enquiryMessages, readAt)) count++;
+    }
+
+    res.json({ count });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
 marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
+    const id = req.params.id as string;
     const enquiry = await prisma.marketplaceEnquiry.findUnique({
-      where: { id: req.params.id as string },
+      where: { id },
       include: {
         listing: { include: { card: true, photos: { orderBy: { sortOrder: "asc" } } } },
         buyer: { select: { id: true, username: true } },
@@ -847,6 +936,14 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
     if (enquiry.buyerId !== userId && enquiry.sellerId !== userId) {
       throw new MarketplaceError(403, "You are not a participant in this enquiry");
     }
+
+    // REQ-NOTIF-3.2/3.3: mark the viewer's thread read as a GET side effect,
+    // only after the participant authz check (a 403 never touches read state).
+    await prisma.enquiryReadState.upsert({
+      where: { enquiryId_userId: { enquiryId: id, userId } },
+      create: { enquiryId: id, userId },
+      update: { lastReadAt: new Date() },
+    });
 
     res.json({
       enquiry: {
@@ -894,8 +991,18 @@ marketplaceRouter.post("/enquiries/:id/messages", async (req: AuthRequest, res: 
       throw new MarketplaceError(400, "Message body is required");
     }
 
-    const message = await prisma.enquiryMessage.create({
-      data: { enquiryId: id, senderId: userId, body },
+    // REQ-NOTIF-3.4: the sender's own thread is atomically marked read after
+    // creating their message, so their own message never counts as unread.
+    const message = await prisma.$transaction(async (tx) => {
+      const m = await tx.enquiryMessage.create({
+        data: { enquiryId: id, senderId: userId, body },
+      });
+      await tx.enquiryReadState.upsert({
+        where: { enquiryId_userId: { enquiryId: id, userId } },
+        create: { enquiryId: id, userId },
+        update: { lastReadAt: new Date() },
+      });
+      return m;
     });
     res.status(201).json(message);
   } catch (error) {

@@ -79,6 +79,7 @@ model User {
   listings               MarketplaceListing[]
   enquiriesAsBuyer       MarketplaceEnquiry[]     @relation("EnquiryBuyer")
   enquiriesAsSeller      MarketplaceEnquiry[]     @relation("EnquirySeller")
+  enquiryReadStates      EnquiryReadState[]
   transactionsAsBuyer    MarketplaceTransaction[] @relation("TxBuyer")
   transactionsAsSeller   MarketplaceTransaction[] @relation("TxSeller")
   reviewsWritten         MarketplaceReview[]      @relation("ReviewReviewer")
@@ -277,12 +278,25 @@ model MarketplaceEnquiry {
   updatedAt         DateTime           @updatedAt
 
   messages     EnquiryMessage[]
+  readStates   EnquiryReadState[]
   transactions MarketplaceTransaction[]
 
   @@unique([buyerId, listingId])
   @@index([listingId])
   @@index([sellerId])
   @@index([buyerId])
+}
+
+model EnquiryReadState {
+  id         String             @id @default(cuid())
+  enquiryId  String
+  enquiry    MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime           @default(now())
+
+  @@unique([enquiryId, userId])
+  @@index([userId])
 }
 
 model EnquiryMessage {

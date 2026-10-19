@@ -1363,6 +1363,7 @@ describe("marketplace enquiries list (REQ-12)", () => {
       { id: "enq2", listingId: "listing2", buyerId: "buyer1", sellerId: "seller2", requestedQuantity: 1, status: "ACTIVE", createdAt: d("2026-10-02"), updatedAt: d("2026-10-02"), listing: {}, buyer: {}, seller: {} },
       { id: "enq3", listingId: "listing3", buyerId: "buyer1", sellerId: "seller3", requestedQuantity: 1, status: "ACTIVE", createdAt: d("2026-10-03"), updatedAt: undefined, listing: {}, buyer: {}, seller: {} },
     ]);
+    prismaMock.enquiryReadState.findMany.mockResolvedValueOnce([]);
     prismaMock.enquiryMessage.findMany.mockResolvedValueOnce([
       { enquiryId: "enq1", createdAt: d("2026-10-05") },
       { enquiryId: "enq1", createdAt: d("2026-10-04") },
@@ -1516,5 +1517,186 @@ describe("marketplace references / reports edges", () => {
   it("rejects a report missing targetId or reason", async () => {
     await auth(request(app).post("/api/marketplace/reports").send({ targetType: "LISTING", reason: "fake" }), buyerToken).expect(400, { error: "targetId is required" });
     await auth(request(app).post("/api/marketplace/reports").send({ targetType: "LISTING", targetId: "listing1" }), buyerToken).expect(400, { error: "reason is required" });
+  });
+});
+
+describe("marketplace unread-count (REQ-NOTIF-5)", () => {
+  const d = (s: string) => new Date(s);
+
+  it("returns 401 when unauthenticated (AC-NOTIF-5.2)", async () => {
+    await request(app).get("/api/marketplace/enquiries/unread-count").expect(401);
+  });
+
+  it("returns { count: 0 } with no threads", async () => {
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([]);
+    const res = await auth(request(app).get("/api/marketplace/enquiries/unread-count"), buyerToken).expect(200);
+    expect(res.body).toEqual({ count: 0 });
+  });
+
+  it("counts a fresh zero-message enquiry as unread for the seller (AC-NOTIF-4.2)", async () => {
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([
+      { id: "enq1", buyerId: "buyer1", sellerId: "seller1", createdAt: d("2026-10-01"), updatedAt: d("2026-10-01") },
+    ]);
+    prismaMock.enquiryReadState.findMany.mockResolvedValueOnce([]);
+    prismaMock.enquiryMessage.findMany.mockResolvedValueOnce([]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/unread-count"), sellerToken).expect(200);
+    expect(res.body).toEqual({ count: 1 });
+  });
+
+  it("does NOT count the buyer's own thread (AC-NOTIF-3.4)", async () => {
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([
+      { id: "enq1", buyerId: "buyer1", sellerId: "seller1", createdAt: d("2026-10-01"), updatedAt: d("2026-10-01") },
+    ]);
+    prismaMock.enquiryReadState.findMany.mockResolvedValueOnce([]);
+    prismaMock.enquiryMessage.findMany.mockResolvedValueOnce([]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/unread-count"), buyerToken).expect(200);
+    expect(res.body).toEqual({ count: 0 });
+  });
+
+  it("counts a seller reply as unread for the buyer", async () => {
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([
+      { id: "enq1", buyerId: "buyer1", sellerId: "seller1", createdAt: d("2026-10-01"), updatedAt: d("2026-10-01") },
+    ]);
+    prismaMock.enquiryReadState.findMany.mockResolvedValueOnce([]);
+    prismaMock.enquiryMessage.findMany.mockResolvedValueOnce([
+      { enquiryId: "enq1", senderId: "seller1", createdAt: d("2026-10-02") },
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/unread-count"), buyerToken).expect(200);
+    expect(res.body).toEqual({ count: 1 });
+  });
+
+  it("respects lastReadAt (a thread read after its last activity is not counted)", async () => {
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([
+      { id: "enq1", buyerId: "buyer1", sellerId: "seller1", createdAt: d("2026-10-01"), updatedAt: d("2026-10-01") },
+    ]);
+    prismaMock.enquiryReadState.findMany.mockResolvedValueOnce([
+      { enquiryId: "enq1", lastReadAt: d("2026-10-03") },
+    ]);
+    prismaMock.enquiryMessage.findMany.mockResolvedValueOnce([
+      { enquiryId: "enq1", senderId: "seller1", createdAt: d("2026-10-02") },
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries/unread-count"), buyerToken).expect(200);
+    expect(res.body).toEqual({ count: 0 });
+  });
+
+  it("is not shadowed by /enquiries/:id (literal segment wins)", async () => {
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([]);
+    const res = await auth(request(app).get("/api/marketplace/enquiries/unread-count"), buyerToken).expect(200);
+    expect(res.body).toEqual({ count: 0 });
+    expect(prismaMock.marketplaceEnquiry.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("marketplace unread metadata on GET /enquiries (REQ-NOTIF-4)", () => {
+  it("returns unread/unreadCount per item and keeps newest-first ordering", async () => {
+    const d = (s: string) => new Date(s);
+    prismaMock.marketplaceEnquiry.findMany.mockResolvedValueOnce([
+      { id: "enq1", listingId: "l1", buyerId: "buyer1", sellerId: "seller1", requestedQuantity: 2, status: "ACTIVE", createdAt: d("2026-10-01"), updatedAt: d("2026-10-01"), listing: {}, buyer: {}, seller: {} },
+      { id: "enq2", listingId: "l2", buyerId: "buyer1", sellerId: "seller2", requestedQuantity: 1, status: "ACTIVE", createdAt: d("2026-10-02"), updatedAt: d("2026-10-02"), listing: {}, buyer: {}, seller: {} },
+    ]);
+    prismaMock.enquiryReadState.findMany.mockResolvedValueOnce([
+      { enquiryId: "enq2", lastReadAt: d("2026-10-05") },
+    ]);
+    prismaMock.enquiryMessage.findMany.mockResolvedValueOnce([
+      { enquiryId: "enq1", senderId: "seller1", createdAt: d("2026-10-04") },
+      { enquiryId: "enq2", senderId: "seller2", createdAt: d("2026-10-03") },
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/enquiries"), buyerToken).expect(200);
+
+    expect(prismaMock.enquiryMessage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { enquiryId: true, senderId: true, createdAt: true } })
+    );
+
+    const items = res.body.enquiries;
+    expect(items).toHaveLength(2);
+    expect(items[0].id).toBe("enq1");
+    expect(items[0].unread).toBe(true);
+    expect(items[0].unreadCount).toBe(1);
+    expect(items[1].id).toBe("enq2");
+    expect(items[1].unread).toBe(false);
+    expect(items[1].unreadCount).toBe(0);
+  });
+});
+
+describe("marketplace mark-read side effects (REQ-NOTIF-3)", () => {
+  it("GET /enquiries/:id upserts the viewer's read state after the participant check", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce({
+      id: "enq1",
+      listingId: "listing1",
+      buyerId: "buyer1",
+      sellerId: "seller1",
+      requestedQuantity: 2,
+      status: "ACTIVE",
+      createdAt: new Date("2026-10-01"),
+      updatedAt: new Date("2026-10-01"),
+      listing: { id: "listing1", card: { id: "card1" }, photos: [] },
+      buyer: { id: "buyer1", username: "buyer" },
+      seller: { id: "seller1", username: "seller" },
+      messages: [],
+    });
+
+    await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);
+
+    expect(prismaMock.enquiryReadState.upsert).toHaveBeenCalledWith({
+      where: { enquiryId_userId: { enquiryId: "enq1", userId: "buyer1" } },
+      create: { enquiryId: "enq1", userId: "buyer1" },
+      update: { lastReadAt: expect.any(Date) },
+    });
+  });
+
+  it("GET /enquiries/:id does NOT touch read state for a non-participant (403)", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiry({ buyerId: "buyer1", sellerId: "seller1" })
+    );
+    await auth(request(app).get("/api/marketplace/enquiries/enq1"), otherToken).expect(403);
+    expect(prismaMock.enquiryReadState.upsert).not.toHaveBeenCalled();
+  });
+
+  it("POST /listings/:id/enquire upserts the buyer's read state in a transaction", async () => {
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(listing({ sellerId: "seller1", quantity: 3, status: "ACTIVE" }));
+    prismaMock.marketplaceEnquiry.upsert.mockResolvedValueOnce({ id: "enq1" });
+
+    await auth(
+      request(app).post("/api/marketplace/listings/listing1/enquire").send({ requestedQuantity: 2 }),
+      buyerToken
+    ).expect(201);
+
+    expect(prismaMock.enquiryReadState.upsert).toHaveBeenCalledWith({
+      where: { enquiryId_userId: { enquiryId: "enq1", userId: "buyer1" } },
+      create: { enquiryId: "enq1", userId: "buyer1" },
+      update: { lastReadAt: expect.any(Date) },
+    });
+  });
+
+  it("POST /enquiries/:id/messages creates the message and upserts the sender's read state", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValueOnce(
+      enquiry({ buyerId: "buyer1", sellerId: "seller1", status: "ACTIVE" })
+    );
+    prismaMock.enquiryMessage.create.mockResolvedValueOnce({
+      id: "msg1",
+      enquiryId: "enq1",
+      senderId: "buyer1",
+      body: "hello",
+    });
+
+    const res = await auth(
+      request(app).post("/api/marketplace/enquiries/enq1/messages").send({ body: "hello" }),
+      buyerToken
+    ).expect(201);
+
+    expect(res.body.id).toBe("msg1");
+    expect(prismaMock.enquiryMessage.create).toHaveBeenCalledWith({
+      data: { enquiryId: "enq1", senderId: "buyer1", body: "hello" },
+    });
+    expect(prismaMock.enquiryReadState.upsert).toHaveBeenCalledWith({
+      where: { enquiryId_userId: { enquiryId: "enq1", userId: "buyer1" } },
+      create: { enquiryId: "enq1", userId: "buyer1" },
+      update: { lastReadAt: expect.any(Date) },
+    });
   });
 });
