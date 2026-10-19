@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
 import MarketplaceChatThreadPage from "../pages/marketplace/MarketplaceChatThreadPage";
 
-const { getEnquiryMock, postMessageMock, markSoldMock } = vi.hoisted(() => ({
+const { getEnquiryMock, postMessageMock, markSoldMock, confirmMock } = vi.hoisted(() => ({
   getEnquiryMock: vi.fn(),
   postMessageMock: vi.fn(),
   markSoldMock: vi.fn(),
+  confirmMock: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({
@@ -16,6 +17,7 @@ vi.mock("../services/api", () => ({
     getEnquiry: getEnquiryMock,
     postMessage: postMessageMock,
     markSold: markSoldMock,
+    confirm: confirmMock,
   },
 }));
 
@@ -83,8 +85,8 @@ function enquiryFixture(status = "ACTIVE") {
   };
 }
 
-function renderThread(currentUserId: string, messages: unknown[]) {
-  getEnquiryMock.mockResolvedValue({ enquiry: enquiryFixture(), messages });
+function renderThread(currentUserId: string, messages: unknown[], transactions: unknown[] = []) {
+  getEnquiryMock.mockResolvedValue({ enquiry: enquiryFixture(), messages, transactions });
   return render(
     <MemoryRouter initialEntries={["/marketplace/chat/enq_1"]}>
       <Routes>
@@ -99,6 +101,7 @@ describe("MarketplaceChatThreadPage", () => {
     getEnquiryMock.mockReset();
     postMessageMock.mockReset();
     markSoldMock.mockReset();
+    confirmMock.mockReset();
   });
 
   it("renders plain-text messages in chronological order (AC-13.2)", async () => {
@@ -136,6 +139,50 @@ describe("MarketplaceChatThreadPage", () => {
 
     expect(screen.getByRole("dialog", { name: "Mark as sold" })).toBeInTheDocument();
     expect(screen.getByLabelText("Quantity")).toHaveValue(2);
+  });
+
+  it("renders SYSTEM messages as inline events, not bubbles", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    renderThread("buyer_1", [
+      { id: "m1", enquiryId: "enq_1", senderId: "seller_1", kind: "SYSTEM", body: "Seller marked 2 as sold — awaiting buyer confirmation.", createdAt: "2026-10-18T00:00:00.000Z" },
+    ]);
+
+    expect(await screen.findByTestId("system-message")).toHaveTextContent(
+      "Seller marked 2 as sold — awaiting buyer confirmation."
+    );
+    expect(screen.queryByTestId("chat-bubble")).not.toBeInTheDocument();
+  });
+
+  it("shows the buyer a confirm-receipt card for a pending transaction", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    renderThread("buyer_1", [], [
+      { id: "tx1", status: "PENDING_CONFIRMATION", quantity: 2, soldAt: "2026-10-18T00:00:00.000Z", confirmedAt: null },
+    ]);
+
+    expect(await screen.findByText("Seller marked 2 as sold")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm receipt" })).toBeInTheDocument();
+  });
+
+  it("hides the mark-sold button for the seller once a transaction is open", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    renderThread("seller_1", [], [
+      { id: "tx1", status: "PENDING_CONFIRMATION", quantity: 2, soldAt: "2026-10-18T00:00:00.000Z", confirmedAt: null },
+    ]);
+
+    expect(await screen.findByText("Awaiting buyer confirmation")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark as sold" })).not.toBeInTheDocument();
+  });
+
+  it("confirms receipt from the chat and reloads the thread", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    confirmMock.mockResolvedValue({});
+    renderThread("buyer_1", [], [
+      { id: "tx1", status: "PENDING_CONFIRMATION", quantity: 2, soldAt: "2026-10-18T00:00:00.000Z", confirmedAt: null },
+    ]);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Confirm receipt" }));
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledWith("tx1"));
   });
 
   it("marks an archived thread read-only (D3)", async () => {

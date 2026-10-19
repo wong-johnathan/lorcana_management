@@ -930,6 +930,7 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
         buyer: { select: { id: true, username: true } },
         seller: { select: { id: true, username: true } },
         messages: { orderBy: { createdAt: "asc" } },
+        transactions: { orderBy: { soldAt: "asc" } },
       },
     });
     if (!enquiry) throw new MarketplaceError(404, "Enquiry not found");
@@ -963,8 +964,16 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
         id: message.id,
         enquiryId: message.enquiryId,
         senderId: message.senderId,
+        kind: message.kind,
         body: message.body,
         createdAt: message.createdAt,
+      })),
+      transactions: enquiry.transactions.map((transaction: any) => ({
+        id: transaction.id,
+        status: transaction.status,
+        quantity: transaction.quantity,
+        soldAt: transaction.soldAt,
+        confirmedAt: transaction.confirmedAt,
       })),
     });
   } catch (error) {

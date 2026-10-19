@@ -468,6 +468,7 @@ export interface EnquiryMessage {
   id: string;
   enquiryId: string;
   senderId: string;
+  kind: string;
   body: string;
   createdAt: string;
 }
@@ -551,9 +552,19 @@ export interface MarketplaceEnquiryDetail {
   seller: { id: string; username: string };
 }
 
+/** A transaction embedded in the enquiry thread (status card + buyer confirm). */
+export interface EnquiryTransaction {
+  id: string;
+  status: string;
+  quantity: number;
+  soldAt: string;
+  confirmedAt: string | null;
+}
+
 export interface MarketplaceEnquiryDetailResponse {
   enquiry: MarketplaceEnquiryDetail;
   messages: EnquiryMessage[];
+  transactions: EnquiryTransaction[];
 }
 
 /** POST /marketplace/listings/:id/enquire → { enquiryId }. */

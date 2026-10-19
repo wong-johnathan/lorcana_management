@@ -102,6 +102,55 @@ describe("marketplaceTransitions — markSold", () => {
     expect(lockOrder).toBeLessThan(createOrder);
   });
 
+  it("inserts a SYSTEM thread message so the buyer sees the seller accepted", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValue({
+      id: "enq1",
+      listingId: "listing1",
+      buyerId: "buyer1",
+      sellerId: "seller1",
+      status: "ACTIVE",
+      listing: { cardId: "card1" },
+    });
+    prismaMock.marketplaceListing.findUnique.mockResolvedValue(activeListing({ quantity: 5 }));
+    prismaMock.inventoryEntry.findFirst.mockResolvedValue({ quantity: 10, foilQuantity: 0, holofoilQuantity: 0 });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValue([]);
+    prismaMock.marketplaceListing.findMany.mockResolvedValue([]);
+    prismaMock.marketplaceTransaction.create.mockResolvedValue({ id: "tx1" });
+
+    await markSold("seller1", "enq1", 3);
+
+    expect(prismaMock.enquiryMessage.create).toHaveBeenCalledWith({
+      data: {
+        enquiryId: "enq1",
+        senderId: "seller1",
+        kind: "SYSTEM",
+        body: "Seller marked 3 as sold — awaiting buyer confirmation.",
+      },
+    });
+  });
+
+  it("rejects a second mark-sold on the same enquiry (idempotent)", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValue({
+      id: "enq1",
+      listingId: "listing1",
+      buyerId: "buyer1",
+      sellerId: "seller1",
+      status: "ACTIVE",
+      listing: { cardId: "card1" },
+    });
+    prismaMock.marketplaceTransaction.findFirst.mockResolvedValue({
+      id: "tx1",
+      status: "PENDING_CONFIRMATION",
+    });
+
+    await expect(markSold("seller1", "enq1", 2)).rejects.toMatchObject({
+      status: 409,
+      message: "This enquiry has already been marked sold",
+    });
+    expect(prismaMock.marketplaceTransaction.create).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceListing.update).not.toHaveBeenCalled();
+  });
+
   it("closes the listing when remaining hits 0", async () => {
     prismaMock.marketplaceEnquiry.findUnique.mockResolvedValue({
       id: "enq1",
@@ -339,6 +388,16 @@ describe("marketplaceTransitions — confirmTransfer (REQ-16/17, CAS)", () => {
       where: { userId_cardId: { userId: "buyer1", cardId: "card1" } },
       create: { userId: "buyer1", cardId: "card1", quantity: 2, foilQuantity: 0, holofoilQuantity: 0 },
       update: { quantity: { increment: 2 } },
+    });
+
+    // Inline SYSTEM message so the seller sees the buyer confirmed.
+    expect(prismaMock.enquiryMessage.create).toHaveBeenCalledWith({
+      data: {
+        enquiryId: "enq1",
+        senderId: "buyer1",
+        kind: "SYSTEM",
+        body: "Buyer confirmed receipt — sale complete.",
+      },
     });
 
     // Lock precedes the CAS.
