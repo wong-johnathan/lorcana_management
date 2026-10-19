@@ -210,6 +210,50 @@ describe("FilterBar", () => {
     await waitFor(() => expect(error).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("full mode does not render the Spares only control", async () => {
+    render(<FilterBar filters={{}} onChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "All Colors" })).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Spares only" })).not.toBeInTheDocument();
+  });
+
+  it("picker mode renders the Spares only toggle and emits spares=1 then removes it", async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <FilterBar mode="picker" optionSource={pickerOptions} filters={{}} onChange={onChange} />
+    );
+
+    const toggle = screen.getByRole("button", { name: "Spares only" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText(/Spares only is unavailable/)).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(onChange).toHaveBeenLastCalledWith({ spares: "1" });
+
+    rerender(
+      <FilterBar mode="picker" optionSource={pickerOptions} filters={{ spares: "1" }} onChange={onChange} />
+    );
+    expect(screen.getByRole("button", { name: "Spares only" })).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Spares only" }));
+    expect(onChange).toHaveBeenLastCalledWith({});
+  });
+
+  it("picker mode counts an active spares filter toward Clear all and resets it", async () => {
+    const onChange = vi.fn();
+    render(
+      <FilterBar
+        mode="picker"
+        optionSource={pickerOptions}
+        filters={{ spares: "1", search: "elsa" }}
+        onChange={onChange}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /clear all \(2\)/i })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /clear all/i }));
+    expect(onChange).toHaveBeenLastCalledWith({});
+  });
 });
 
 describe("Layout", () => {

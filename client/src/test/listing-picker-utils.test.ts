@@ -209,6 +209,81 @@ describe("filterOwnedInventory", () => {
   });
 });
 
+describe("filterOwnedInventory spares gate (REQ-SPARE-2/3)", () => {
+  const spare = makeCard({ id: "spare", name: "Spare Card", color: "Amber" });
+  const exact = makeCard({ id: "exact", name: "Exact Card", color: "Amber" });
+  const below = makeCard({ id: "below", name: "Below Card", color: "Amber" });
+
+  const entries = [
+    makeEntry(spare, { quantity: 6 }), // surplus 2 under 4/1/1
+    makeEntry(exact, { quantity: 4 }), // surplus 0
+    makeEntry(below, { quantity: 2 }), // surplus 0
+  ];
+
+  it("returns only entries with surplus > 0 when spares is ON", () => {
+    const surplus = new Map<string, number>([
+      ["spare", 2],
+      ["exact", 0],
+      ["below", 0],
+    ]);
+    const result = filterOwnedInventory(entries, { spares: "1" }, surplus);
+    expect(result.map((e) => e.card.id)).toEqual(["spare"]);
+  });
+
+  it("hides an entry whose surplus is exactly 0", () => {
+    const surplus = new Map<string, number>([["exact", 0]]);
+    expect(filterOwnedInventory([makeEntry(exact)], { spares: "1" }, surplus)).toHaveLength(0);
+  });
+
+  it("honours the PASSED map rather than recomputing surplus", () => {
+    // spare has quantity 6 (surplus 2 under the policy), but the passed map
+    // deliberately says 0 → hidden, proving the gate never recomputes.
+    const surplus = new Map<string, number>([["spare", 0]]);
+    expect(
+      filterOwnedInventory([makeEntry(spare, { quantity: 6 })], { spares: "1" }, surplus)
+    ).toHaveLength(0);
+  });
+
+  it("hides an entry whose cardId is absent from the surplus map", () => {
+    const surplus = new Map<string, number>([["some_other_card", 5]]);
+    expect(filterOwnedInventory([makeEntry(spare)], { spares: "1" }, surplus)).toHaveLength(0);
+  });
+
+  it("ANDs spares with other active filters", () => {
+    const amethystSpare = makeCard({ id: "amethyst", name: "Amethyst Spare", color: "Amethyst" });
+    const surplus = new Map<string, number>([
+      ["spare", 2],
+      ["amethyst", 3],
+    ]);
+    const result = filterOwnedInventory(
+      [makeEntry(spare), makeEntry(amethystSpare, { quantity: 5 })],
+      { spares: "1", color: "Amethyst", search: "amethyst" },
+      surplus
+    );
+    expect(result.map((e) => e.card.id)).toEqual(["amethyst"]);
+  });
+
+  it("returns [] for a combination that matches no surplus card", () => {
+    const surplus = new Map<string, number>([["spare", 2]]);
+    expect(filterOwnedInventory(entries, { spares: "1", search: "nonexistent" }, surplus)).toHaveLength(0);
+  });
+
+  it("leaves OFF behavior unchanged for absent/empty/other spares values and 2-arg calls", () => {
+    expect(filterOwnedInventory(entries, {})).toHaveLength(3);
+    expect(filterOwnedInventory(entries, { color: "Amber" }).map((e) => e.card.id)).toEqual([
+      "spare",
+      "exact",
+      "below",
+    ]);
+    expect(filterOwnedInventory(entries, { spares: "" })).toHaveLength(3);
+    expect(filterOwnedInventory(entries, { spares: "0" })).toHaveLength(3);
+  });
+
+  it("defensively hides all when spares is ON but no surplus map is passed", () => {
+    expect(filterOwnedInventory(entries, { spares: "1" })).toHaveLength(0);
+  });
+});
+
 describe("ownedFilterOptions", () => {
   it("derives unique, sorted options from owned cards only", () => {
     const entries = [

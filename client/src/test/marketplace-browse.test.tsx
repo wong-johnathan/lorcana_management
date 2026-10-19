@@ -138,27 +138,27 @@ describe("MarketplaceListingCard", () => {
     );
   });
 
-  it("opens a lightbox from the card image button and closes it with Escape (AC-POL-13.3)", async () => {
+  it("links the card image to the listing detail without opening a carousel (REQ-LB-5)", async () => {
     render(
       <MemoryRouter>
         <MarketplaceListingCard listing={listing} />
       </MemoryRouter>
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "View Elsa, Snow Queen" }));
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+    const imageLink = screen.getByRole("link", { name: "View Elsa, Snow Queen" });
+    expect(imageLink).toHaveAttribute("href", "/marketplace/listing/listing_1");
+    expect(within(imageLink).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
       "src",
       "/api/card-images/card_elsa"
     );
 
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // No carousel trigger remains: no "View …" button, and clicking opens no dialog.
+    expect(screen.queryByRole("button", { name: "View Elsa, Snow Queen" })).not.toBeInTheDocument();
+    await userEvent.click(imageLink);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("opens a lightbox from the condition photo button and closes it with the × button (AC-POL-13.3)", async () => {
+  it("links the condition photo to the listing detail without opening a carousel (REQ-LB-5)", async () => {
     const withPhoto = {
       ...listing,
       photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1, label: null }],
@@ -169,17 +169,19 @@ describe("MarketplaceListingCard", () => {
       </MemoryRouter>
     );
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
-    );
-
-    const dialog = screen.getByRole("dialog");
+    const imageLink = screen.getByRole("link", {
+      name: "View Elsa, Snow Queen — condition photo",
+    });
+    expect(imageLink).toHaveAttribute("href", "/marketplace/listing/listing_1");
     expect(
-      within(dialog).getByRole("img", { name: "Elsa, Snow Queen — condition photo" })
+      within(imageLink).getByRole("img", { name: "Elsa, Snow Queen — condition photo" })
     ).toHaveAttribute("src", "https://img.example/cond.jpg");
 
-    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(
+      screen.queryByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
+    ).not.toBeInTheDocument();
+    await userEvent.click(imageLink);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("renders the static fallback when the card and photo are absent", () => {

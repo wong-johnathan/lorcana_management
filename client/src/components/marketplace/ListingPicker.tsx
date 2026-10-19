@@ -35,9 +35,11 @@ export default function ListingPicker({
   onSelectCard,
   onCancel,
 }: ListingPickerProps) {
+  const surplus = useMemo(() => surplusByCardId(inventory, policy), [inventory, policy]);
+
   const ownedEntries = useMemo(
-    () => filterOwnedInventory(inventory, filters),
-    [inventory, filters]
+    () => filterOwnedInventory(inventory, filters, surplus),
+    [inventory, filters, surplus]
   );
 
   const cards = useMemo(() => ownedEntries.map((entry) => entry.card), [ownedEntries]);
@@ -58,8 +60,6 @@ export default function ListingPicker({
     }
     return map;
   }, [ownedEntries]);
-
-  const surplus = useMemo(() => surplusByCardId(ownedEntries, policy), [ownedEntries, policy]);
 
   const options = useMemo(() => ownedFilterOptions(inventory), [inventory]);
 
@@ -86,6 +86,7 @@ export default function ListingPicker({
         optionSource={options}
         filters={filters}
         onChange={onFiltersChange}
+        sparesDisabled={policy === null}
       />
 
       {loading ? (
@@ -95,6 +96,10 @@ export default function ListingPicker({
       ) : !hasOwnedCards ? (
         <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">
           You have no cards in your collection. Add cards to your collection to list them for sale.
+        </div>
+      ) : filters.spares === "1" && cards.length === 0 ? (
+        <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">
+          No spare cards found — you don't hold more copies than your keep policy for any matching card.
         </div>
       ) : (
         <CardGrid

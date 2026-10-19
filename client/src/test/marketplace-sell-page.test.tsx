@@ -188,7 +188,7 @@ describe("MarketplaceSellPage", () => {
     expect(screen.getByRole("img", { name: "Elsa, Snow Queen" })).toBeInTheDocument();
   });
 
-  it("opens the tile image lightbox for a card without art and closes it (AC-POL-13.4)", async () => {
+  it("renders a non-triggerable placeholder for a no-art, no-photo listing (AC-LB-3.3)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
     inventoryListMock.mockResolvedValue([]);
     getPolicyMock.mockResolvedValue(null);
@@ -197,25 +197,26 @@ describe("MarketplaceSellPage", () => {
 
     render(<MarketplaceSellPage />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "View Elsa, Snow Queen" }));
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+    expect(await screen.findByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
       "src",
       "/lorcana-logo.png"
     );
-
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Non-triggerable: no "View …" button wrapper, and clicking opens no dialog.
+    expect(screen.queryByRole("button", { name: "View Elsa, Snow Queen" })).not.toBeInTheDocument();
   });
 
-  it("opens the tile image lightbox for a card with art and closes it with the × button (AC-POL-13.4)", async () => {
+  it("opens the carousel at index 0 with the full set for a tile with art + photos (AC-LB-6.1)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
     inventoryListMock.mockResolvedValue([]);
     getPolicyMock.mockResolvedValue(null);
     getMyListingsMock.mockResolvedValue({
-      listings: [{ ...activeListing, card: { ...card, imageUrl: "https://img.example/elsa.jpg" } }],
+      listings: [
+        {
+          ...activeListing,
+          card: { ...card, imageUrl: "https://img.example/elsa.jpg" },
+          photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1, label: null }],
+        },
+      ],
     });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
@@ -224,9 +225,17 @@ describe("MarketplaceSellPage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "View Elsa, Snow Queen" }));
 
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("aria-label", "Elsa, Snow Queen · The First Chapter · 1/204");
+    expect(
+      within(dialog).getByRole("img", { name: "Elsa, Snow Queen · The First Chapter · 1/204" })
+    ).toHaveAttribute("src", "/api/card-images/card_1");
+    expect(within(dialog).getByText("1 / 2")).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Next image" }));
+    expect(within(dialog).getByRole("img", { name: "condition photo" })).toHaveAttribute(
       "src",
-      "/api/card-images/card_1"
+      "https://img.example/cond.jpg"
     );
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));

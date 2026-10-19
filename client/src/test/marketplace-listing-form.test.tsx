@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ListingForm from "../components/marketplace/ListingForm";
@@ -842,9 +842,61 @@ describe("ListingForm", () => {
     );
   });
 
-  it("opens the lightbox when a saved photo thumbnail is clicked (REQ-POL-13)", async () => {
+  it("renders pending create-mode files as non-triggerable text rows (AC-LB-7.2)", async () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.upload(
+      screen.getByLabelText("Add photos"),
+      new File(["x"], "a.jpg", { type: "image/jpeg" })
+    );
+
+    // Pending (not-yet-uploaded) files render as a text row (name + KiB) with
+    // no image preview and no carousel trigger — no "View …" button, no dialog.
+    expect(screen.getByText(/a\.jpg/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^View / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens the carousel at the saved photo's index (no card art) when a thumbnail is clicked (AC-LB-7.1)", async () => {
     const withPhoto = {
       ...editListing,
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1, label: "Front" }],
+    };
+    render(
+      <ListingForm
+        mode="edit"
+        listing={withPhoto}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "View Elsa, Snow Queen — condition photo (Front)" })
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-label", "Front");
+    expect(within(dialog).getByRole("img", { name: "Front" })).toHaveAttribute(
+      "src",
+      "https://img.example/p.jpg"
+    );
+    expect(within(dialog).getByText("1 / 1")).toBeInTheDocument();
+  });
+
+  it("opens the carousel at index 1 for a saved photo when the card has art (AC-LB-7.1)", async () => {
+    const withPhoto = {
+      ...editListing,
+      card: { ...card, imageUrl: "https://img.example/art.jpg" },
       photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1, label: null }],
     };
     render(
@@ -860,6 +912,15 @@ describe("ListingForm", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
     );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-label", "condition photo");
+    expect(within(dialog).getByText("2 / 2")).toBeInTheDocument();
+
+    // Previous navigates to the card art (full set = card art + saved photo).
+    await userEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
+    expect(
+      within(dialog).getByRole("img", { name: "Elsa, Snow Queen · The First Chapter · 1/204" })
+    ).toHaveAttribute("src", "/api/card-images/card_1");
   });
 });
