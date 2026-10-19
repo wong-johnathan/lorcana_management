@@ -23,6 +23,7 @@ export interface Card {
   setName: string;
   rarity: string;
   inkCost: number;
+  inkable: boolean;
   strength: number;
   willpower: number;
   lore: number;
@@ -78,6 +79,8 @@ export interface FilterOptions {
   rarities: string[];
   cardTypes: string[];
   types: string[];
+  costs: number[];
+  inkable: string[];
 }
 
 export interface InventoryStats {

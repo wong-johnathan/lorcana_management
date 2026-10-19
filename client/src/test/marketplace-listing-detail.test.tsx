@@ -33,6 +33,7 @@ const card = {
   setName: "The First Chapter",
   rarity: "Enchanted",
   inkCost: 5,
+  inkable: true,
   strength: 3,
   willpower: 3,
   lore: 2,

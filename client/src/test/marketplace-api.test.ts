@@ -59,6 +59,21 @@ describe("marketplace API namespace", () => {
     );
   });
 
+  it("forwards the enhanced filter params (costs/inkable/cardTypes/subtypes)", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) });
+
+    await marketplace.listings({
+      costs: "0,5",
+      inkable: "inkable",
+      cardTypes: "Action,Song",
+      subtypes: "Hero",
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/marketplace/listings?costs=0%2C5&inkable=inkable&cardTypes=Action%2CSong&subtypes=Hero",
+      expect.any(Object)
+    );
+  });
+
   it("covers the F2 authed/transactional write and read endpoints", async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) });
 
