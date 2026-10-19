@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
+import InlineReviewForm from "../../components/marketplace/InlineReviewForm";
 import { marketplace } from "../../services/api";
 import type {
   MarketplaceEnquiryDetail,
@@ -36,6 +37,7 @@ export default function MarketplaceChatThreadPage() {
   const [markSoldOpen, setMarkSoldOpen] = useState(false);
   const [soldQuantity, setSoldQuantity] = useState(1);
   const [soldResult, setSoldResult] = useState<string | null>(null);
+  const [soldTransactionId, setSoldTransactionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -124,9 +126,8 @@ export default function MarketplaceChatThreadPage() {
     try {
       const result = await marketplace.markSold(enquiry.id, soldQuantity);
       setMarkSoldOpen(false);
-      setSoldResult(
-        `Marked ${result.quantity} as sold — a pending transaction was created (${result.transactionId}).`
-      );
+      setSoldTransactionId(result.transactionId);
+      setSoldResult(`Marked ${result.quantity} as sold — a pending transaction was created.`);
       void load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to mark as sold");
@@ -195,7 +196,14 @@ export default function MarketplaceChatThreadPage() {
       {soldResult && (
         <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/40 p-4 text-sm text-emerald-200">
           {soldResult}{" "}
-          <Link to="/marketplace/transactions" className="underline hover:text-emerald-100">
+          <Link
+            to={
+              soldTransactionId
+                ? `/marketplace/transactions/${soldTransactionId}`
+                : "/marketplace/transactions"
+            }
+            className="underline hover:text-emerald-100"
+          >
             View transactions
           </Link>
         </div>
@@ -232,7 +240,7 @@ export default function MarketplaceChatThreadPage() {
                 </p>
               </div>
               <Link
-                to="/marketplace/transactions"
+                to={`/marketplace/transactions/${pendingTransaction.id}`}
                 className="text-sm text-amber-400 hover:text-amber-300"
               >
                 View transactions
@@ -244,7 +252,22 @@ export default function MarketplaceChatThreadPage() {
 
       {!pendingTransaction && completedTransaction && (
         <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/40 p-4 text-sm text-emerald-200">
-          Sale complete — {completedTransaction.quantity} transferred to the buyer.
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>Sale complete — {completedTransaction.quantity} transferred to the buyer.</span>
+            <Link
+              to={`/marketplace/transactions/${completedTransaction.id}`}
+              className="shrink-0 text-sm text-emerald-300 underline hover:text-emerald-100"
+            >
+              View transaction
+            </Link>
+          </div>
+          {completedTransaction.status === "COMPLETED" && (
+            <InlineReviewForm
+              transactionId={completedTransaction.id}
+              revieweeRole={isBuyer ? "seller" : "buyer"}
+              myReview={completedTransaction.myReview ?? null}
+            />
+          )}
         </div>
       )}
 
