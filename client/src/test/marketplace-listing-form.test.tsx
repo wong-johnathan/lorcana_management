@@ -579,4 +579,113 @@ describe("ListingForm", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("PATCHes quantity/priceMinor/currency plus condition and location when unlocked", async () => {
+    updateListingMock.mockResolvedValue(editListing);
+    render(
+      <ListingForm
+        mode="edit"
+        listing={editListing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "15" } });
+    await userEvent.selectOptions(screen.getByLabelText("Currency"), "EUR");
+    await userEvent.selectOptions(screen.getByLabelText("Condition"), "MP");
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Berlin" } });
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(updateListingMock).toHaveBeenCalledTimes(1));
+    expect(updateListingMock).toHaveBeenCalledWith(
+      "listing_1",
+      expect.objectContaining({
+        quantity: 3,
+        priceMinor: 1500,
+        currency: "EUR",
+        condition: "MP",
+        location: "Berlin",
+      })
+    );
+  });
+
+  it("includes condition and location in the create POST body (REQ-UX-6)", async () => {
+    createListingMock.mockResolvedValue(editListing);
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "12.50" } });
+    await userEvent.selectOptions(screen.getByLabelText("Condition"), "LP");
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "  Paris, FR  " } });
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+
+    await waitFor(() => expect(createListingMock).toHaveBeenCalledTimes(1));
+    expect(createListingMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        condition: "LP",
+        location: "Paris, FR",
+        note: null,
+      })
+    );
+  });
+
+  it("surfaces a photo-remove error and keeps the photo", async () => {
+    deletePhotoMock.mockRejectedValue(new Error("Cannot remove photo"));
+    const withPhoto = {
+      ...editListing,
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 }],
+    };
+    render(
+      <ListingForm
+        mode="edit"
+        listing={withPhoto}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByText("Cannot remove photo")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
+  });
+
+  it("removes one pending file while keeping the other in create mode", async () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    const first = new File(["a"], "a.jpg", { type: "image/jpeg" });
+    const second = new File(["b"], "b.jpg", { type: "image/jpeg" });
+    await userEvent.upload(screen.getByLabelText("Add photos"), [first, second]);
+
+    expect(screen.getByText(/a\.jpg/)).toBeInTheDocument();
+    expect(screen.getByText(/b\.jpg/)).toBeInTheDocument();
+
+    const removeButtons = screen.getAllByRole("button", { name: "Remove" });
+    expect(removeButtons).toHaveLength(2);
+    await userEvent.click(removeButtons[0]);
+
+    expect(screen.queryByText(/a\.jpg/)).not.toBeInTheDocument();
+    expect(screen.getByText(/b\.jpg/)).toBeInTheDocument();
+  });
 });

@@ -100,6 +100,55 @@ const closedListing: MarketplaceListing = {
   photos: [],
 };
 
+const activeListing: MarketplaceListing = {
+  ...closedListing,
+  status: "ACTIVE",
+  quantity: 2,
+};
+
+const pendingTransaction = {
+  id: "tx_1",
+  enquiryId: "enq_1",
+  listingId: "listing_1",
+  buyerId: "buyer_1",
+  sellerId: "seller_1",
+  cardId: "card_1",
+  variant: "normal",
+  quantity: 2,
+  priceMinor: 2500,
+  currency: "USD",
+  status: "PENDING_CONFIRMATION",
+  completedCause: null,
+  cancelledBy: null,
+  soldAt: "2026-10-18T00:00:00.000Z",
+  confirmedAt: null,
+  createdAt: "2026-10-18T00:00:00.000Z",
+  updatedAt: "2026-10-18T00:00:00.000Z",
+  buyer: { id: "buyer_1", username: "bob" },
+  seller: { id: "seller_1", username: "alice" },
+  card: { id: "card_1", name: "Elsa, Snow Queen", setName: "The First Chapter" },
+};
+
+const secondCard = {
+  ...card,
+  id: "card_2",
+  name: "Mickey Mouse, Brave Little Tailor",
+  subtitle: "Brave Little Tailor",
+  setCode: "ROTF",
+  setName: "Rise of the Floodborn",
+  foilTypes: ["Lava"],
+};
+
+const secondInventoryEntry: InventoryEntry = {
+  id: "inv_2",
+  userId: "seller_1",
+  cardId: "card_2",
+  quantity: 0,
+  foilQuantity: 0,
+  holofoilQuantity: 2,
+  card: secondCard,
+};
+
 describe("MarketplaceSellPage", () => {
   beforeEach(() => {
     inventoryListMock.mockReset();
@@ -187,5 +236,73 @@ describe("MarketplaceSellPage", () => {
     // The form closes (create button returns) and listings reload.
     expect(await screen.findByRole("button", { name: "Create listing" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Variant")).not.toBeInTheDocument();
+  });
+
+  it("locks an ACTIVE listing with a PENDING_CONFIRMATION transaction (REQ-8)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([inventoryEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+    getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
+    getTransactionsMock.mockResolvedValue({ transactions: [pendingTransaction] });
+
+    render(<MarketplaceSellPage />);
+
+    expect(await screen.findByText("Pending sale — price/quantity locked")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByLabelText(/Quantity/)).toBeDisabled();
+    expect(screen.getByLabelText("Currency")).toBeDisabled();
+    expect(screen.getByLabelText("Price")).toBeDisabled();
+  });
+
+  it("cancels from the Step 2 form back to the listings list", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([inventoryEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+    getMyListingsMock.mockResolvedValue({ listings: [] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    render(<MarketplaceSellPage />);
+
+    await screen.findByText("You have no listings yet. Create one to start selling.");
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+    await screen.findByText("Choose a card to list");
+    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
+    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("button", { name: "Create listing" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Variant")).not.toBeInTheDocument();
+    expect(screen.queryByText("Choose a card to list")).not.toBeInTheDocument();
+  });
+
+  it("locks the newly-picked card's name/set and default variant after Back (REQ-UX-9)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([inventoryEntry, secondInventoryEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+    getMyListingsMock.mockResolvedValue({ listings: [] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    render(<MarketplaceSellPage />);
+
+    await screen.findByText("You have no listings yet. Create one to start selling.");
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+    await screen.findByText("Choose a card to list");
+
+    // Pick Elsa (normal default variant).
+    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
+    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
+    expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
+    expect(screen.getByLabelText("Variant")).toHaveValue("normal");
+
+    // Back, then pick a DIFFERENT card (holofoil-only → default variant holofoil).
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    await screen.findByText("Choose a card to list");
+    await userEvent.click(screen.getByRole("button", { name: /Mickey Mouse, Brave Little Tailor/ }));
+
+    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
+    expect(screen.getByText("Mickey Mouse, Brave Little Tailor")).toBeInTheDocument();
+    expect(screen.getByText("Rise of the Floodborn")).toBeInTheDocument();
+    expect(screen.getByLabelText("Variant")).toHaveValue("holofoil");
   });
 });
