@@ -50,10 +50,34 @@ describe("ImageLightbox", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it("does not close when the image inside the dialog is clicked (REQ-POL-13 stopPropagation)", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+
+    // Clicking the image must stop propagation so the backdrop onClick (onClose)
+    // never fires — contrast with the backdrop-click-closes case above.
+    fireEvent.click(screen.getByRole("img", { name: "Elsa, Snow Queen" }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen" })).toBeInTheDocument();
+  });
+
   it("closes on Escape", async () => {
     render(<Harness />);
     await userEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("stays open when a non-Escape key is pressed", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+
+    await userEvent.keyboard("{a}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // Still dismisses on Escape afterwards.
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });

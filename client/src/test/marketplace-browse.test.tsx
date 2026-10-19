@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -136,6 +136,50 @@ describe("MarketplaceListingCard", () => {
       "src",
       "https://img.example/cond.jpg"
     );
+  });
+
+  it("opens a lightbox from the card image button and closes it with Escape (AC-POL-13.3)", async () => {
+    render(
+      <MemoryRouter>
+        <MarketplaceListingCard listing={listing} />
+      </MemoryRouter>
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "View Elsa, Snow Queen" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+      "src",
+      "/api/card-images/card_elsa"
+    );
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("opens a lightbox from the condition photo button and closes it with the × button (AC-POL-13.3)", async () => {
+    const withPhoto = {
+      ...listing,
+      photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1, label: null }],
+    };
+    render(
+      <MemoryRouter>
+        <MarketplaceListingCard listing={withPhoto} />
+      </MemoryRouter>
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByRole("img", { name: "Elsa, Snow Queen — condition photo" })
+    ).toHaveAttribute("src", "https://img.example/cond.jpg");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("renders the static fallback when the card and photo are absent", () => {
