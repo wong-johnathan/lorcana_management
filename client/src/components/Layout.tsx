@@ -133,7 +133,7 @@ export default function Layout() {
   ));
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
+    <div className="flex app-frame flex-col overflow-hidden">
       <header className="shrink-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
         <Link to="/" className="text-xl font-bold text-amber-400 hover:text-amber-300 transition-colors">Lorcana Inventory</Link>
 

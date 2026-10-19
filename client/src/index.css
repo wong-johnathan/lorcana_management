@@ -7,3 +7,11 @@
     @apply bg-gray-950 text-gray-100;
   }
 }
+
+/* App-shell full-height frame with a vh fallback for browsers/WebViews that
+   don't support the dvh unit. Without the fallback the frame collapses to
+   auto height and the mobile bottom nav scrolls away instead of staying fixed. */
+.app-frame {
+  height: 100vh;
+  height: 100dvh;
+}
