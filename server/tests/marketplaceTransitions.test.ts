@@ -560,3 +560,154 @@ describe("marketplaceTransitions — MarketplaceError", () => {
     expect(err).toBeInstanceOf(Error);
   });
 });
+
+describe("marketplaceTransitions — remaining guard branches", () => {
+  beforeEach(() => {
+    resetPrismaMock();
+    prismaMock.$queryRaw.mockResolvedValue([{ id: "entry1" }]);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+
+  it("markSold: 404 when the enquiry does not exist", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValue(null);
+
+    await expect(markSold("seller1", "enq1", 1)).rejects.toMatchObject({
+      status: 404,
+      message: "Enquiry not found",
+    });
+  });
+
+  it("markSold: 404 when the listing vanished after the lock", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValue({
+      id: "enq1",
+      listingId: "listing1",
+      buyerId: "buyer1",
+      sellerId: "seller1",
+      status: "ACTIVE",
+      listing: { cardId: "card1" },
+    });
+    prismaMock.marketplaceListing.findUnique.mockResolvedValue(null);
+
+    await expect(markSold("seller1", "enq1", 1)).rejects.toMatchObject({
+      status: 404,
+      message: "Listing not found",
+    });
+  });
+
+  it("markSold: 409 when the listing is no longer ACTIVE", async () => {
+    prismaMock.marketplaceEnquiry.findUnique.mockResolvedValue({
+      id: "enq1",
+      listingId: "listing1",
+      buyerId: "buyer1",
+      sellerId: "seller1",
+      status: "ACTIVE",
+      listing: { cardId: "card1" },
+    });
+    prismaMock.marketplaceListing.findUnique.mockResolvedValue(
+      activeListing({ status: "CLOSED" })
+    );
+
+    await expect(markSold("seller1", "enq1", 1)).rejects.toMatchObject({
+      status: 409,
+      message: "Listing is not active",
+    });
+  });
+
+  it("adjustQuantity: 409 when q' < 1", async () => {
+    await expect(adjustQuantity("tx1", 0)).rejects.toMatchObject({
+      status: 409,
+      message: "Quantity must be at least 1",
+    });
+  });
+
+  it("adjustQuantity: 404 when the transaction does not exist", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValue(null);
+
+    await expect(adjustQuantity("tx1", 2)).rejects.toMatchObject({
+      status: 404,
+      message: "Transaction not found",
+    });
+  });
+
+  it("adjustQuantity: 404 when the listing does not exist", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValue(pendingTx({ quantity: 2 }));
+    prismaMock.marketplaceListing.findUnique.mockResolvedValue(null);
+
+    await expect(adjustQuantity("tx1", 2)).rejects.toMatchObject({
+      status: 404,
+      message: "Listing not found",
+    });
+  });
+
+  it("adjustQuantity: closes the listing when the adjustment drains it to 0", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValue(pendingTx({ quantity: 2 }));
+    prismaMock.marketplaceListing.findUnique.mockResolvedValue(activeListing({ quantity: 3 }));
+    prismaMock.inventoryEntry.findFirst.mockResolvedValue({ quantity: 10, foilQuantity: 0, holofoilQuantity: 0 });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValue([{ quantity: 2 }]);
+    prismaMock.marketplaceListing.findMany.mockResolvedValue([]);
+    prismaMock.marketplaceListing.update.mockResolvedValue({});
+    prismaMock.marketplaceTransaction.update.mockResolvedValue({});
+
+    // delta = 5 − 2 = 3; listing 3 − 3 = 0 → CLOSED.
+    await adjustQuantity("tx1", 5);
+
+    expect(prismaMock.marketplaceListing.update).toHaveBeenCalledWith({
+      where: { id: "listing1" },
+      data: { quantity: 0, status: "CLOSED" },
+    });
+  });
+
+  it("confirmTransfer: maps a holofoil variant to the holofoilQuantity column", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValue(pendingTx({ variant: "holofoil", quantity: 2 }));
+    prismaMock.marketplaceTransaction.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.inventoryEntry.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.inventoryEntry.upsert.mockResolvedValue({});
+
+    await confirmTransfer("tx1", "BUYER_CONFIRM");
+
+    expect(prismaMock.inventoryEntry.updateMany).toHaveBeenCalledWith({
+      where: { userId: "seller1", cardId: "card1", holofoilQuantity: { gte: 2 } },
+      data: { holofoilQuantity: { decrement: 2 } },
+    });
+    expect(prismaMock.inventoryEntry.upsert).toHaveBeenCalledWith({
+      where: { userId_cardId: { userId: "buyer1", cardId: "card1" } },
+      create: { userId: "buyer1", cardId: "card1", quantity: 0, foilQuantity: 0, holofoilQuantity: 2 },
+      update: { holofoilQuantity: { increment: 2 } },
+    });
+  });
+
+  it("cancelTransaction: 404 when the transaction does not exist", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValue(null);
+
+    await expect(cancelTransaction("tx1", "BUYER")).rejects.toMatchObject({
+      status: 404,
+      message: "Transaction not found",
+    });
+  });
+
+  it("autoTransferDue: stringifies non-Error failures", async () => {
+    const now = new Date("2026-11-15T00:00:00Z");
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValue([{ id: "tx1" }]);
+    prismaMock.marketplaceTransaction.findUnique.mockRejectedValue("boom");
+
+    const result = await autoTransferDue(now);
+
+    expect(result.failed).toBe(1);
+    expect(result.failures).toEqual([{ transactionId: "tx1", error: "boom" }]);
+  });
+
+  it("disableUser: does not double-count an already-cancelled pending transaction", async () => {
+    prismaMock.user.update.mockResolvedValue({ id: "user1" });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValue([
+      { id: "tx1", sellerId: "user1", cardId: "card1" },
+    ]);
+    // The CAS finds the row already CANCELLED, so no release is needed.
+    prismaMock.marketplaceTransaction.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await disableUser("user1");
+
+    expect(result).toEqual({ userId: "user1", cancelled: 0 });
+    expect(prismaMock.marketplaceListing.update).not.toHaveBeenCalled();
+  });
+});
