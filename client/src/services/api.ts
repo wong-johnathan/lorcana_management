@@ -30,6 +30,7 @@ import type {
   UserReference,
   MarketplaceReport,
   MarketplaceEnquiriesResponse,
+  MarketplaceUnreadCountResponse,
   MarketplaceEnquiryDetailResponse,
   MarketplaceEnquireResponse,
   MarketplacePhotoUpload,
@@ -300,6 +301,10 @@ export const marketplace = {
 
   /** GET /marketplace/enquiries — my threads (buyer or seller). */
   getEnquiries: () => request<MarketplaceEnquiriesResponse>("/marketplace/enquiries"),
+
+  /** GET /marketplace/enquiries/unread-count — unread-thread count for the nav badge. */
+  getUnreadCount: () =>
+    request<MarketplaceUnreadCountResponse>("/marketplace/enquiries/unread-count"),
 
   /** GET /marketplace/enquiries/:id — thread + messages (buyer/seller only). */
   getEnquiry: (id: string) =>

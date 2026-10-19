@@ -114,6 +114,13 @@ export const prismaMock = {
     deleteMany: vi.fn(),
     count: vi.fn(),
   },
+  enquiryReadState: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    upsert: vi.fn(),
+    create: vi.fn(),
+    deleteMany: vi.fn(),
+  },
   marketplaceTransaction: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),

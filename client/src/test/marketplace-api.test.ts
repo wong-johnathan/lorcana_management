@@ -226,6 +226,18 @@ describe("marketplace API namespace", () => {
     );
   });
 
+  it("calls the unread-count endpoint", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ count: 3 }) });
+
+    const result = await marketplace.getUnreadCount();
+
+    expect(result).toEqual({ count: 3 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/marketplace/enquiries/unread-count",
+      expect.any(Object)
+    );
+  });
+
   it("surfaces a non-json error body without crashing", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new Error("bad json"); } });
     await expect(marketplace.getEnquiries()).rejects.toThrow("Request failed: 500");

@@ -41,6 +41,7 @@ export default function MarketplaceChatThreadPage() {
       setEnquiry(response.enquiry);
       setMessages(response.messages);
       setSoldQuantity(response.enquiry.requestedQuantity);
+      window.dispatchEvent(new CustomEvent("unread:refresh"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load conversation");
     } finally {
@@ -97,6 +98,7 @@ export default function MarketplaceChatThreadPage() {
       const message = await marketplace.postMessage(enquiry.id, body.trim());
       setMessages((prev) => [...prev, message]);
       setBody("");
+      window.dispatchEvent(new CustomEvent("unread:refresh"));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to send message");
     } finally {
