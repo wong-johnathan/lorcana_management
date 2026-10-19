@@ -12,6 +12,8 @@ interface FilterBarProps {
   mode?: "full" | "picker";
   /** When provided, used as the option set and `cardsApi.filters()` is skipped. */
   optionSource?: FilterOptions;
+  /** Disable the "Spares only" toggle (REQ-SPARE-4): true when keep policy is null. */
+  sparesDisabled?: boolean;
 }
 
 export default function FilterBar({
@@ -20,6 +22,7 @@ export default function FilterBar({
   showOwnership = false,
   mode = "full",
   optionSource,
+  sparesDisabled = false,
 }: FilterBarProps) {
   const [options, setOptions] = useState<FilterOptions | null>(null);
   const [rarityOpen, setRarityOpen] = useState(false);
@@ -102,6 +105,7 @@ export default function FilterBar({
 
   const resolvedOptions = optionSource ?? options;
   const isPicker = mode === "picker";
+  const sparesOn = filters.spares === "1";
 
   if (!resolvedOptions) return null;
 
@@ -150,6 +154,26 @@ export default function FilterBar({
             onToggle={toggleCost}
           />
           <TriStateToggle value={inkableValue} onChange={(value) => update("inkable", value)} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={sparesOn}
+              disabled={sparesDisabled}
+              onClick={() => update("spares", sparesOn ? "" : "1")}
+              className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md border border-gray-700 focus:outline-none focus:border-amber-500 ${
+                sparesOn
+                  ? "bg-amber-500 text-gray-950 font-semibold"
+                  : "bg-gray-800 text-gray-100 hover:bg-gray-700"
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              Spares only
+            </button>
+            {sparesDisabled && (
+              <span className="text-xs text-gray-500">
+                Spares only is unavailable — your keep policy couldn't be loaded.
+              </span>
+            )}
+          </div>
           <SearchableMultiSelect
             label="Types"
             options={resolvedOptions.cardTypes}

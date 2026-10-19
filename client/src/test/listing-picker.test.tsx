@@ -255,4 +255,114 @@ describe("ListingPicker", () => {
 
     expect(screen.getByText("No cards found.")).toBeInTheDocument();
   });
+
+  it("renders a Spares only toggle that defaults OFF and emits spares=1 then removes it", async () => {
+    const onFiltersChange = vi.fn();
+    const props = {
+      inventory: [makeEntry(elsa, { quantity: 6 })],
+      policy,
+      loading: false,
+      onFiltersChange,
+      onSelectCard: vi.fn(),
+      onCancel: vi.fn(),
+    };
+
+    const { rerender } = render(<ListingPicker {...props} filters={{}} />);
+    const toggle = screen.getByRole("button", { name: "Spares only" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).not.toBeDisabled();
+
+    await userEvent.click(toggle);
+    expect(onFiltersChange).toHaveBeenLastCalledWith({ spares: "1" });
+
+    rerender(<ListingPicker {...props} filters={{ spares: "1" }} />);
+    expect(screen.getByRole("button", { name: "Spares only" })).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Spares only" }));
+    expect(onFiltersChange).toHaveBeenLastCalledWith({});
+  });
+
+  it("disables the Spares only toggle with a hint when policy is null", async () => {
+    const onFiltersChange = vi.fn();
+    render(
+      <ListingPicker
+        inventory={[makeEntry(elsa, { quantity: 6 })]}
+        policy={null}
+        loading={false}
+        filters={{}}
+        onFiltersChange={onFiltersChange}
+        onSelectCard={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    const toggle = screen.getByRole("button", { name: "Spares only" });
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText(/Spares only is unavailable/)).toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(onFiltersChange).not.toHaveBeenCalled();
+  });
+
+  it("toggling Spares only ON narrows the grid to surplus cards and keeps the badge", () => {
+    const spareElsa = makeCard({ id: "card_spare", name: "Spare Elsa" });
+    const keepElsa = makeCard({ id: "card_keep", name: "Keep Elsa" });
+    const inventory = [
+      makeEntry(spareElsa, { quantity: 6 }), // surplus 2
+      makeEntry(keepElsa, { quantity: 2 }), // surplus 0
+    ];
+    const props = {
+      inventory,
+      policy,
+      loading: false,
+      onFiltersChange: vi.fn(),
+      onSelectCard: vi.fn(),
+      onCancel: vi.fn(),
+    };
+
+    const { rerender } = render(<ListingPicker {...props} filters={{}} />);
+    expect(screen.getByText("Spare Elsa")).toBeInTheDocument();
+    expect(screen.getByText("Keep Elsa")).toBeInTheDocument();
+    expect(screen.getByText("2 surplus")).toBeInTheDocument();
+
+    rerender(<ListingPicker {...props} filters={{ spares: "1" }} />);
+    expect(screen.getByText("Spare Elsa")).toBeInTheDocument();
+    expect(screen.queryByText("Keep Elsa")).not.toBeInTheDocument();
+    expect(screen.getByText("2 surplus")).toBeInTheDocument();
+  });
+
+  it("shows the dedicated no-spares message when Spares only is ON and no card has surplus", () => {
+    render(
+      <ListingPicker
+        inventory={[makeEntry(elsa, { quantity: 2 })]}
+        policy={policy}
+        loading={false}
+        filters={{ spares: "1" }}
+        onFiltersChange={vi.fn()}
+        onSelectCard={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/No spare cards found/)).toBeInTheDocument();
+    expect(screen.queryByText("No cards found.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the generic No cards found. state when Spares only is OFF and filters match nothing", () => {
+    render(
+      <ListingPicker
+        inventory={[makeEntry(elsa, { quantity: 2 })]}
+        policy={policy}
+        loading={false}
+        filters={{ search: "nonexistent" }}
+        onFiltersChange={vi.fn()}
+        onSelectCard={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("No cards found.")).toBeInTheDocument();
+    expect(screen.queryByText(/No spare cards found/)).not.toBeInTheDocument();
+  });
 });

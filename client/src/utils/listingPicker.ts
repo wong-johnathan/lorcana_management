@@ -38,7 +38,8 @@ export function numericSetCode(setCode: string): number {
  */
 export function filterOwnedInventory(
   entries: InventoryEntry[],
-  filters: Record<string, string>
+  filters: Record<string, string>,
+  surplus?: Map<string, number>
 ): InventoryEntry[] {
   const search = (filters.search ?? "").trim().toLowerCase();
   const colors = splitFilter(filters.color);
@@ -81,6 +82,11 @@ export function filterOwnedInventory(
     if (subtypes.length > 0) {
       const cardTypeList = card.types ?? [];
       if (!subtypes.some((subtype) => cardTypeList.includes(subtype))) return false;
+    }
+
+    // REQ-SPARE-2/3 — "Spares only" gate (ANDed with everything above).
+    if (filters.spares === "1") {
+      if ((surplus?.get(entry.cardId) ?? 0) <= 0) return false;
     }
 
     return true;
