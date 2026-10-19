@@ -186,4 +186,19 @@ describe("MarketplaceListingPage", () => {
       })
     ).toHaveAttribute("src", "/api/card-images/card_elsa");
   });
+
+  it("renders a non-triggerable placeholder for a listing with no art and no photos (AC-LB-3.3)", async () => {
+    listingMock.mockResolvedValue({
+      ...listing,
+      card: { ...card, imageUrl: "" },
+      photos: [],
+      pendingQuantity: 0,
+    });
+    renderPage();
+
+    // Empty set → "No condition photos" placeholder only; nothing opens a carousel.
+    expect(await screen.findByText("No condition photos")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^View / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });

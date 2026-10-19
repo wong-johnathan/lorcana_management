@@ -842,6 +842,29 @@ describe("ListingForm", () => {
     );
   });
 
+  it("renders pending create-mode files as non-triggerable text rows (AC-LB-7.2)", async () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.upload(
+      screen.getByLabelText("Add photos"),
+      new File(["x"], "a.jpg", { type: "image/jpeg" })
+    );
+
+    // Pending (not-yet-uploaded) files render as a text row (name + KiB) with
+    // no image preview and no carousel trigger — no "View …" button, no dialog.
+    expect(screen.getByText(/a\.jpg/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^View / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("opens the carousel at the saved photo's index (no card art) when a thumbnail is clicked (AC-LB-7.1)", async () => {
     const withPhoto = {
       ...editListing,
