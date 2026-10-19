@@ -92,6 +92,52 @@ describe("FilterBar", () => {
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ sort: "price_asc" }));
   });
 
+  it("picker mode hides subtype/cardType/analyzed/sort/ownership and keeps search+color/set/rarity", () => {
+    const pickerOptions = {
+      colors: ["Amber"],
+      types: ["Hero"],
+      sets: ["The First Chapter"],
+      rarities: ["Legendary"],
+      cardTypes: ["Character"],
+    };
+    render(
+      <FilterBar
+        mode="picker"
+        optionSource={pickerOptions}
+        filters={{}}
+        onChange={vi.fn()}
+        showOwnership
+      />
+    );
+
+    expect(screen.getByPlaceholderText("Search by name...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Colors" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Sets" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Rarities" })).toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: "All Types" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Card Type")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI Analysis")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sort: Default")).not.toBeInTheDocument();
+    expect(screen.queryByText("All Cards")).not.toBeInTheDocument();
+    expect(cards.filters).not.toHaveBeenCalled();
+  });
+
+  it("uses optionSource without calling cardsApi.filters", () => {
+    const optionSource = {
+      colors: ["Amber"],
+      types: [],
+      sets: ["Set X"],
+      rarities: ["Rare"],
+      cardTypes: [],
+    };
+    render(<FilterBar mode="picker" optionSource={optionSource} filters={{}} onChange={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "All Sets" })).toBeInTheDocument();
+    expect(cards.filters).not.toHaveBeenCalled();
+  });
+
   it("renders nothing and logs when filter loading fails", async () => {
     vi.mocked(cards.filters).mockRejectedValueOnce(new Error("offline"));
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);

@@ -21,6 +21,10 @@ interface CardGridProps {
   onQuantityChange?: (card: Card, variant: InventoryVariant, delta: 1 | -1) => void;
   updatingQuantityKeys?: Set<string>;
   priceContext?: CardGridPriceContext;
+  /** Render card.setName in the tile footer (listing picker, REQ-UX-3). */
+  showSetName?: boolean;
+  /** Total surplus per card (base keep policy) → top-left badge when > 0. */
+  surplusByCardId?: Map<string, number>;
 }
 
 const COLOR_CLASSES: Record<string, string> = {
@@ -111,6 +115,8 @@ export default function CardGrid({
   onQuantityChange,
   updatingQuantityKeys,
   priceContext,
+  showSetName,
+  surplusByCardId,
 }: CardGridProps) {
   if (cards.length === 0) {
     return (
@@ -132,6 +138,7 @@ export default function CardGrid({
         const normalUpdating = updatingQuantityKeys?.has(normalKey);
         const foilUpdating = updatingQuantityKeys?.has(foilKey);
         const holofoilUpdating = updatingQuantityKeys?.has(holofoilKey);
+        const surplus = surplusByCardId?.get(card.id) ?? 0;
 
         return (
           <div
@@ -165,6 +172,12 @@ export default function CardGrid({
                   </div>
                 )}
 
+                {surplus > 0 && (
+                  <div className="absolute top-1 left-1 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                    {surplus} surplus
+                  </div>
+                )}
+
                 {marketPrice != null && (
                   <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
                     ${marketPrice.toFixed(2)}
@@ -191,6 +204,9 @@ export default function CardGrid({
                     <p className="text-xs text-gray-400 truncate">
                       {card.subtitle}
                     </p>
+                  )}
+                  {showSetName && card.setName && (
+                    <p className="text-[10px] text-gray-500 truncate">{card.setName}</p>
                   )}
                 </div>
                 <div className="mt-1">
