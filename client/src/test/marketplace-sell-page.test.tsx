@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
@@ -186,6 +186,51 @@ describe("MarketplaceSellPage", () => {
     expect(await screen.findByText("Elsa, Snow Queen")).toBeInTheDocument();
     expect(screen.getByText("The First Chapter · 1/204")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Elsa, Snow Queen" })).toBeInTheDocument();
+  });
+
+  it("opens the tile image lightbox for a card without art and closes it (AC-POL-13.4)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([]);
+    getPolicyMock.mockResolvedValue(null);
+    getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    render(<MarketplaceSellPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "View Elsa, Snow Queen" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+      "src",
+      "/lorcana-logo.png"
+    );
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("opens the tile image lightbox for a card with art and closes it with the × button (AC-POL-13.4)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([]);
+    getPolicyMock.mockResolvedValue(null);
+    getMyListingsMock.mockResolvedValue({
+      listings: [{ ...activeListing, card: { ...card, imageUrl: "https://img.example/elsa.jpg" } }],
+    });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    render(<MarketplaceSellPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "View Elsa, Snow Queen" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+      "src",
+      "/api/card-images/card_1"
+    );
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
   it("walks the two-step create flow with Back preserving filters and Cancel returning to the list", async () => {
