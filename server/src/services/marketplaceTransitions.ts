@@ -143,6 +143,16 @@ export async function markSold(
       throw new MarketplaceError(409, "Enquiry is not active");
     }
 
+    // Idempotency: an enquiry can be marked sold at most once. A second call
+    // would otherwise mint duplicate PENDING_CONFIRMATION rows and keep
+    // decrementing the listing.
+    const existingPending = await tx.marketplaceTransaction.findFirst({
+      where: { enquiryId, status: "PENDING_CONFIRMATION" },
+    });
+    if (existingPending) {
+      throw new MarketplaceError(409, "This enquiry has already been marked sold");
+    }
+
     const sellerId = enquiry.sellerId;
     const cardId = enquiry.listing.cardId;
 
@@ -197,6 +207,17 @@ export async function markSold(
     await tx.marketplaceListing.update({
       where: { id: listing.id },
       data: { quantity: remaining, status: listingStatus },
+    });
+
+    // Inline system event so the buyer sees the seller accepted (and their
+    // Messages badge lights up — the message is attributed to the seller).
+    await tx.enquiryMessage.create({
+      data: {
+        enquiryId,
+        senderId: callerId,
+        kind: "SYSTEM",
+        body: `Seller marked ${q} as sold — awaiting buyer confirmation.`,
+      },
     });
 
     return {
@@ -337,6 +358,16 @@ export async function confirmTransfer(
         holofoilQuantity: column === "holofoilQuantity" ? existing.quantity : 0,
       },
       update: columnMutation(column, "increment", existing.quantity),
+    });
+
+    // Inline system event so the seller sees the buyer confirmed.
+    await tx.enquiryMessage.create({
+      data: {
+        enquiryId: existing.enquiryId,
+        senderId: existing.buyerId,
+        kind: "SYSTEM",
+        body: "Buyer confirmed receipt — sale complete.",
+      },
     });
 
     return { transactionId, alreadyCompleted: false, status: "COMPLETED" };

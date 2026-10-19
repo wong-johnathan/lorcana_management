@@ -1393,6 +1393,7 @@ describe("marketplace enquiry detail (REQ-12)", () => {
       buyer: { id: "buyer1", username: "buyer" },
       seller: { id: "seller1", username: "seller" },
       messages: [{ id: "msg1", enquiryId: "enq1", senderId: "buyer1", body: "hello", createdAt: new Date("2026-10-01") }],
+      transactions: [],
     });
 
     const res = await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);
@@ -1638,6 +1639,7 @@ describe("marketplace mark-read side effects (REQ-NOTIF-3)", () => {
       buyer: { id: "buyer1", username: "buyer" },
       seller: { id: "seller1", username: "seller" },
       messages: [],
+      transactions: [],
     });
 
     await auth(request(app).get("/api/marketplace/enquiries/enq1"), buyerToken).expect(200);

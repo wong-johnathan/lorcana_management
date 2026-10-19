@@ -305,6 +305,7 @@ model EnquiryMessage {
   enquiry   MarketplaceEnquiry @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
   senderId  String
   sender    User               @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  kind      String             @default("USER") // "USER" | "SYSTEM" — system events (mark-sold, confirm) rendered inline
   body      String // plain text, unmodified (AC-13.1)
   createdAt DateTime           @default(now())
 

@@ -3,7 +3,11 @@ import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
 import { marketplace } from "../../services/api";
-import type { MarketplaceEnquiryDetail, EnquiryMessage } from "../../types";
+import type {
+  MarketplaceEnquiryDetail,
+  EnquiryMessage,
+  EnquiryTransaction,
+} from "../../types";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
@@ -12,7 +16,9 @@ import {
 /**
  * A single enquiry thread (REQ-11/13/14): plain-text chronological bubbles
  * (React default escaping — no markdown/HTML), a message composer, and the
- * seller's mark-sold dialog (q defaulted to the requested quantity).
+ * seller's mark-sold dialog (q defaulted to the requested quantity). System
+ * events (mark-sold, buyer-confirm) render inline as centered grey text, and
+ * the pending transaction renders a status card with the buyer's confirm action.
  */
 export default function MarketplaceChatThreadPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,11 +26,13 @@ export default function MarketplaceChatThreadPage() {
 
   const [enquiry, setEnquiry] = useState<MarketplaceEnquiryDetail | null>(null);
   const [messages, setMessages] = useState<EnquiryMessage[]>([]);
+  const [transactions, setTransactions] = useState<EnquiryTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [markSoldOpen, setMarkSoldOpen] = useState(false);
   const [soldQuantity, setSoldQuantity] = useState(1);
   const [soldResult, setSoldResult] = useState<string | null>(null);
@@ -40,6 +48,7 @@ export default function MarketplaceChatThreadPage() {
       const response = await marketplace.getEnquiry(id);
       setEnquiry(response.enquiry);
       setMessages(response.messages);
+      setTransactions(response.transactions ?? []);
       setSoldQuantity(response.enquiry.requestedQuantity);
       window.dispatchEvent(new CustomEvent("unread:refresh"));
     } catch (err) {
@@ -90,6 +99,10 @@ export default function MarketplaceChatThreadPage() {
   const listing = enquiry.listing;
   const card = listing.card;
 
+  const pendingTransaction = transactions.find((t) => t.status === "PENDING_CONFIRMATION");
+  const completedTransaction = transactions.find((t) => t.status === "COMPLETED");
+  const hasOpenTransaction = pendingTransaction != null || completedTransaction != null;
+
   const send = async () => {
     if (!body.trim() || sending || archived) return;
     setSending(true);
@@ -117,6 +130,19 @@ export default function MarketplaceChatThreadPage() {
       void load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to mark as sold");
+    }
+  };
+
+  const confirmReceipt = async (transactionId: string) => {
+    setActionError(null);
+    setConfirming(true);
+    try {
+      await marketplace.confirm(transactionId);
+      void load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to confirm receipt");
+    } finally {
+      setConfirming(false);
     }
   };
 
@@ -175,6 +201,53 @@ export default function MarketplaceChatThreadPage() {
         </div>
       )}
 
+      {/* Pending transaction status card (buyer confirms, seller awaits) */}
+      {pendingTransaction && (
+        <div className="rounded-xl border border-amber-900/60 bg-amber-950/40 p-4">
+          {isBuyer ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-amber-200">
+                  Seller marked {pendingTransaction.quantity} as sold
+                </p>
+                <p className="text-xs text-gray-400">
+                  Confirm receipt to complete the transfer.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void confirmReceipt(pendingTransaction.id)}
+                disabled={confirming}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {confirming ? "Confirming…" : "Confirm receipt"}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-amber-200">Awaiting buyer confirmation</p>
+                <p className="text-xs text-gray-400">
+                  You marked {pendingTransaction.quantity} as sold.
+                </p>
+              </div>
+              <Link
+                to="/marketplace/transactions"
+                className="text-sm text-amber-400 hover:text-amber-300"
+              >
+                View transactions
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!pendingTransaction && completedTransaction && (
+        <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/40 p-4 text-sm text-emerald-200">
+          Sale complete — {completedTransaction.quantity} transferred to the buyer.
+        </div>
+      )}
+
       {/* Messages */}
       <div className="space-y-2">
         {messages.length === 0 && (
@@ -183,6 +256,18 @@ export default function MarketplaceChatThreadPage() {
           </p>
         )}
         {messages.map((message) => {
+          if (message.kind === "SYSTEM") {
+            return (
+              <div key={message.id} className="flex justify-center">
+                <span
+                  data-testid="system-message"
+                  className="rounded-full bg-gray-900/60 px-3 py-1 text-center text-xs text-gray-400"
+                >
+                  {message.body}
+                </span>
+              </div>
+            );
+          }
           const mine = message.senderId === user.id;
           return (
             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -235,7 +320,7 @@ export default function MarketplaceChatThreadPage() {
             </button>
           </div>
 
-          {isSeller && (
+          {isSeller && !hasOpenTransaction && (
             <div className="flex justify-end">
               <button
                 type="button"
