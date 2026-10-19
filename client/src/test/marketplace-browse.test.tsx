@@ -4,6 +4,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MarketplaceListingCard from "../components/marketplace/MarketplaceListingCard";
 import MarketplacePage from "../pages/marketplace/MarketplacePage";
+import { useAuth } from "../context/AuthContext";
 import { marketplace } from "../services/api";
 
 const { listingsMock } = vi.hoisted(() => ({
@@ -12,6 +13,10 @@ const { listingsMock } = vi.hoisted(() => ({
 
 vi.mock("../services/api", () => ({
   marketplace: { listings: listingsMock },
+}));
+
+vi.mock("../context/AuthContext", () => ({
+  useAuth: vi.fn(),
 }));
 
 const card = {
@@ -167,6 +172,7 @@ describe("MarketplacePage", () => {
   beforeEach(() => {
     listingsMock.mockReset();
     listingsMock.mockResolvedValue(response);
+    vi.mocked(useAuth).mockReturnValue({ user: null } as never);
   });
 
   it("hydrates filters from the url and converts price ranges to minor units", async () => {
@@ -218,5 +224,24 @@ describe("MarketplacePage", () => {
 
     expect(await screen.findByRole("heading", { name: "Marketplace" })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "Elsa, Snow Queen" })).toBeInTheDocument();
+  });
+
+  it("hides the Sell / List a card link for signed-out users", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Marketplace" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sell / List a card" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Sell / List a card link for signed-in users", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: "seller_1", username: "alice" },
+    } as never);
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Sell / List a card" })).toHaveAttribute(
+      "href",
+      "/marketplace/sell"
+    );
   });
 });

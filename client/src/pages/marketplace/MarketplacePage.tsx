@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import MarketplaceFilterBar from "../../components/marketplace/MarketplaceFilterBar";
 import MarketplaceListingCard from "../../components/marketplace/MarketplaceListingCard";
+import { useAuth } from "../../context/AuthContext";
 import { marketplace } from "../../services/api";
 import type { MarketplaceListingsResponse } from "../../types";
 import {
@@ -14,6 +15,7 @@ import {
 const PAGE_SIZE = 24;
 
 export default function MarketplacePage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const controls = useMemo(() => marketplaceControlsFromParams(searchParams), [searchParams]);
   const [data, setData] = useState<MarketplaceListingsResponse | null>(null);
@@ -78,12 +80,23 @@ export default function MarketplacePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-      <div>
-        <p className="text-xs uppercase tracking-widest text-amber-400">Community marketplace</p>
-        <h1 className="text-2xl font-bold text-gray-100">Marketplace</h1>
-        <p className="mt-1 text-sm text-gray-400">
-          Browse cards other collectors are selling. Payment and shipping are arranged between traders.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-amber-400">Community marketplace</p>
+          <h1 className="text-2xl font-bold text-gray-100">Marketplace</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            Browse cards other collectors are selling. Payment and shipping are arranged between
+            traders.
+          </p>
+        </div>
+        {user && (
+          <Link
+            to="/marketplace/sell"
+            className="shrink-0 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400"
+          >
+            Sell / List a card
+          </Link>
+        )}
       </div>
 
       <MarketplaceFilterBar controls={controls} onChange={updateControls} />
