@@ -23,9 +23,10 @@ import {
   priceMinorFromMajor,
 } from "../../utils/marketplaceParams";
 import { cardArtUrl } from "../../utils/cardImages";
+import { listingImageItems, photoStartIndex } from "../../utils/listingImages";
 import { PHOTO_LABEL_OPTIONS } from "../../utils/photoPositionLabels";
 import MarketplaceImage from "./MarketplaceImage";
-import ImageLightbox from "./ImageLightbox";
+import ListingImageCarousel from "./ListingImageCarousel";
 import TcgPriceReference from "./TcgPriceReference";
 
 /** REQ-6: high-value printings where condition photos matter most. */
@@ -104,7 +105,7 @@ export default function ListingForm({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
 
   const selectedEntry = inventory.find((entry) => entry.cardId === cardId);
   const card = mode === "edit" ? listing?.card : selectedEntry?.card ?? null;
@@ -121,6 +122,8 @@ export default function ListingForm({
   const surplus = policy ? surplusForVariant(owned, keep) : 0;
 
   const totalPhotos = photos.length + pendingFiles.length;
+
+  const images = listingImageItems(card, photos);
 
   const summarySrc = card ? cardArtUrl(card) : "";
   const summaryHasSource = !!card?.imageUrl;
@@ -201,9 +204,6 @@ export default function ListingForm({
       prev.map((item, i) => (i === index ? { ...item, label } : item))
     );
   };
-
-  const openLightbox = (src: string, alt: string) => setLightbox({ src, alt });
-  const closeLightbox = () => setLightbox(null);
 
   const photoAlt = (photo: MarketplaceListingPhoto): string =>
     `${card?.name ?? "Card"} — condition photo${photo.label ? ` (${photo.label})` : ""}`;
@@ -478,7 +478,11 @@ export default function ListingForm({
                   alt={photoAlt(photo)}
                   hasSource
                   className="h-12 w-12 rounded object-cover"
-                  onOpen={() => openLightbox(photo.url, photoAlt(photo))}
+                  onOpen={
+                    images.length > 0
+                      ? () => setCarouselIndex(photoStartIndex(card, photos, photo))
+                      : undefined
+                  }
                 />
                 <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
                   {photo.label ? `Saved photo · ${photo.label}` : "Saved photo"}
@@ -587,8 +591,12 @@ export default function ListingForm({
         )}
       </div>
 
-      {lightbox && (
-        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+      {carouselIndex != null && (
+        <ListingImageCarousel
+          images={images}
+          startIndex={carouselIndex}
+          onClose={() => setCarouselIndex(null)}
+        />
       )}
     </form>
   );

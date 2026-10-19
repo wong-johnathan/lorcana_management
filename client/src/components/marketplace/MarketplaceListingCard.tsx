@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { MarketplaceListing } from "../../types";
 import { cardArtUrl } from "../../utils/cardImages";
+import { listingImageItems, photoStartIndex } from "../../utils/listingImages";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
 } from "../../utils/marketplaceParams";
 import MarketplaceImage from "./MarketplaceImage";
-import ImageLightbox from "./ImageLightbox";
+import ListingImageCarousel from "./ListingImageCarousel";
 
 interface MarketplaceListingCardProps {
   listing: MarketplaceListing;
@@ -17,10 +18,11 @@ interface MarketplaceListingCardProps {
  * A single card in the public marketplace grid: primary photo (a condition
  * photo when available, otherwise the card's art), name/set, variant,
  * condition, price+currency, coarse location, and the seller. The image opens
- * a lightbox (REQ-POL-13); the name/title link remains the navigation affordance.
+ * the full-set carousel lightbox (REQ-LB-5); the name/title link remains the
+ * navigation affordance.
  */
 export default function MarketplaceListingCard({ listing }: MarketplaceListingCardProps) {
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
 
   const photo = listing.photos[0];
   const name = listing.card?.name ?? "Unknown card";
@@ -31,6 +33,9 @@ export default function MarketplaceListingCard({ listing }: MarketplaceListingCa
     ? `${name} — condition photo${photo.label ? ` (${photo.label})` : ""}`
     : name;
 
+  const images = listingImageItems(listing.card, listing.photos);
+  const startIndex = photo ? photoStartIndex(listing.card, listing.photos, photo) : 0;
+
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900/60 transition-colors hover:border-gray-700">
       <div className="relative block aspect-[5/7] w-full overflow-hidden bg-gray-800">
@@ -39,7 +44,7 @@ export default function MarketplaceListingCard({ listing }: MarketplaceListingCa
           alt={imageAlt}
           hasSource={hasSource}
           className="h-full w-full object-cover"
-          onOpen={() => setLightbox({ src: image, alt: imageAlt })}
+          onOpen={images.length > 0 ? () => setCarouselIndex(startIndex) : undefined}
         />
       </div>
 
@@ -93,8 +98,12 @@ export default function MarketplaceListingCard({ listing }: MarketplaceListingCa
         )}
       </div>
 
-      {lightbox && (
-        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+      {carouselIndex != null && (
+        <ListingImageCarousel
+          images={images}
+          startIndex={carouselIndex}
+          onClose={() => setCarouselIndex(null)}
+        />
       )}
     </article>
   );

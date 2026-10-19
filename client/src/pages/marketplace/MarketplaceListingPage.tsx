@@ -2,8 +2,17 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import ReportModal from "../../components/marketplace/ReportModal";
+import MarketplaceImage from "../../components/marketplace/MarketplaceImage";
+import ListingImageCarousel from "../../components/marketplace/ListingImageCarousel";
 import { marketplace } from "../../services/api";
 import type { MarketplaceListingDetail } from "../../types";
+import { cardArtUrl } from "../../utils/cardImages";
+import {
+  cardArtCaption,
+  hasCardArt,
+  listingImageItems,
+  photoStartIndex,
+} from "../../utils/listingImages";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
@@ -23,6 +32,7 @@ export default function MarketplaceListingPage() {
   const [quantity, setQuantity] = useState(1);
   const [enquireError, setEnquireError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -66,6 +76,8 @@ export default function MarketplaceListingPage() {
   }
 
   const card = listing.card;
+  const hasArt = hasCardArt(card);
+  const images = listingImageItems(card, listing.photos);
   const isPremium = card ? PREMIUM_RARITIES.includes(card.rarity) : false;
   const canEnquire = listing.status === "ACTIVE" && listing.quantity > 0;
   const quantityOptions = Array.from({ length: Math.max(0, listing.quantity) }, (_, i) => i + 1);
@@ -91,9 +103,26 @@ export default function MarketplaceListingPage() {
       </Link>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Photos */}
+        {/* Card art (REQ-LB-4) + condition photos */}
         <section>
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+          {hasArt && card && (
+            <>
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                Card
+              </h2>
+              <div className="mt-2">
+                <MarketplaceImage
+                  src={cardArtUrl(card)}
+                  alt={cardArtCaption(card)}
+                  hasSource
+                  className="aspect-[5/7] w-full rounded-xl border border-gray-800 object-cover"
+                  onOpen={() => setCarouselIndex(0)}
+                />
+              </div>
+            </>
+          )}
+
+          <h2 className="mt-4 text-xs font-semibold uppercase tracking-widest text-gray-400">
             Actual condition photos
           </h2>
           {listing.photos.length === 0 ? (
@@ -103,11 +132,17 @@ export default function MarketplaceListingPage() {
           ) : (
             <div className="mt-2 grid grid-cols-2 gap-2">
               {listing.photos.map((photo) => (
-                <img
+                <MarketplaceImage
                   key={photo.id}
                   src={photo.url}
                   alt={`${card?.name ?? "Card"} — actual condition photo${photo.label ? ` (${photo.label})` : ""}`}
+                  hasSource
                   className="aspect-[5/7] w-full rounded-xl border border-gray-800 object-cover"
+                  onOpen={
+                    images.length > 0
+                      ? () => setCarouselIndex(photoStartIndex(card, listing.photos, photo))
+                      : undefined
+                  }
                 />
               ))}
             </div>
@@ -265,6 +300,14 @@ export default function MarketplaceListingPage() {
           </div>
         </section>
       </div>
+
+      {carouselIndex != null && (
+        <ListingImageCarousel
+          images={images}
+          startIndex={carouselIndex}
+          onClose={() => setCarouselIndex(null)}
+        />
+      )}
     </div>
   );
 }

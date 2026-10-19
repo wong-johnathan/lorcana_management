@@ -138,7 +138,7 @@ describe("MarketplaceListingCard", () => {
     );
   });
 
-  it("opens a lightbox from the card image button and closes it with Escape (AC-POL-13.3)", async () => {
+  it("opens the carousel at the card art (index 0) from the card image button (AC-LB-5.1)", async () => {
     render(
       <MemoryRouter>
         <MarketplaceListingCard listing={listing} />
@@ -149,16 +149,22 @@ describe("MarketplaceListingCard", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(within(dialog).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
-      "src",
-      "/api/card-images/card_elsa"
+    expect(dialog).toHaveAttribute(
+      "aria-label",
+      "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1"
     );
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
+      })
+    ).toHaveAttribute("src", "/api/card-images/card_elsa");
+    expect(within(dialog).getByText("1 / 1")).toBeInTheDocument();
 
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("opens a lightbox from the condition photo button and closes it with the × button (AC-POL-13.3)", async () => {
+  it("opens the carousel at the condition photo (index 1) with the full set available (AC-LB-5.1)", async () => {
     const withPhoto = {
       ...listing,
       photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1, label: null }],
@@ -174,12 +180,21 @@ describe("MarketplaceListingCard", () => {
     );
 
     const dialog = screen.getByRole("dialog");
-    expect(
-      within(dialog).getByRole("img", { name: "Elsa, Snow Queen — condition photo" })
-    ).toHaveAttribute("src", "https://img.example/cond.jpg");
+    expect(dialog).toHaveAttribute("aria-label", "condition photo");
+    expect(within(dialog).getByRole("img", { name: "condition photo" })).toHaveAttribute(
+      "src",
+      "https://img.example/cond.jpg"
+    );
+    expect(within(dialog).getByText("2 / 2")).toBeInTheDocument();
 
-    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // Navigate back to the card art (full set available).
+    await userEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
+      })
+    ).toHaveAttribute("src", "/api/card-images/card_elsa");
+    expect(within(dialog).getByText("1 / 2")).toBeInTheDocument();
   });
 
   it("renders the static fallback when the card and photo are absent", () => {

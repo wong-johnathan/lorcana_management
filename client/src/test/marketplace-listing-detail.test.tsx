@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
@@ -127,5 +128,62 @@ describe("MarketplaceListingPage", () => {
       "href",
       "/login"
     );
+  });
+
+  it("renders the card art and opens the carousel at index 0 (AC-LB-4.1/4.2)", async () => {
+    listingMock.mockResolvedValue({ ...listing, pendingQuantity: 0 });
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "View Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
+      })
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute(
+      "aria-label",
+      "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1"
+    );
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
+      })
+    ).toHaveAttribute("src", "/api/card-images/card_elsa");
+    expect(within(dialog).getByText("1 / 2")).toBeInTheDocument();
+  });
+
+  it("opens the carousel at the clicked condition photo's index with the position-label caption (AC-LB-4.2/4.3)", async () => {
+    listingMock.mockResolvedValue({
+      ...listing,
+      photos: [
+        { id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0, label: "Back Top Left" },
+      ],
+      pendingQuantity: 0,
+    });
+    renderPage();
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "View Elsa, Snow Queen — actual condition photo (Back Top Left)",
+      })
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-label", "Back Top Left");
+    expect(within(dialog).getByRole("img", { name: "Back Top Left" })).toHaveAttribute(
+      "src",
+      "https://img.example/condition.jpg"
+    );
+    expect(within(dialog).getByText("2 / 2")).toBeInTheDocument();
+
+    // Previous reveals the card-art caption.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
+    expect(
+      within(dialog).getByRole("img", {
+        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
+      })
+    ).toHaveAttribute("src", "/api/card-images/card_elsa");
   });
 });
