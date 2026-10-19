@@ -257,6 +257,7 @@ model MarketplaceListingPhoto {
   objectKey String
   url       String
   sortOrder Int                @default(0)
+  label     String? // nullable position label (REQ-POL-15); null/empty = unlabeled
   createdAt DateTime           @default(now())
 
   @@index([listingId])

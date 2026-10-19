@@ -3,12 +3,15 @@ import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
 import ListingForm from "../../components/marketplace/ListingForm";
 import ListingPicker from "../../components/marketplace/ListingPicker";
+import MarketplaceImage from "../../components/marketplace/MarketplaceImage";
+import ImageLightbox from "../../components/marketplace/ImageLightbox";
 import { inventory as inventoryApi, marketplace } from "../../services/api";
 import type {
   InventoryEntry,
   InventoryPolicy,
   MarketplaceListing,
 } from "../../types";
+import { cardArtUrl } from "../../utils/cardImages";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
@@ -34,6 +37,7 @@ export default function MarketplaceSellPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [pickerFilters, setPickerFilters] = useState<Record<string, string>>({});
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
 
   const load = async () => {
     if (!user) return;
@@ -176,53 +180,83 @@ export default function MarketplaceSellPage() {
             You have no listings yet. Create one to start selling.
           </div>
         ) : (
-          <ul className="space-y-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {listings.map((listing) => {
               const locked = isLocked(listing);
+              const card = listing.card;
+              const artSrc = card ? cardArtUrl(card) : "";
+              const hasSource = !!card?.imageUrl;
+              const name = card?.name ?? "Card";
               return (
-                <li
+                <div
                   key={listing.id}
-                  className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/60 p-3"
+                  className="flex flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900/60"
                 >
-                  <div className="min-w-0 flex-1">
+                  <div className="relative aspect-[5/7] w-full overflow-hidden bg-gray-800">
+                    <MarketplaceImage
+                      src={artSrc}
+                      alt={name}
+                      hasSource={hasSource}
+                      className="h-full w-full object-cover"
+                      onOpen={() =>
+                        setLightbox({
+                          src: hasSource ? artSrc : "/lorcana-logo.png",
+                          alt: name,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 p-3 text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-gray-100">
-                        {listing.card?.name ?? "Card"}
-                      </span>
+                      <span className="truncate font-semibold text-gray-100">{name}</span>
                       {listing.status === "CLOSED" && (
                         <span className="shrink-0 rounded-full bg-gray-800 px-2 py-0.5 text-xs font-medium text-gray-400">
                           Closed
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-sm text-gray-400">
+                    {card?.setName && (
+                      <p className="truncate text-xs text-gray-400">
+                        {card.setName}
+                        {card.cardNumber ? ` · ${card.cardNumber}` : ""}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-400">
                       {marketplaceVariantLabel(listing.variant)} · Qty {listing.quantity} ·{" "}
                       {formatPriceMinor(listing.priceMinor, listing.currency)}
                     </p>
                     {locked && (
-                      <p className="mt-0.5 text-xs text-amber-300">
+                      <p className="text-xs text-amber-300">
                         {listing.status === "CLOSED"
                           ? "Sold out — price/quantity locked"
                           : "Pending sale — price/quantity locked"}
                       </p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreating(false);
+                        setEditingId(listing.id);
+                      }}
+                      className="mt-2 rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500"
+                    >
+                      Edit
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCreating(false);
-                      setEditingId(listing.id);
-                    }}
-                    className="shrink-0 rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500"
-                  >
-                    Edit
-                  </button>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </div>
+
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </RequireAuth>
   );
 }

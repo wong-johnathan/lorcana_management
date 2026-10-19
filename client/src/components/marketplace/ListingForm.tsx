@@ -7,7 +7,7 @@ import type {
   MarketplaceListingPhoto,
   MarketplaceVariant,
 } from "../../types";
-import { availableInventoryVariants } from "../../utils/cardVariants";
+import { availableInventoryVariants, INVENTORY_VARIANT_LABELS } from "../../utils/cardVariants";
 import {
   MAX_LISTING_PHOTO_COUNT,
   keepCountForVariant,
@@ -22,8 +22,11 @@ import {
   MARKETPLACE_VARIANT_OPTIONS,
   priceMinorFromMajor,
 } from "../../utils/marketplaceParams";
-import { INVENTORY_VARIANT_LABELS } from "../../utils/cardVariants";
-import { cardImageUrl } from "../../utils/cardImages";
+import { cardArtUrl } from "../../utils/cardImages";
+import { PHOTO_LABEL_OPTIONS } from "../../utils/photoPositionLabels";
+import MarketplaceImage from "./MarketplaceImage";
+import ImageLightbox from "./ImageLightbox";
+import TcgPriceReference from "./TcgPriceReference";
 
 /** REQ-6: high-value printings where condition photos matter most. */
 const PREMIUM_RARITIES = ["Enchanted", "Iconic"];
@@ -47,11 +50,17 @@ interface ListingFormProps {
   onCancel?: () => void;
 }
 
+interface PendingFile {
+  file: File;
+  label: string | null;
+}
+
 /**
- * Create/edit listing form (REQ-3/4/5/6/7/8/23). Owns the quantity cap at owned
- * count (the server enforces the tighter `available` bound), the variant/
- * condition/currency dropdowns, the surplus hint, and photo upload with the
- * 8-count / 5 MiB / MIME limits validated before any upload (AC-23.2).
+ * Create/edit listing form (REQ-3/4/5/6/7/8/23/REQ-POL-9/11/12/13/14/15). Owns the
+ * quantity cap at owned count, the variant/condition/currency dropdowns, the
+ * surplus hint, the display-only TCG price reference, the shared card-summary
+ * image, photo upload with the 15-count / 5 MiB / MIME limits, per-photo position
+ * labels, and click-to-expand on saved photos.
  */
 export default function ListingForm({
   mode,
@@ -90,11 +99,12 @@ export default function ListingForm({
   const [location, setLocation] = useState<string>(listing?.location ?? "");
   const [note, setNote] = useState<string>(listing?.note ?? "");
   const [photos, setPhotos] = useState<MarketplaceListingPhoto[]>(listing?.photos ?? []);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
 
   const selectedEntry = inventory.find((entry) => entry.cardId === cardId);
   const card = mode === "edit" ? listing?.card : selectedEntry?.card ?? null;
@@ -111,6 +121,10 @@ export default function ListingForm({
   const surplus = policy ? surplusForVariant(owned, keep) : 0;
 
   const totalPhotos = photos.length + pendingFiles.length;
+
+  const summarySrc = card ? cardArtUrl(card) : "";
+  const summaryHasSource = !!card?.imageUrl;
+  const summaryAlt = card ? `${card.name} - ${card.subtitle}` : "Card image";
 
   const validateQuantity = (): number | null => {
     const parsed = Number(quantity);
@@ -158,7 +172,7 @@ export default function ListingForm({
       }
     } else {
       // Create mode: buffer, upload after the listing is created.
-      setPendingFiles((prev) => [...prev, ...incoming]);
+      setPendingFiles((prev) => [...prev, ...incoming.map((file) => ({ file, label: null }))]);
     }
   };
 
@@ -171,6 +185,49 @@ export default function ListingForm({
       setPhotoError(err instanceof Error ? err.message : "Failed to remove photo");
     }
   };
+
+  const relabelPhoto = async (photoId: string, label: string | null) => {
+    if (!listing) return;
+    try {
+      const updated = await marketplace.updatePhotoLabel(listing.id, photoId, label);
+      setPhotos((prev) => prev.map((photo) => (photo.id === photoId ? updated : photo)));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Failed to update photo label");
+    }
+  };
+
+  const setPendingLabel = (index: number, label: string | null) => {
+    setPendingFiles((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, label } : item))
+    );
+  };
+
+  const openLightbox = (src: string, alt: string) => setLightbox({ src, alt });
+  const closeLightbox = () => setLightbox(null);
+
+  const photoAlt = (photo: MarketplaceListingPhoto): string =>
+    `${card?.name ?? "Card"} — condition photo${photo.label ? ` (${photo.label})` : ""}`;
+
+  const renderLabelSelect = (
+    value: string | null,
+    onChangeLabel: (label: string | null) => void
+  ) => (
+    <select
+      aria-label="Photo position"
+      value={value ?? ""}
+      onChange={(event) =>
+        onChangeLabel(event.target.value === "" ? null : event.target.value)
+      }
+      className="rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200 focus:border-amber-500 focus:outline-none"
+    >
+      <option value="">No label</option>
+      {PHOTO_LABEL_OPTIONS.map((label) => (
+        <option key={label} value={label}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
 
   const submit = async () => {
     setError(null);
@@ -215,11 +272,12 @@ export default function ListingForm({
         });
       }
 
-      for (const file of pendingFiles) {
+      for (const { file, label } of pendingFiles) {
         const dataUrl = await readFileAsDataUrl(file);
         await marketplace.uploadPhoto(saved.id, {
           dataUrl,
           contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
+          label,
         });
       }
       setPendingFiles([]);
@@ -252,54 +310,45 @@ export default function ListingForm({
       }}
       className="space-y-4"
     >
-      {mode === "create" ? (
-        <div className="space-y-4">
-          {/* Locked-card summary (REQ-UX-5): art + name + set, NO card <select>. */}
-          <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-sm">
-            {card?.imageUrl ? (
-              <img
-                src={cardImageUrl(card)}
-                alt={`${card.name} - ${card.subtitle}`}
-                className="h-16 w-12 shrink-0 rounded object-cover"
-              />
-            ) : (
-              <div className="flex h-16 w-12 shrink-0 items-center justify-center rounded bg-gray-800 p-1 text-center text-[10px] text-gray-500">
-                No image
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-gray-100">
-                {card?.name ?? "Unknown card"}
-              </p>
-              {card?.setName ? (
-                <p className="truncate text-xs text-gray-400">{card.setName}</p>
-              ) : null}
-            </div>
-          </div>
+      {/* Locked-card summary (REQ-UX-5 / REQ-POL-9): art + name + set, shared by
+          create and edit; edit also surfaces the immutable variant label. */}
+      <div className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-sm">
+        <MarketplaceImage
+          src={summarySrc}
+          alt={summaryAlt}
+          hasSource={summaryHasSource}
+          className="h-16 w-12 shrink-0 rounded object-cover"
+        />
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-gray-100">
+            {card?.name ?? "Unknown card"}
+          </p>
+          {card?.setName ? (
+            <p className="truncate text-xs text-gray-400">{card.setName}</p>
+          ) : null}
+          {mode === "edit" && (
+            <p className="mt-1 text-xs text-amber-300">
+              {INVENTORY_VARIANT_LABELS[variant]}
+            </p>
+          )}
+        </div>
+      </div>
 
-          <label className="block text-sm text-gray-300">
-            Variant
-            <select
-              value={variant}
-              onChange={(event) => setVariant(event.target.value as MarketplaceVariant)}
-              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 focus:border-amber-500 focus:outline-none"
-            >
-              {variantOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      ) : (
-        <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-sm">
-          <span className="text-gray-400">Card: </span>
-          <span className="text-gray-100">{card?.name ?? "Unknown card"}</span>
-          {card?.setName ? <span className="text-gray-500"> · {card.setName}</span> : null}
-          <span className="mx-2 text-gray-600">·</span>
-          <span className="text-amber-300">{INVENTORY_VARIANT_LABELS[variant]}</span>
-        </div>
+      {mode === "create" && (
+        <label className="block text-sm text-gray-300">
+          Variant
+          <select
+            value={variant}
+            onChange={(event) => setVariant(event.target.value as MarketplaceVariant)}
+            className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 focus:border-amber-500 focus:outline-none"
+          >
+            {variantOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -338,18 +387,21 @@ export default function ListingForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm text-gray-300">
-          Price
-          <input
-            type="text"
-            inputMode="decimal"
-            value={price}
-            disabled={locked}
-            placeholder="0.00"
-            onChange={(event) => setPrice(event.target.value)}
-            className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          />
-        </label>
+        <div>
+          <label className="block text-sm text-gray-300">
+            Price
+            <input
+              type="text"
+              inputMode="decimal"
+              value={price}
+              disabled={locked}
+              placeholder="0.00"
+              onChange={(event) => setPrice(event.target.value)}
+              className="mt-1 w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </label>
+          <TcgPriceReference prices={card?.prices ?? []} variant={variant} />
+        </div>
 
         <label className="block text-sm text-gray-300">
           Condition
@@ -398,7 +450,7 @@ export default function ListingForm({
         </p>
       )}
 
-      {/* Photos (REQ-6 / REQ-23) */}
+      {/* Photos (REQ-6 / REQ-23 / REQ-POL-14/15) */}
       <section className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400">
           Actual condition photos
@@ -421,14 +473,17 @@ export default function ListingForm({
                 key={photo.id}
                 className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 p-2"
               >
-                <img
+                <MarketplaceImage
                   src={photo.url}
-                  alt="Uploaded condition photo"
+                  alt={photoAlt(photo)}
+                  hasSource
                   className="h-12 w-12 rounded object-cover"
+                  onOpen={() => openLightbox(photo.url, photoAlt(photo))}
                 />
                 <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
-                  Saved photo
+                  {photo.label ? `Saved photo · ${photo.label}` : "Saved photo"}
                 </span>
+                {renderLabelSelect(photo.label, (label) => void relabelPhoto(photo.id, label))}
                 <button
                   type="button"
                   onClick={() => void removePhoto(photo.id)}
@@ -438,7 +493,7 @@ export default function ListingForm({
                 </button>
               </li>
             ))}
-            {pendingFiles.map((file, index) => (
+            {pendingFiles.map(({ file, label }, index) => (
               <li
                 key={`${file.name}-${index}`}
                 className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 p-2"
@@ -446,6 +501,7 @@ export default function ListingForm({
                 <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
                   {file.name} ({(file.size / 1024).toFixed(0)} KiB) — saved on submit
                 </span>
+                {renderLabelSelect(label, (next) => setPendingLabel(index, next))}
                 <button
                   type="button"
                   onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
@@ -530,6 +586,10 @@ export default function ListingForm({
           </button>
         )}
       </div>
+
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+      )}
     </form>
   );
 }

@@ -7,9 +7,9 @@ import type { MarketplaceControls } from "../utils/marketplaceParams";
 import { MARKETPLACE_DEFAULTS } from "../utils/marketplaceParams";
 
 const optionSource: FilterOptions = {
-  colors: [],
-  sets: [],
-  rarities: [],
+  colors: ["Amber", "Ruby"],
+  sets: ["The First Chapter", "Rise of the Floodborn"],
+  rarities: ["Common", "Legendary"],
   cardTypes: ["Character", "Action", "Song"],
   types: ["Hero", "Princess", "Song"],
   costs: [0, 1, 5],
@@ -36,11 +36,14 @@ describe("MarketplaceFilterBar", () => {
     expect(onChange).toHaveBeenCalledWith({ priceMax: "50" });
   });
 
-  it("renders the four enhanced controls when an optionSource is present", () => {
+  it("renders the seven enhanced controls when an optionSource is present", () => {
     renderBar();
     expect(screen.getByRole("button", { name: "All Costs" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All Types" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All Classifications" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Colors" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Sets" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All Rarities" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Inkable" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Non-inkable" })).toBeInTheDocument();
   });
@@ -59,6 +62,22 @@ describe("MarketplaceFilterBar", () => {
     await userEvent.click(screen.getByRole("button", { name: "All Classifications" }));
     await userEvent.click(screen.getByLabelText("Hero"));
     expect(onChange).toHaveBeenLastCalledWith({ subtypes: "Hero" });
+  });
+
+  it("emits color, set, and rarity multi-select patches", async () => {
+    const onChange = renderBar();
+
+    await userEvent.click(screen.getByRole("button", { name: "All Colors" }));
+    await userEvent.click(screen.getByLabelText("Amber"));
+    expect(onChange).toHaveBeenLastCalledWith({ colors: "Amber" });
+
+    await userEvent.click(screen.getByRole("button", { name: "All Sets" }));
+    await userEvent.click(screen.getByLabelText("The First Chapter"));
+    expect(onChange).toHaveBeenLastCalledWith({ sets: "The First Chapter" });
+
+    await userEvent.click(screen.getByRole("button", { name: "All Rarities" }));
+    await userEvent.click(screen.getByLabelText("Legendary"));
+    expect(onChange).toHaveBeenLastCalledWith({ rarities: "Legendary" });
   });
 
   it("emits an inkable tri-state patch", async () => {
@@ -92,6 +111,9 @@ describe("MarketplaceFilterBar", () => {
       inkable: "inkable",
       cardTypes: "Action",
       subtypes: "Hero",
+      colors: "Amber",
+      sets: "The First Chapter",
+      rarities: "Legendary",
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
@@ -106,6 +128,9 @@ describe("MarketplaceFilterBar", () => {
       inkable: "",
       cardTypes: "",
       subtypes: "",
+      colors: "",
+      sets: "",
+      rarities: "",
     });
   });
 

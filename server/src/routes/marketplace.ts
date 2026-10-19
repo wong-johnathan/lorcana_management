@@ -31,6 +31,7 @@ import {
   deleteListingPhoto,
   uploadListingPhoto,
 } from "../services/objectStorage.js";
+import { normalizePhotoLabel } from "../utils/photoPositionLabels.js";
 import { buildPublicProfile } from "./public.js";
 
 const prisma = new PrismaClient();
@@ -181,6 +182,7 @@ function serializeListing(listing: any) {
       id: photo.id,
       url: photo.url,
       sortOrder: photo.sortOrder,
+      label: photo.label ?? null,
     })),
   };
 }
@@ -286,6 +288,18 @@ marketplaceRouter.get(
       const cardTypes = parseCsv(query.cardTypes);
       if (cardTypes.length > 0) cardAnd.push(cardTypesPredicate(cardTypes));
 
+      // REQ-POL-4/5: color/set/rarity browse predicates join the same AND array
+      // (AND across filters, OR within a filter via `in`). Unknown values match
+      // nothing (no error); omitting all three leaves `where` unchanged.
+      const colors = parseCsv(query.colors);
+      if (colors.length > 0) cardAnd.push({ color: { in: colors } });
+
+      const sets = parseCsv(query.sets);
+      if (sets.length > 0) cardAnd.push({ setName: { in: sets } });
+
+      const rarities = parseCsv(query.rarities);
+      if (rarities.length > 0) cardAnd.push({ rarity: { in: rarities } });
+
       // D5: enhanced predicates AND with the existing `q` OR-block (never
       // overwrite it). Built only when at least one card predicate applies so
       // omitting every new param keeps `where` byte-for-byte unchanged.
@@ -330,7 +344,7 @@ marketplaceRouter.get(
         where: { sellerId: userId },
         orderBy: { createdAt: "desc" },
         include: {
-          card: true,
+          card: { include: { prices: true } },
           photos: { orderBy: { sortOrder: "asc" } },
           seller: { select: { id: true, username: true, profile: true } },
         },
@@ -663,6 +677,7 @@ marketplaceRouter.post("/listings/:id/photos", async (req: AuthRequest, res: Res
         objectKey: uploaded.objectKey,
         url: uploaded.publicUrl,
         sortOrder: count,
+        label: normalizePhotoLabel(req.body?.label),
       },
     });
 
@@ -689,6 +704,38 @@ marketplaceRouter.delete(
       await prisma.marketplaceListingPhoto.delete({ where: { id: photo.id } });
       await deleteListingPhoto(photo.objectKey);
       res.status(204).send();
+    } catch (error) {
+      sendError(res, error);
+    }
+  }
+);
+
+// Edit-mode photo relabeling (REQ-POL-15, design §6): owner-only, lenient
+// normalize, returns the updated photo's wire shape { id, url, sortOrder, label }.
+marketplaceRouter.patch(
+  "/listings/:id/photos/:photoId",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const photo = await prisma.marketplaceListingPhoto.findUnique({
+        where: { id: req.params.photoId as string },
+        include: { listing: true },
+      });
+      if (!photo) throw new MarketplaceError(404, "Photo not found");
+      if (photo.listing.sellerId !== userId) {
+        throw new MarketplaceError(403, "Only the seller can manage this listing");
+      }
+
+      const updated = await prisma.marketplaceListingPhoto.update({
+        where: { id: photo.id },
+        data: { label: normalizePhotoLabel(req.body?.label) },
+      });
+      res.json({
+        id: updated.id,
+        url: updated.url,
+        sortOrder: updated.sortOrder,
+        label: updated.label ?? null,
+      });
     } catch (error) {
       sendError(res, error);
     }

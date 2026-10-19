@@ -11,7 +11,7 @@ import {
 describe("marketplaceParams utils", () => {
   it("hydrates valid controls from URL params", () => {
     const params = new URLSearchParams(
-      "q=mickey&variant=foil&condition=NM&currency=USD&priceMin=10&priceMax=50&costs=0,5&inkable=inkable&cardTypes=Action,Song&subtypes=Hero&page=2"
+      "q=mickey&variant=foil&condition=NM&currency=USD&priceMin=10&priceMax=50&costs=0,5&inkable=inkable&cardTypes=Action,Song&subtypes=Hero&colors=Amber,Ruby&sets=The%20First%20Chapter&rarities=Legendary&page=2"
     );
     expect(marketplaceControlsFromParams(params)).toEqual({
       q: "mickey",
@@ -24,6 +24,9 @@ describe("marketplaceParams utils", () => {
       inkable: "inkable",
       cardTypes: "Action,Song",
       subtypes: "Hero",
+      colors: "Amber,Ruby",
+      sets: "The First Chapter",
+      rarities: "Legendary",
       page: 2,
     });
   });
@@ -43,6 +46,9 @@ describe("marketplaceParams utils", () => {
       inkable: "",
       cardTypes: "",
       subtypes: "",
+      colors: "",
+      sets: "",
+      rarities: "",
       page: 1,
     });
   });
@@ -85,11 +91,40 @@ describe("marketplaceParams utils", () => {
       inkable: "non-inkable",
       cardTypes: "Action",
       subtypes: "",
+      colors: "Amber",
+      sets: "The First Chapter",
+      rarities: "",
       page: 3,
     });
     expect(params.toString()).toBe(
-      "q=elsa&variant=foil&condition=LP&currency=EUR&priceMin=10&costs=0%2C5&inkable=non-inkable&cardTypes=Action&page=3"
+      "q=elsa&variant=foil&condition=LP&currency=EUR&priceMin=10&costs=0%2C5&inkable=non-inkable&cardTypes=Action&colors=Amber&sets=The+First+Chapter&page=3"
     );
+  });
+
+  it("round-trips colors/sets/rarities CSV through fromParams and toParams", () => {
+    const params = new URLSearchParams(
+      "colors=Amber%2CRuby&sets=The%20First%20Chapter%2CRise%20of%20the%20Floodborn&rarities=Legendary"
+    );
+    const controls = marketplaceControlsFromParams(params);
+    expect(controls.colors).toBe("Amber,Ruby");
+    expect(controls.sets).toBe("The First Chapter,Rise of the Floodborn");
+    expect(controls.rarities).toBe("Legendary");
+
+    const serialized = marketplaceParamsFromControls(controls);
+    expect(serialized.get("colors")).toBe("Amber,Ruby");
+    expect(serialized.get("sets")).toBe("The First Chapter,Rise of the Floodborn");
+    expect(serialized.get("rarities")).toBe("Legendary");
+  });
+
+  it("omits the new params when empty", () => {
+    const params = marketplaceParamsFromControls({
+      ...MARKETPLACE_DEFAULTS,
+      q: "elsa",
+      colors: "",
+      sets: "",
+      rarities: "",
+    });
+    expect(params.toString()).toBe("q=elsa");
   });
 
   it("omits the enhanced params when empty", () => {

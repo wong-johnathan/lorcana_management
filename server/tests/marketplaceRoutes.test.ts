@@ -5,7 +5,7 @@ vi.mock("../src/services/objectStorage.js", () => ({
   LOCAL_UPLOAD_ROOT: "/tmp/lorcana-marketplace-test-uploads",
   ALLOWED_IMAGE_MIME_TYPES: ["image/jpeg", "image/png", "image/webp"],
   MAX_PROFILE_IMAGE_BYTES: 5 * 1024 * 1024,
-  MAX_LISTING_PHOTO_COUNT: 8,
+  MAX_LISTING_PHOTO_COUNT: 15,
   MAX_LISTING_PHOTO_BYTES: 5 * 1024 * 1024,
   uploadProfileImage: vi.fn(),
   deleteProfileImage: vi.fn(),
@@ -368,6 +368,100 @@ describe("marketplace enhanced listing filters (REQ-FILT-17/18)", () => {
   });
 });
 
+describe("marketplace browse color/set/rarity filters (REQ-POL-4/5)", () => {
+  it("parses colors as a color IN predicate (AC-POL-4.1/4.2)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ colors: "Amber, Ruby" }).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ color: { in: ["Amber", "Ruby"] } }] } }),
+      })
+    );
+  });
+
+  it("parses sets as a setName IN predicate carrying setName values (AC-POL-4.2)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app)
+      .get("/api/marketplace/listings")
+      .query({ sets: "The First Chapter, Into the Inklands" })
+      .expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          card: { AND: [{ setName: { in: ["The First Chapter", "Into the Inklands"] } }] },
+        }),
+      })
+    );
+  });
+
+  it("parses rarities as a rarity IN predicate (AC-POL-4.2)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ rarities: "Legendary,Enchanted" }).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ rarity: { in: ["Legendary", "Enchanted"] } }] } }),
+      })
+    );
+  });
+
+  it("AND-combines color/set/rarity with existing card predicates (AC-POL-5.1/5.3)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app)
+      .get("/api/marketplace/listings")
+      .query({ colors: "Amber", rarities: "Legendary", costs: "5" })
+      .expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          card: {
+            AND: [
+              { inkCost: { in: [5] } },
+              { color: { in: ["Amber"] } },
+              { rarity: { in: ["Legendary"] } },
+            ],
+          },
+        }),
+      })
+    );
+  });
+
+  it("count uses the same filtered where (AC-POL-5.2)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([listing()]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(3);
+
+    const res = await request(app).get("/api/marketplace/listings").query({ colors: "Steel" }).expect(200);
+
+    expect(res.body.pagination.total).toBe(3);
+    expect(prismaMock.marketplaceListing.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ card: { AND: [{ color: { in: ["Steel"] } }] } }),
+      })
+    );
+  });
+
+  it("omitting all three keeps where.card absent (AC-POL-4.4)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.count.mockResolvedValueOnce(0);
+
+    await request(app).get("/api/marketplace/listings").query({ variant: "foil" }).expect(200);
+
+    const call = prismaMock.marketplaceListing.findMany.mock.calls[0][0] as any;
+    expect(call.where.card).toBeUndefined();
+  });
+});
+
 describe("marketplace write authorization (REQ-2)", () => {
   it("rejects anonymous writes with 401", async () => {
     await request(app).post("/api/marketplace/listings").send({}).expect(401);
@@ -653,11 +747,11 @@ describe("marketplace photos (REQ-23)", () => {
     expect(uploadListingPhoto).not.toHaveBeenCalled();
 
     prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(listing({ sellerId: "seller1" }));
-    prismaMock.marketplaceListingPhoto.count.mockResolvedValueOnce(8);
+    prismaMock.marketplaceListingPhoto.count.mockResolvedValueOnce(15);
     await auth(
       request(app).post("/api/marketplace/listings/listing1/photos").send({ dataUrl: tinyPng, contentType: "image/png" }),
       sellerToken
-    ).expect(400, { error: "Maximum of 8 photos per listing" });
+    ).expect(400, { error: "Maximum of 15 photos per listing" });
     expect(uploadListingPhoto).not.toHaveBeenCalled();
   });
 
@@ -682,7 +776,117 @@ describe("marketplace photos (REQ-23)", () => {
         objectKey: "listing-photos/listing1/key.png",
         url: "/api/profile-images/listing-photos/listing1/key.png",
         sortOrder: 0,
+        label: null,
       },
+    });
+  });
+
+  it("persists a canonical label and drops an invalid one (AC-POL-15.5)", async () => {
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(listing({ sellerId: "seller1" }));
+    prismaMock.marketplaceListingPhoto.count.mockResolvedValueOnce(0);
+    vi.mocked(uploadListingPhoto).mockResolvedValueOnce({
+      objectKey: "listing-photos/listing1/key.png",
+      publicUrl: "/api/profile-images/listing-photos/listing1/key.png",
+    });
+    prismaMock.marketplaceListingPhoto.create.mockResolvedValueOnce({ id: "photo1" });
+
+    await auth(
+      request(app)
+        .post("/api/marketplace/listings/listing1/photos")
+        .send({ dataUrl: tinyPng, contentType: "image/png", label: "Front Top Left" }),
+      sellerToken
+    ).expect(201);
+    expect(prismaMock.marketplaceListingPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: "Front Top Left" }) })
+    );
+
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(listing({ sellerId: "seller1" }));
+    prismaMock.marketplaceListingPhoto.count.mockResolvedValueOnce(0);
+    vi.mocked(uploadListingPhoto).mockResolvedValueOnce({
+      objectKey: "listing-photos/listing1/key2.png",
+      publicUrl: "/api/profile-images/listing-photos/listing1/key2.png",
+    });
+    prismaMock.marketplaceListingPhoto.create.mockResolvedValueOnce({ id: "photo2" });
+
+    await auth(
+      request(app)
+        .post("/api/marketplace/listings/listing1/photos")
+        .send({ dataUrl: tinyPng, contentType: "image/png", label: "Not A Label" }),
+      sellerToken
+    ).expect(201);
+    expect(prismaMock.marketplaceListingPhoto.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ label: null }) })
+    );
+  });
+});
+
+describe("marketplace photo label relabeling (REQ-POL-15, PATCH)", () => {
+  it("returns 404 / 403 for missing or foreign photos", async () => {
+    prismaMock.marketplaceListingPhoto.findUnique.mockResolvedValueOnce(null);
+    await auth(
+      request(app).patch("/api/marketplace/listings/listing1/photos/photo1").send({ label: "Front" }),
+      sellerToken
+    ).expect(404, { error: "Photo not found" });
+
+    prismaMock.marketplaceListingPhoto.findUnique.mockResolvedValueOnce({
+      id: "photo1",
+      listing: { sellerId: "someoneElse" },
+    });
+    await auth(
+      request(app).patch("/api/marketplace/listings/listing1/photos/photo1").send({ label: "Front" }),
+      sellerToken
+    ).expect(403, { error: "Only the seller can manage this listing" });
+  });
+
+  it("relabels a photo with a canonical label and returns the wire shape", async () => {
+    prismaMock.marketplaceListingPhoto.findUnique.mockResolvedValueOnce({
+      id: "photo1",
+      listing: { sellerId: "seller1" },
+    });
+    prismaMock.marketplaceListingPhoto.update.mockResolvedValueOnce({
+      id: "photo1",
+      url: "/api/profile-images/listing-photos/listing1/key.png",
+      sortOrder: 2,
+      label: "Back",
+    });
+
+    const res = await auth(
+      request(app).patch("/api/marketplace/listings/listing1/photos/photo1").send({ label: "Back" }),
+      sellerToken
+    ).expect(200);
+
+    expect(prismaMock.marketplaceListingPhoto.update).toHaveBeenCalledWith({
+      where: { id: "photo1" },
+      data: { label: "Back" },
+    });
+    expect(res.body).toEqual({
+      id: "photo1",
+      url: "/api/profile-images/listing-photos/listing1/key.png",
+      sortOrder: 2,
+      label: "Back",
+    });
+  });
+
+  it("leniently normalizes an invalid/absent label to null", async () => {
+    prismaMock.marketplaceListingPhoto.findUnique.mockResolvedValueOnce({
+      id: "photo1",
+      listing: { sellerId: "seller1" },
+    });
+    prismaMock.marketplaceListingPhoto.update.mockResolvedValueOnce({
+      id: "photo1",
+      url: "/api/profile-images/listing-photos/listing1/key.png",
+      sortOrder: 0,
+      label: null,
+    });
+
+    await auth(
+      request(app).patch("/api/marketplace/listings/listing1/photos/photo1").send({ label: "Nope" }),
+      sellerToken
+    ).expect(200);
+
+    expect(prismaMock.marketplaceListingPhoto.update).toHaveBeenCalledWith({
+      where: { id: "photo1" },
+      data: { label: null },
     });
   });
 });
@@ -781,6 +985,20 @@ describe("marketplace my listings (D2)", () => {
 
     expect(prismaMock.marketplaceListing.findUnique).not.toHaveBeenCalled();
     expect(res.body.listings).toHaveLength(1);
+  });
+
+  it("includes nested card.prices on /mine (AC-POL-11.6)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([listing()]);
+
+    await auth(request(app).get("/api/marketplace/listings/mine"), sellerToken).expect(200);
+
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          card: { include: { prices: true } },
+        }),
+      })
+    );
   });
 });
 
@@ -902,6 +1120,25 @@ describe("marketplace serializeListing — populated seller and empty photos", (
     expect(res.body.listings[0].seller.id).toBe("seller1");
     expect(res.body.listings[0].seller.username).toBe("seller");
     expect(res.body.listings[0].photos).toEqual([]);
+  });
+
+  it("emits { id, url, sortOrder, label } for every photo (AC-POL-15.5)", async () => {
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([
+      listing({
+        seller: null,
+        photos: [
+          { id: "photo1", url: "/img/1.png", sortOrder: 0, label: "Front" },
+          { id: "photo2", url: "/img/2.png", sortOrder: 1, label: null },
+        ],
+      }),
+    ]);
+
+    const res = await auth(request(app).get("/api/marketplace/listings/mine"), sellerToken).expect(200);
+
+    expect(res.body.listings[0].photos).toEqual([
+      { id: "photo1", url: "/img/1.png", sortOrder: 0, label: "Front" },
+      { id: "photo2", url: "/img/2.png", sortOrder: 1, label: null },
+    ]);
   });
 });
 

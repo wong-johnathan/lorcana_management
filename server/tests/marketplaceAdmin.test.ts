@@ -5,7 +5,7 @@ vi.mock("../src/services/objectStorage.js", () => ({
   LOCAL_UPLOAD_ROOT: "/tmp/lorcana-marketplace-admin-test-uploads",
   ALLOWED_IMAGE_MIME_TYPES: ["image/jpeg", "image/png", "image/webp"],
   MAX_PROFILE_IMAGE_BYTES: 5 * 1024 * 1024,
-  MAX_LISTING_PHOTO_COUNT: 8,
+  MAX_LISTING_PHOTO_COUNT: 15,
   MAX_LISTING_PHOTO_BYTES: 5 * 1024 * 1024,
   uploadProfileImage: vi.fn(),
   deleteProfileImage: vi.fn(),

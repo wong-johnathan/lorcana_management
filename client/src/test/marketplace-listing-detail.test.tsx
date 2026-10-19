@@ -61,7 +61,7 @@ const listing = {
   updatedAt: "2026-10-18T00:00:00.000Z",
   card,
   seller: { id: "seller_1", username: "alice", profile: {} },
-  photos: [{ id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0 }],
+  photos: [{ id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0, label: null }],
 };
 
 function renderPage() {
@@ -88,6 +88,21 @@ describe("MarketplaceListingPage", () => {
     expect(await screen.findByRole("heading", { name: "Actual condition photos" })).toBeInTheDocument();
     expect(screen.getByAltText(/actual condition photo/i)).toBeInTheDocument();
     expect(screen.getByText(/Enchanted cards are high-value/)).toBeInTheDocument();
+  });
+
+  it("includes the position label in the photo alt when set (REQ-POL-15)", async () => {
+    listingMock.mockResolvedValue({
+      ...listing,
+      photos: [
+        { id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0, label: "Back Top Left" },
+      ],
+      pendingQuantity: 0,
+    });
+    renderPage();
+
+    expect(
+      await screen.findByAltText("Elsa, Snow Queen — actual condition photo (Back Top Left)")
+    ).toBeInTheDocument();
   });
 
   it("does not show the premium-rarity hint for ordinary rarities", async () => {

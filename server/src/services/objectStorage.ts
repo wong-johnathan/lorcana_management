@@ -7,8 +7,8 @@ export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 export const ALLOWED_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 export const LOCAL_UPLOAD_ROOT = process.env.LOCAL_UPLOAD_ROOT || path.resolve(process.cwd(), "uploads");
 
-/** Lean-V2 listing photo limits (design D7): 8 photos, 5 MiB each, image MIME allowlist. */
-export const MAX_LISTING_PHOTO_COUNT = 8;
+/** Lean-V2 listing photo limits (design D7, REQ-POL-14): 15 photos, 5 MiB each, image MIME allowlist. */
+export const MAX_LISTING_PHOTO_COUNT = 15;
 export const MAX_LISTING_PHOTO_BYTES = 5 * 1024 * 1024;
 
 const DEFAULT_CARD_IMAGE_CONTENT_TYPE = "image/jpeg";

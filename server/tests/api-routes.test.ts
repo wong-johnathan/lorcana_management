@@ -397,6 +397,32 @@ describe("cards routes", () => {
     await request(app).get("/api/cards/filters").expect(500, { error: "Internal server error" });
   });
 
+  it("returns rarities in canonical hierarchy order (AC-POL-7.1/7.2)", async () => {
+    prismaMock.card.findMany
+      .mockResolvedValueOnce([{ color: "Amber" }])
+      .mockResolvedValueOnce([{ setName: "First", setCode: "1" }])
+      .mockResolvedValueOnce([
+        { rarity: "Special" },
+        { rarity: "Common" },
+        { rarity: "Legendary" },
+        { rarity: "Mythic" },
+      ])
+      .mockResolvedValueOnce([{ cardType: "Character" }])
+      .mockResolvedValueOnce([{ types: ["Hero"] }])
+      .mockResolvedValueOnce([{ inkCost: 0 }]);
+
+    const res = await request(app).get("/api/cards/filters").expect(200);
+
+    // Known rarities in canonical order; unknown "Mythic" appended alphabetically.
+    expect(res.body.rarities).toEqual(["Common", "Legendary", "Special", "Mythic"]);
+
+    // The rarity query no longer relies on alphabetical orderBy.
+    expect(prismaMock.card.findMany).toHaveBeenNthCalledWith(3, {
+      select: { rarity: true },
+      distinct: ["rarity"],
+    });
+  });
+
   it("calculates master-set estimates and missing price reasons", async () => {
     prismaMock.card.findMany.mockResolvedValueOnce([
       card({ id: "normal", prices: [{ variant: "Normal", lowPrice: 1, midPrice: 2, highPrice: 3, marketPrice: 4 }] }),

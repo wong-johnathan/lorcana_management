@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { MarketplaceListing } from "../../types";
-import { cardImageUrl } from "../../utils/cardImages";
+import { cardArtUrl } from "../../utils/cardImages";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
 } from "../../utils/marketplaceParams";
+import MarketplaceImage from "./MarketplaceImage";
+import ImageLightbox from "./ImageLightbox";
 
 interface MarketplaceListingCardProps {
   listing: MarketplaceListing;
@@ -12,37 +15,33 @@ interface MarketplaceListingCardProps {
 
 /**
  * A single card in the public marketplace grid: primary photo (a condition
- * photo when available, otherwise the card's image), name/set, variant,
- * condition, price+currency, coarse location, and the seller.
+ * photo when available, otherwise the card's art), name/set, variant,
+ * condition, price+currency, coarse location, and the seller. The image opens
+ * a lightbox (REQ-POL-13); the name/title link remains the navigation affordance.
  */
 export default function MarketplaceListingCard({ listing }: MarketplaceListingCardProps) {
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+
   const photo = listing.photos[0];
-  const image = photo
-    ? photo.url
-    : listing.card
-      ? cardImageUrl(listing.card)
-      : "";
   const name = listing.card?.name ?? "Unknown card";
+  const artSrc = listing.card ? cardArtUrl(listing.card) : "";
+  const image = photo ? photo.url : artSrc;
+  const hasSource = photo ? true : !!listing.card?.imageUrl;
+  const imageAlt = photo
+    ? `${name} — condition photo${photo.label ? ` (${photo.label})` : ""}`
+    : name;
 
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-gray-800 bg-gray-900/60 transition-colors hover:border-gray-700">
-      <Link
-        to={`/marketplace/listing/${listing.id}`}
-        aria-label={`View listing for ${name}`}
-        className="relative block aspect-[5/7] w-full overflow-hidden bg-gray-800"
-      >
-        {image ? (
-          <img
-            src={image}
-            alt={photo ? `${name} — condition photo` : name}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-sm text-gray-600">
-            No photo
-          </div>
-        )}
-      </Link>
+      <div className="relative block aspect-[5/7] w-full overflow-hidden bg-gray-800">
+        <MarketplaceImage
+          src={image}
+          alt={imageAlt}
+          hasSource={hasSource}
+          className="h-full w-full object-cover"
+          onOpen={() => setLightbox({ src: image, alt: imageAlt })}
+        />
+      </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1 p-3">
         <Link
@@ -93,6 +92,10 @@ export default function MarketplaceListingCard({ listing }: MarketplaceListingCa
           </Link>
         )}
       </div>
+
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+      )}
     </article>
   );
 }

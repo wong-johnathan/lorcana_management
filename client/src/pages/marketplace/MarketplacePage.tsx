@@ -76,6 +76,9 @@ export default function MarketplacePage() {
         inkable: controls.inkable || undefined,
         cardTypes: controls.cardTypes || undefined,
         subtypes: controls.subtypes || undefined,
+        colors: controls.colors || undefined,
+        sets: controls.sets || undefined,
+        rarities: controls.rarities || undefined,
         page: controls.page,
         limit: PAGE_SIZE,
       })
@@ -102,6 +105,9 @@ export default function MarketplacePage() {
     controls.inkable,
     controls.cardTypes,
     controls.subtypes,
+    controls.colors,
+    controls.sets,
+    controls.rarities,
     controls.page,
   ]);
 

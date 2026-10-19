@@ -10,12 +10,14 @@ const {
   deleteListingMock,
   uploadPhotoMock,
   deletePhotoMock,
+  updatePhotoLabelMock,
 } = vi.hoisted(() => ({
   createListingMock: vi.fn(),
   updateListingMock: vi.fn(),
   deleteListingMock: vi.fn(),
   uploadPhotoMock: vi.fn(),
   deletePhotoMock: vi.fn(),
+  updatePhotoLabelMock: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({
@@ -25,6 +27,7 @@ vi.mock("../services/api", () => ({
     deleteListing: deleteListingMock,
     uploadPhoto: uploadPhotoMock,
     deletePhoto: deletePhotoMock,
+    updatePhotoLabel: updatePhotoLabelMock,
   },
 }));
 
@@ -100,6 +103,7 @@ describe("ListingForm", () => {
     deleteListingMock.mockReset();
     uploadPhotoMock.mockReset();
     deletePhotoMock.mockReset();
+    updatePhotoLabelMock.mockReset();
   });
 
   it("offers variant, condition, and currency dropdowns with the preselected card", async () => {
@@ -299,7 +303,20 @@ describe("ListingForm", () => {
     expect(uploadPhotoMock).not.toHaveBeenCalled();
   });
 
-  it("caps the photo count at 8 (AC-23.x)", async () => {
+  it("renders the 15-photo helper text (AC-POL-14.2)", () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/Up to 15 photos, 5 MiB each/)).toBeInTheDocument();
+  });
+
+  it("accepts up to 15 photos and hides the Add photos control at the cap", async () => {
     render(
       <ListingForm
         mode="create"
@@ -311,7 +328,7 @@ describe("ListingForm", () => {
     );
 
     const files = Array.from(
-      { length: 8 },
+      { length: 15 },
       (_, index) => new File(["x"], `photo-${index}.jpg`, { type: "image/jpeg" })
     );
     await userEvent.upload(screen.getByLabelText("Add photos"), files);
@@ -319,6 +336,26 @@ describe("ListingForm", () => {
     await waitFor(() =>
       expect(screen.queryByLabelText("Add photos")).not.toBeInTheDocument()
     );
+  });
+
+  it("rejects the 16th photo with the cap message (AC-POL-14.3)", async () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    const files = Array.from(
+      { length: 16 },
+      (_, index) => new File(["x"], `photo-${index}.jpg`, { type: "image/jpeg" })
+    );
+    await userEvent.upload(screen.getByLabelText("Add photos"), files);
+
+    expect(await screen.findByText("Maximum of 15 photos per listing")).toBeInTheDocument();
   });
 
   it("locks price/currency/quantity while a pending transaction exists (REQ-8)", () => {
@@ -367,11 +404,11 @@ describe("ListingForm", () => {
     expect(body).not.toHaveProperty("currency");
   });
 
-  it("renders the edit-mode card summary and premium rarity hint", () => {
+  it("renders the edit-mode card summary with image + variant and premium rarity hint", () => {
     const premiumListing = {
       ...editListing,
       card: { ...card, rarity: "Enchanted" },
-      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 }],
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1, label: null }],
     };
     render(
       <ListingForm
@@ -383,10 +420,12 @@ describe("ListingForm", () => {
       />
     );
 
-    expect(screen.getByText("Card:")).toBeInTheDocument();
+    // Shared locked-card summary (image + name + set + immutable variant label).
     expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
+    expect(screen.getByText("The First Chapter")).toBeInTheDocument();
+    expect(screen.getByText("Normal")).toBeInTheDocument();
     expect(screen.getByText(/Enchanted cards are high-value/)).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen — condition photo" })).toBeInTheDocument();
   });
 
   it("shows an owned-copy hint with singular/plural phrasing", () => {
@@ -645,7 +684,7 @@ describe("ListingForm", () => {
     deletePhotoMock.mockRejectedValue(new Error("Cannot remove photo"));
     const withPhoto = {
       ...editListing,
-      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1 }],
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1, label: null }],
     };
     render(
       <ListingForm
@@ -657,11 +696,11 @@ describe("ListingForm", () => {
       />
     );
 
-    expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen — condition photo" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     expect(await screen.findByText("Cannot remove photo")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Uploaded condition photo" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen — condition photo" })).toBeInTheDocument();
   });
 
   it("removes one pending file while keeping the other in create mode", async () => {
@@ -688,5 +727,139 @@ describe("ListingForm", () => {
 
     expect(screen.queryByText(/a\.jpg/)).not.toBeInTheDocument();
     expect(screen.getByText(/b\.jpg/)).toBeInTheDocument();
+  });
+
+  it("renders the TCG price reference under Price and updates on variant change (REQ-POL-11)", async () => {
+    const pricedCard = {
+      ...card,
+      prices: [
+        { variant: "Normal", lowPrice: 1.0, midPrice: 2.0, highPrice: 3.0, marketPrice: 2.5, updatedAt: "2026-10-18T00:00:00.000Z" },
+        { variant: "Foil", lowPrice: 4.0, midPrice: 5.0, highPrice: 6.0, marketPrice: 5.5, updatedAt: "2026-10-18T00:00:00.000Z" },
+      ],
+    };
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={[{ ...inventory[0], card: pricedCard }]}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("tcg-price-reference")).toHaveTextContent("TCG market $2.50");
+    await userEvent.selectOptions(screen.getByLabelText("Variant"), "foil");
+    expect(screen.getByTestId("tcg-price-reference")).toHaveTextContent("TCG market $5.50");
+  });
+
+  it("shows 'No TCG price available' when the card has no price entries", () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId("tcg-price-reference")).toHaveTextContent("No TCG price available");
+  });
+
+  it("shows the static Lorcana logo fallback for a no-art card summary (REQ-POL-12)", () => {
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen - Ice Queen" })).toHaveAttribute(
+      "src",
+      "/lorcana-logo.png"
+    );
+  });
+
+  it("relabels a saved photo via PATCH (REQ-POL-15)", async () => {
+    updatePhotoLabelMock.mockResolvedValue({
+      id: "photo_1",
+      url: "https://img.example/p.jpg",
+      sortOrder: 1,
+      label: "Front",
+    });
+    const withPhoto = {
+      ...editListing,
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1, label: null }],
+    };
+    render(
+      <ListingForm
+        mode="edit"
+        listing={withPhoto}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText("Photo position"), "Front");
+    await waitFor(() =>
+      expect(updatePhotoLabelMock).toHaveBeenCalledWith("listing_1", "photo_1", "Front")
+    );
+  });
+
+  it("assigns a label to a pending file and sends it on upload", async () => {
+    createListingMock.mockResolvedValue(editListing);
+    uploadPhotoMock.mockResolvedValue({
+      id: "photo_1",
+      url: "https://img.example/p.jpg",
+      sortOrder: 1,
+      label: "Back",
+    });
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "1" } });
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
+    await userEvent.upload(
+      screen.getByLabelText("Add photos"),
+      new File(["x"], "a.jpg", { type: "image/jpeg" })
+    );
+    await userEvent.selectOptions(screen.getByLabelText("Photo position"), "Back");
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+
+    await waitFor(() => expect(uploadPhotoMock).toHaveBeenCalled());
+    expect(uploadPhotoMock).toHaveBeenCalledWith(
+      "listing_1",
+      expect.objectContaining({ label: "Back" })
+    );
+  });
+
+  it("opens the lightbox when a saved photo thumbnail is clicked (REQ-POL-13)", async () => {
+    const withPhoto = {
+      ...editListing,
+      photos: [{ id: "photo_1", url: "https://img.example/p.jpg", sortOrder: 1, label: null }],
+    };
+    render(
+      <ListingForm
+        mode="edit"
+        listing={withPhoto}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

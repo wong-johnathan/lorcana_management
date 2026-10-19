@@ -174,6 +174,20 @@ describe("MarketplaceSellPage", () => {
     expect(await screen.findByText("Sold out — price/quantity locked")).toBeInTheDocument();
   });
 
+  it("renders tiles with the card image, set, and collector number (REQ-POL-8)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    inventoryListMock.mockResolvedValue([]);
+    getPolicyMock.mockResolvedValue(null);
+    getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    render(<MarketplaceSellPage />);
+
+    expect(await screen.findByText("Elsa, Snow Queen")).toBeInTheDocument();
+    expect(screen.getByText("The First Chapter · 1/204")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Elsa, Snow Queen" })).toBeInTheDocument();
+  });
+
   it("walks the two-step create flow with Back preserving filters and Cancel returning to the list", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
     inventoryListMock.mockResolvedValue([inventoryEntry]);

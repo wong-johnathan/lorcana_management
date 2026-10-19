@@ -125,7 +125,7 @@ describe("MarketplaceListingCard", () => {
   it("renders the condition photo as the primary image", () => {
     const withPhoto = {
       ...listing,
-      photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1 }],
+      photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1, label: null }],
     };
     render(
       <MemoryRouter>
@@ -138,7 +138,7 @@ describe("MarketplaceListingCard", () => {
     );
   });
 
-  it("renders a no-photo placeholder when the card and photo are absent", () => {
+  it("renders the static fallback when the card and photo are absent", () => {
     render(
       <MemoryRouter>
         <MarketplaceListingCard
@@ -146,7 +146,10 @@ describe("MarketplaceListingCard", () => {
         />
       </MemoryRouter>
     );
-    expect(screen.getByText("No photo")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Unknown card" })).toHaveAttribute(
+      "src",
+      "/lorcana-logo.png"
+    );
     expect(screen.getByText("Unknown card")).toBeInTheDocument();
     expect(screen.queryByText(/Sold by/)).not.toBeInTheDocument();
   });
@@ -283,6 +286,22 @@ describe("MarketplacePage", () => {
           inkable: "inkable",
           cardTypes: "Action",
           subtypes: "Hero",
+        })
+      )
+    );
+  });
+
+  it("forwards the color/set/rarity filters to the listings endpoint (REQ-POL-3)", async () => {
+    renderPage(
+      "/marketplace?colors=Amber&sets=The%20First%20Chapter&rarities=Legendary"
+    );
+
+    await waitFor(() =>
+      expect(listingsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          colors: "Amber",
+          sets: "The First Chapter",
+          rarities: "Legendary",
         })
       )
     );
