@@ -151,3 +151,27 @@ describe("marketplace admin disable user (REQ-24 / AC-24.1)", () => {
     expect(disableUser).not.toHaveBeenCalled();
   });
 });
+
+describe("marketplace admin reports — no filters", () => {
+  it("lists reports without status/targetType filters", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ isOperator: true });
+    prismaMock.marketplaceReport.findMany.mockResolvedValueOnce([]);
+
+    await auth(request(app).get("/api/marketplace/admin/reports")).expect(200);
+
+    expect(prismaMock.marketplaceReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, orderBy: { createdAt: "desc" } })
+    );
+  });
+});
+
+describe("marketplace admin — non-MarketplaceError maps to 500", () => {
+  it("returns 500 for an unexpected failure", async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce({ isOperator: true });
+    prismaMock.marketplaceReport.findMany.mockRejectedValueOnce(new Error("db exploded"));
+
+    await auth(request(app).get("/api/marketplace/admin/reports")).expect(500, {
+      error: "Internal server error",
+    });
+  });
+});
