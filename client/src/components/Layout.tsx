@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { marketplace } from "../services/api";
@@ -27,14 +27,11 @@ export default function Layout() {
   const location = useLocation();
   const [showTop, setShowTop] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
-  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const el = mainRef.current;
-    if (!el) return;
-    const onScroll = () => setShowTop(el.scrollTop > 400);
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    const onScroll = () => setShowTop(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   // Unread Messages badge (REQ-NOTIF-1/7): fetch on mount + every route change,
@@ -66,7 +63,7 @@ export default function Layout() {
     };
   }, [user, location.pathname]);
 
-  const scrollToTop = () => mainRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   const navItems: NavItem[] = user
     ? [
@@ -133,8 +130,8 @@ export default function Layout() {
   ));
 
   return (
-    <div className="flex app-frame flex-col overflow-hidden">
-      <header className="shrink-0 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+    <div className="flex flex-col min-h-screen">
+      <header className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
         <Link to="/" className="text-xl font-bold text-amber-400 hover:text-amber-300 transition-colors">Lorcana Inventory</Link>
 
         {/* Desktop nav — inline in header */}
@@ -171,12 +168,12 @@ export default function Layout() {
         )}
       </header>
 
-      <main ref={mainRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <main className="flex flex-1 flex-col overflow-auto pb-20 md:pb-4">
         <Outlet />
       </main>
 
       {/* Mobile bottom nav */}
-      <nav className="shrink-0 bg-gray-900 border-t border-gray-800 md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-gray-900 border-t border-gray-800 md:hidden">
         <div className="flex max-w-lg mx-auto">
           {navLinks}
         </div>

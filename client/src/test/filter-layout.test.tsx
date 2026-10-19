@@ -266,10 +266,10 @@ describe("Layout", () => {
     expect(screen.getAllByText("Master Set")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Sign In")[0]).toBeInTheDocument();
 
-    Object.defineProperty(screen.getByRole("main"), "scrollTop", { value: 500, configurable: true });
+    Object.defineProperty(window, "scrollY", { value: 500, configurable: true, writable: true });
     const scrollTo = vi.fn();
-    Object.defineProperty(screen.getByRole("main"), "scrollTo", { value: scrollTo, configurable: true });
-    fireEvent.scroll(screen.getByRole("main"));
+    Object.defineProperty(window, "scrollTo", { value: scrollTo, configurable: true });
+    fireEvent.scroll(window);
     await userEvent.click(await screen.findByLabelText("Back to top"));
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
   });
