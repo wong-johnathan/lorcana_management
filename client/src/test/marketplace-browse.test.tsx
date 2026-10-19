@@ -138,33 +138,27 @@ describe("MarketplaceListingCard", () => {
     );
   });
 
-  it("opens the carousel at the card art (index 0) from the card image button (AC-LB-5.1)", async () => {
+  it("links the card image to the listing detail without opening a carousel (REQ-LB-5)", async () => {
     render(
       <MemoryRouter>
         <MarketplaceListingCard listing={listing} />
       </MemoryRouter>
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "View Elsa, Snow Queen" }));
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAttribute(
-      "aria-label",
-      "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1"
+    const imageLink = screen.getByRole("link", { name: "View Elsa, Snow Queen" });
+    expect(imageLink).toHaveAttribute("href", "/marketplace/listing/listing_1");
+    expect(within(imageLink).getByRole("img", { name: "Elsa, Snow Queen" })).toHaveAttribute(
+      "src",
+      "/api/card-images/card_elsa"
     );
-    expect(
-      within(dialog).getByRole("img", {
-        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
-      })
-    ).toHaveAttribute("src", "/api/card-images/card_elsa");
-    expect(within(dialog).getByText("1 / 1")).toBeInTheDocument();
 
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // No carousel trigger remains: no "View …" button, and clicking opens no dialog.
+    expect(screen.queryByRole("button", { name: "View Elsa, Snow Queen" })).not.toBeInTheDocument();
+    await userEvent.click(imageLink);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("opens the carousel at the condition photo (index 1) with the full set available (AC-LB-5.1)", async () => {
+  it("links the condition photo to the listing detail without opening a carousel (REQ-LB-5)", async () => {
     const withPhoto = {
       ...listing,
       photos: [{ id: "photo_1", url: "https://img.example/cond.jpg", sortOrder: 1, label: null }],
@@ -175,26 +169,19 @@ describe("MarketplaceListingCard", () => {
       </MemoryRouter>
     );
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
-    );
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-label", "condition photo");
-    expect(within(dialog).getByRole("img", { name: "condition photo" })).toHaveAttribute(
-      "src",
-      "https://img.example/cond.jpg"
-    );
-    expect(within(dialog).getByText("2 / 2")).toBeInTheDocument();
-
-    // Navigate back to the card art (full set available).
-    await userEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
+    const imageLink = screen.getByRole("link", {
+      name: "View Elsa, Snow Queen — condition photo",
+    });
+    expect(imageLink).toHaveAttribute("href", "/marketplace/listing/listing_1");
     expect(
-      within(dialog).getByRole("img", {
-        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
-      })
-    ).toHaveAttribute("src", "/api/card-images/card_elsa");
-    expect(within(dialog).getByText("1 / 2")).toBeInTheDocument();
+      within(imageLink).getByRole("img", { name: "Elsa, Snow Queen — condition photo" })
+    ).toHaveAttribute("src", "https://img.example/cond.jpg");
+
+    expect(
+      screen.queryByRole("button", { name: "View Elsa, Snow Queen — condition photo" })
+    ).not.toBeInTheDocument();
+    await userEvent.click(imageLink);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("renders the static fallback when the card and photo are absent", () => {
