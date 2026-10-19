@@ -106,6 +106,7 @@ describe("Layout", () => {
     vi.mocked(useAuth).mockReturnValue({ user: null, logout: vi.fn() } as any);
     render(<MemoryRouter><Layout /></MemoryRouter>);
     expect(screen.getAllByText("Database")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Marketplace")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Master Set")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Sign In")[0]).toBeInTheDocument();
 
@@ -122,6 +123,7 @@ describe("Layout", () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "u", username: "jw" }, logout } as any);
     render(<MemoryRouter><Layout /></MemoryRouter>);
     expect(screen.getAllByText("Inventory")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Marketplace")[0]).toBeInTheDocument();
     expect(screen.queryByText("Settings")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "jw" })[0]).toHaveAttribute("href", "/profile");
     await userEvent.click(screen.getAllByText("Logout")[0]);

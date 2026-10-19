@@ -42,6 +42,70 @@ describe("profile components", () => {
     }));
   });
 
+  it("edits every contact field and submits trimmed empty values as null", async () => {
+    const onSubmit = vi.fn();
+    render(<ProfileForm profile={profile} saving={false} onSubmit={onSubmit} />);
+
+    await userEvent.clear(screen.getByLabelText("Instagram"));
+    await userEvent.type(screen.getByLabelText("Instagram"), "newgram");
+    await userEvent.clear(screen.getByLabelText("Telegram"));
+    await userEvent.type(screen.getByLabelText("Telegram"), "newtelegram");
+    await userEvent.clear(screen.getByLabelText("Facebook"));
+    await userEvent.type(screen.getByLabelText("Facebook"), "newfacebook");
+    await userEvent.clear(screen.getByLabelText("Email"));
+    await userEvent.type(screen.getByLabelText("Email"), "new@example.com");
+    await userEvent.clear(screen.getByLabelText("HP number"));
+    await userEvent.type(screen.getByLabelText("HP number"), "123456");
+
+    // Toggle the visibility of each contact field off and on.
+    await userEvent.click(screen.getByLabelText("Show Instagram publicly"));
+    await userEvent.click(screen.getByLabelText("Show Telegram publicly"));
+    await userEvent.click(screen.getByLabelText("Show Facebook publicly"));
+    await userEvent.click(screen.getByLabelText("Show HP number publicly"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      instagram: "newgram",
+      instagramVisible: false,
+      telegram: "newtelegram",
+      telegramVisible: false,
+      facebook: "newfacebook",
+      facebookVisible: true,
+      email: "new@example.com",
+      phoneNumber: "123456",
+      phoneNumberVisible: true,
+    }));
+  });
+
+  it("clears a contact field back to null when emptied", async () => {
+    const onSubmit = vi.fn();
+    render(<ProfileForm profile={profile} saving={false} onSubmit={onSubmit} />);
+
+    await userEvent.clear(screen.getByLabelText("Display name"));
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ displayName: null }));
+  });
+
+  it("strips all contact visibility toggles when exposure is not allowed", async () => {
+    const onSubmit = vi.fn();
+    render(<ProfileForm profile={profile} saving={false} canExposeContactFields={false} onSubmit={onSubmit} />);
+
+    expect(screen.getAllByText("Verify Google email first").length).toBeGreaterThan(0);
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes.length).toBeGreaterThan(0);
+    checkboxes.forEach((box) => expect(box).toBeDisabled());
+
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      instagramVisible: false,
+      telegramVisible: false,
+      facebookVisible: false,
+      emailVisible: false,
+      phoneNumberVisible: false,
+    }));
+  });
+
   it("shows profile image preview controls and submits edited image data", async () => {
     const onUpload = vi.fn().mockResolvedValue(undefined);
     const file = new File(["fake image"], "avatar.png", { type: "image/png" });

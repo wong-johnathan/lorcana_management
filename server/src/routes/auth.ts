@@ -106,6 +106,13 @@ authRouter.post("/login", async (req: Request, res: Response) => {
       return;
     }
 
+    // D6: a disabled account cannot log in (defense in depth; the operator
+    // disable path auto-cancels pending transactions via REQ-24).
+    if (user.disabledAt) {
+      res.status(403).json({ error: "Account is disabled" });
+      return;
+    }
+
     if (!user.passwordHash) {
       res.status(401).json({ error: "Invalid username or password" });
       return;
@@ -178,6 +185,12 @@ authRouter.post("/google", async (req: Request, res: Response) => {
         });
         status = 201;
       }
+    }
+
+    // D6: reject login for disabled accounts regardless of auth provider.
+    if (user.disabledAt) {
+      res.status(403).json({ error: "Account is disabled" });
+      return;
     }
 
     const token = signToken({ userId: user.id, username: user.username });
@@ -270,6 +283,17 @@ authRouter.delete("/me", authenticateToken, async (req: AuthRequest, res: Respon
     });
     if (!user) {
       res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // D9/§4: `MarketplaceTransaction.cardId` is `onDelete: Restrict`, so a user
+    // with marketplace transaction history cannot be hard-deleted. Return a
+    // clear 409 instead of a raw FK 500.
+    const marketplaceTransactionCount = await prisma.marketplaceTransaction.count({
+      where: { OR: [{ buyerId: user.id }, { sellerId: user.id }] },
+    });
+    if (marketplaceTransactionCount > 0) {
+      res.status(409).json({ error: "Cannot delete account with marketplace transaction history" });
       return;
     }
 

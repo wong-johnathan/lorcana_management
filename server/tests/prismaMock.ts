@@ -2,6 +2,7 @@ import { vi } from "vitest";
 
 export const prismaMock = {
   $transaction: vi.fn(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock)),
+  $queryRaw: vi.fn(),
   user: {
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -61,8 +62,105 @@ export const prismaMock = {
     findFirst: vi.fn(),
     upsert: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     delete: vi.fn(),
     deleteMany: vi.fn(),
+  },
+  marketplaceListing: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  marketplaceListingPhoto: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  marketplaceEnquiry: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  enquiryMessage: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  marketplaceTransaction: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  marketplaceReview: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  userReference: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
+  },
+  marketplaceReport: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    count: vi.fn(),
   },
 };
 
@@ -73,10 +171,14 @@ vi.mock("@prisma/client", () => ({
 }));
 
 export function resetPrismaMock() {
-  for (const model of Object.values(prismaMock)) {
+  for (const [key, model] of Object.entries(prismaMock)) {
     if (typeof model === "function" && "mockReset" in model) {
       model.mockReset();
-      model.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
+      // Only $transaction has a default passthrough implementation; $queryRaw
+      // is a bare vi.fn() that each test stubs as needed.
+      if (key === "$transaction") {
+        model.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
+      }
       continue;
     }
     for (const fn of Object.values(model)) {

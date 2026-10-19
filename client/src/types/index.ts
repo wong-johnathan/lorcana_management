@@ -328,3 +328,263 @@ export interface MasterSetEstimate {
   breakdownByVariant: MasterSetBreakdownByVariant[];
   missing: MasterSetMissingPrice[];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lorcana Marketplace (Lean V2)
+// Client types mirror the frozen server contract (design §7) and B3's response
+// envelopes. Wire values are the design §4/§7 strings: variant is lowercase
+// "normal" | "foil" | "holofoil" (D1), condition "NM" | "LP" | "MP" | "HP",
+// currency an ISO-4217 uppercase code.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MarketplaceVariant = "normal" | "foil" | "holofoil";
+export type MarketplaceCondition = "NM" | "LP" | "MP" | "HP";
+
+export interface MarketplaceListingPhoto {
+  id: string;
+  url: string;
+  sortOrder: number;
+}
+
+/** The `seller` object embedded in every serialized listing. */
+export interface MarketplaceSellerSummary {
+  id: string;
+  username: string;
+  profile: PublicUserProfile;
+}
+
+export interface MarketplaceListing {
+  id: string;
+  sellerId: string;
+  cardId: string;
+  variant: string;
+  quantity: number;
+  priceMinor: number;
+  currency: string;
+  condition: string | null;
+  location: string;
+  note: string | null;
+  status: string;
+  hiddenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  card: Card | null;
+  seller: MarketplaceSellerSummary | null;
+  photos: MarketplaceListingPhoto[];
+}
+
+/** GET /marketplace/listings/:id — the listing plus the pending-sale count. */
+export interface MarketplaceListingDetail extends MarketplaceListing {
+  pendingQuantity: number;
+}
+
+export interface MarketplacePagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/** GET /marketplace/listings */
+export interface MarketplaceListingsResponse {
+  listings: MarketplaceListing[];
+  pagination: MarketplacePagination;
+}
+
+export interface MarketplaceReview {
+  id: string;
+  transactionId: string;
+  reviewerId: string;
+  revieweeId: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  reviewer: { id: string; username: string };
+}
+
+/** A vouch (reference check) with the completed-deal badge computed at read time (REQ-21). */
+export interface UserReference {
+  id: string;
+  authorId: string;
+  author: { id: string; username: string };
+  subjectId: string;
+  comment: string;
+  createdAt: string;
+  updatedAt: string;
+  hasCompletedDeal: boolean;
+}
+
+/** GET /marketplace/sellers/:userId */
+export interface MarketplaceSellerProfile {
+  user: { id: string; username: string; profile: PublicUserProfile };
+  listings: MarketplaceListing[];
+  reviews: MarketplaceReview[];
+  references: UserReference[];
+}
+
+export interface MarketplaceReport {
+  id: string;
+  reporterId: string;
+  targetType: "LISTING" | "USER";
+  targetId: string;
+  reason: string;
+  status: "OPEN" | "RESOLVED";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /marketplace/enquiries — a thread summary in the seller/buyer inbox (F2 surfaces). */
+export interface MarketplaceEnquirySummary {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  requestedQuantity: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: {
+    id: string;
+    cardId: string;
+    variant: string;
+    quantity: number;
+    priceMinor: number;
+    currency: string;
+    status: string;
+    card: Card;
+  };
+  buyer: { id: string; username: string };
+  seller: { id: string; username: string };
+  lastMessageAt: string;
+}
+
+export interface EnquiryMessage {
+  id: string;
+  enquiryId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface MarketplaceTransaction {
+  id: string;
+  enquiryId: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  cardId: string;
+  variant: string;
+  quantity: number;
+  priceMinor: number;
+  currency: string;
+  status: string;
+  completedCause: string | null;
+  cancelledBy: string | null;
+  soldAt: string;
+  confirmedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  buyer: { id: string; username: string };
+  seller: { id: string; username: string };
+  card: { id: string; name: string; setName: string };
+}
+
+/** GET /marketplace/me/pending — computed pending-sale breakdown (AC-15.3). */
+export interface MarketplacePendingSaleItem {
+  cardId: string;
+  variant: string;
+  quantity: number;
+  transactionId: string;
+  buyerUsername: string | null;
+  soldAt: string;
+}
+
+export interface MarketplacePendingSalesResponse {
+  items: MarketplacePendingSaleItem[];
+}
+
+/** GET /marketplace/transactions — the caller's own transactions (buyer OR seller). */
+export interface MarketplaceTransactionsResponse {
+  transactions: MarketplaceTransaction[];
+}
+
+/** GET /marketplace/listings/mine — the seller's own listings, incl. CLOSED/hidden. */
+export interface MarketplaceMyListingsResponse {
+  listings: MarketplaceListing[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F2 additions — authed/transactional surfaces (chat, sell, transactions).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /marketplace/enquiries — the seller/buyer inbox. */
+export interface MarketplaceEnquiriesResponse {
+  enquiries: MarketplaceEnquirySummary[];
+}
+
+/**
+ * GET /marketplace/enquiries/:id — thread + messages. The embedded `listing` is
+ * the raw Prisma listing (card + photos, no `seller`), so `seller` is unused.
+ */
+export interface MarketplaceEnquiryDetail {
+  id: string;
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+  requestedQuantity: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  listing: MarketplaceListing;
+  buyer: { id: string; username: string };
+  seller: { id: string; username: string };
+}
+
+export interface MarketplaceEnquiryDetailResponse {
+  enquiry: MarketplaceEnquiryDetail;
+  messages: EnquiryMessage[];
+}
+
+/** POST /marketplace/listings/:id/enquire → { enquiryId }. */
+export interface MarketplaceEnquireResponse {
+  enquiryId: string;
+}
+
+/** Listing photo upload body (dataUrl + contentType; REQ-23 / D7). */
+export interface MarketplacePhotoUpload {
+  dataUrl: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+}
+
+/** POST /marketplace/listings/:id/photos — the persisted photo row. */
+export interface MarketplacePhotoUploadResult extends MarketplaceListingPhoto {
+  listingId: string;
+  objectKey: string;
+  createdAt: string;
+}
+
+/** Thin results returned by the B2 transition write endpoints. */
+export interface MarketplaceMarkSoldResult {
+  transactionId: string;
+  quantity: number;
+  status: string;
+  listingQuantity: number;
+  listingStatus: string;
+}
+
+export interface MarketplaceAdjustQuantityResult {
+  transactionId: string;
+  quantity: number;
+}
+
+export interface MarketplaceConfirmResult {
+  transactionId: string;
+  alreadyCompleted: boolean;
+  status?: string;
+}
+
+export interface MarketplaceCancelResult {
+  transactionId: string;
+  alreadyCancelled: boolean;
+  status?: string;
+}
