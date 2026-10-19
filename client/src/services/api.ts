@@ -247,6 +247,9 @@ export const marketplace = {
     inkable?: string;
     cardTypes?: string;
     subtypes?: string;
+    colors?: string;
+    sets?: string;
+    rarities?: string;
     sellerId?: string;
     page?: number;
     limit?: number;
@@ -374,6 +377,16 @@ export const marketplace = {
     request<void>(`/marketplace/listings/${listingId}/photos/${photoId}`, {
       method: "DELETE",
     }),
+
+  /** PATCH /marketplace/listings/:id/photos/:photoId (REQ-POL-15; { label }). */
+  updatePhotoLabel: (listingId: string, photoId: string, label: string | null) =>
+    request<MarketplacePhotoUploadResult>(
+      `/marketplace/listings/${listingId}/photos/${photoId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ label }),
+      }
+    ),
 
   /** POST /marketplace/listings (REQ-3/4/5). */
   createListing: (body: {

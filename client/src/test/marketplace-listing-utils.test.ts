@@ -12,7 +12,7 @@ import {
 
 describe("marketplaceListing utils", () => {
   it("exposes the photo limit constants", () => {
-    expect(MAX_LISTING_PHOTO_COUNT).toBe(8);
+    expect(MAX_LISTING_PHOTO_COUNT).toBe(15);
     expect(MAX_LISTING_PHOTO_BYTES).toBe(5 * 1024 * 1024);
     expect(ALLOWED_LISTING_PHOTO_MIME_TYPES).toEqual(["image/jpeg", "image/png", "image/webp"]);
   });

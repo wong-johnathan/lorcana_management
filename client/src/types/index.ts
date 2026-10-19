@@ -347,6 +347,7 @@ export interface MarketplaceListingPhoto {
   id: string;
   url: string;
   sortOrder: number;
+  label: string | null;
 }
 
 /** The `seller` object embedded in every serialized listing. */
@@ -553,10 +554,11 @@ export interface MarketplaceEnquireResponse {
   enquiryId: string;
 }
 
-/** Listing photo upload body (dataUrl + contentType; REQ-23 / D7). */
+/** Listing photo upload body (dataUrl + contentType + optional label; REQ-23 / D7). */
 export interface MarketplacePhotoUpload {
   dataUrl: string;
   contentType: "image/jpeg" | "image/png" | "image/webp";
+  label?: string | null;
 }
 
 /** POST /marketplace/listings/:id/photos — the persisted photo row. */

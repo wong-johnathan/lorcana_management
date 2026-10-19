@@ -106,7 +106,7 @@ export default function MarketplaceListingPage() {
                 <img
                   key={photo.id}
                   src={photo.url}
-                  alt={`${card?.name ?? "Card"} — actual condition photo`}
+                  alt={`${card?.name ?? "Card"} — actual condition photo${photo.label ? ` (${photo.label})` : ""}`}
                   className="aspect-[5/7] w-full rounded-xl border border-gray-800 object-cover"
                 />
               ))}

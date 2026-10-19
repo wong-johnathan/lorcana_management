@@ -1,5 +1,6 @@
 import type { FilterOptions, InventoryEntry, InventoryPolicy } from "../types";
 import { totalInventoryCount } from "./cardVariants";
+import { sortRarities } from "./rarityOrder";
 
 /**
  * Pure helpers for the two-step listing picker (REQ-UX-2..4). All filtering is
@@ -19,6 +20,15 @@ function splitFilter(value: string | undefined): string[] {
 /** A card is "owned" when its total count across variants is > 0 (AC-UX-2.1). */
 export function isOwnedEntry(entry: InventoryEntry): boolean {
   return totalInventoryCount(entry) > 0;
+}
+
+/**
+ * Release order for a set code: leading digits ascending, non-numeric codes
+ * sort last (REQ-POL-6). Mirrors the server's `numericSetCode` semantics.
+ */
+export function numericSetCode(setCode: string): number {
+  const match = setCode.match(/\d+/);
+  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
 }
 
 /**
@@ -88,13 +98,17 @@ export function ownedFilterOptions(entries: InventoryEntry[]): FilterOptions {
   const cardTypes = new Set<string>();
   const types = new Set<string>();
   const costs = new Set<number>();
+  const setCodeByName = new Map<string, string>();
   let hasSong = false;
 
   for (const entry of entries) {
     if (!isOwnedEntry(entry)) continue;
     const card = entry.card;
     if (card.color) colors.add(card.color);
-    if (card.setName) sets.add(card.setName);
+    if (card.setName) {
+      sets.add(card.setName);
+      if (!setCodeByName.has(card.setName)) setCodeByName.set(card.setName, card.setCode);
+    }
     if (card.rarity) rarities.add(card.rarity);
     if (card.cardType) cardTypes.add(card.cardType);
     costs.add(card.inkCost);
@@ -113,8 +127,12 @@ export function ownedFilterOptions(entries: InventoryEntry[]): FilterOptions {
 
   return {
     colors: [...colors].sort(),
-    sets: [...sets].sort(),
-    rarities: [...rarities].sort(),
+    sets: [...sets].sort(
+      (a, b) =>
+        numericSetCode(setCodeByName.get(a) ?? "") -
+        numericSetCode(setCodeByName.get(b) ?? "")
+    ),
+    rarities: sortRarities([...rarities]),
     cardTypes: sortedCardTypes,
     types: [...types].sort(),
     costs: [...costs].sort((a, b) => a - b),

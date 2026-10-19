@@ -6,13 +6,13 @@ import type {
 
 /**
  * Client-side mirrors of the listing/photo rules the server enforces
- * (design D7 / REQ-23): 8 photos, 5 MiB each, image/jpeg | image/png |
+ * (design D7 / REQ-23): 15 photos, 5 MiB each, image/jpeg | image/png |
  * image/webp. Validation happens here BEFORE any upload so oversized or
  * unsupported files never reach the wire (AC-23.2). Also small surplus-hint
  * helpers (REQ-5) mirroring `calculateExtras` / `resolveKeepCounts`.
  */
 
-export const MAX_LISTING_PHOTO_COUNT = 8;
+export const MAX_LISTING_PHOTO_COUNT = 15;
 export const MAX_LISTING_PHOTO_BYTES = 5 * 1024 * 1024; // 5 MiB
 export const ALLOWED_LISTING_PHOTO_MIME_TYPES = [
   "image/jpeg",

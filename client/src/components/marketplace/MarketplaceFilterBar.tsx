@@ -35,13 +35,16 @@ export default function MarketplaceFilterBar({
     controls.inkable,
     controls.cardTypes,
     controls.subtypes,
+    controls.colors,
+    controls.sets,
+    controls.rarities,
   ].filter((value) => value !== "").length;
 
   const splitCsv = (value: string): string[] =>
     value ? value.split(",").filter(Boolean) : [];
 
   const toggleCsv = (
-    key: "costs" | "cardTypes" | "subtypes",
+    key: "costs" | "cardTypes" | "subtypes" | "colors" | "sets" | "rarities",
     value: string,
     current: string
   ) => {
@@ -123,6 +126,36 @@ export default function MarketplaceFilterBar({
               options={optionSource.types}
               selected={splitCsv(controls.subtypes)}
               onToggle={(value) => toggleCsv("subtypes", value, controls.subtypes)}
+            />
+          </div>
+
+          <div className="text-xs text-gray-400">
+            <span className="mb-1 block">Color</span>
+            <SearchableMultiSelect
+              label="Colors"
+              options={optionSource.colors}
+              selected={splitCsv(controls.colors)}
+              onToggle={(value) => toggleCsv("colors", value, controls.colors)}
+            />
+          </div>
+
+          <div className="text-xs text-gray-400">
+            <span className="mb-1 block">Set</span>
+            <SearchableMultiSelect
+              label="Sets"
+              options={optionSource.sets}
+              selected={splitCsv(controls.sets)}
+              onToggle={(value) => toggleCsv("sets", value, controls.sets)}
+            />
+          </div>
+
+          <div className="text-xs text-gray-400">
+            <span className="mb-1 block">Rarity</span>
+            <SearchableMultiSelect
+              label="Rarities"
+              options={optionSource.rarities}
+              selected={splitCsv(controls.rarities)}
+              onToggle={(value) => toggleCsv("rarities", value, controls.rarities)}
             />
           </div>
         </>
@@ -219,6 +252,9 @@ export default function MarketplaceFilterBar({
               inkable: "",
               cardTypes: "",
               subtypes: "",
+              colors: "",
+              sets: "",
+              rarities: "",
             })
           }
           className="rounded border border-gray-700 px-3 py-2 text-sm text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200 focus:border-amber-500 focus:outline-none"

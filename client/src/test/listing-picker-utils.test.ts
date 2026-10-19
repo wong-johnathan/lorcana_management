@@ -212,9 +212,9 @@ describe("filterOwnedInventory", () => {
 describe("ownedFilterOptions", () => {
   it("derives unique, sorted options from owned cards only", () => {
     const entries = [
-      makeEntry(makeCard({ id: "a", color: "Ruby", setName: "Set B", rarity: "Rare", cardType: "Action", types: ["X", "Y"] })),
-      makeEntry(makeCard({ id: "b", color: "Amber", setName: "Set A", rarity: "Common", cardType: "Character", types: ["Y", "Z"] })),
-      makeEntry(makeCard({ id: "c", color: "Ruby", setName: "Set B", rarity: "Rare", cardType: "Action", types: ["X"] }), {
+      makeEntry(makeCard({ id: "a", color: "Ruby", setCode: "2", setName: "Set B", rarity: "Legendary", cardType: "Action", types: ["X", "Y"] })),
+      makeEntry(makeCard({ id: "b", color: "Amber", setCode: "1", setName: "Set A", rarity: "Common", cardType: "Character", types: ["Y", "Z"] })),
+      makeEntry(makeCard({ id: "c", color: "Ruby", setCode: "2", setName: "Set B", rarity: "Legendary", cardType: "Action", types: ["X"] }), {
         quantity: 0,
         foilQuantity: 0,
         holofoilQuantity: 0,
@@ -224,9 +224,43 @@ describe("ownedFilterOptions", () => {
     const options = ownedFilterOptions(entries);
     expect(options.colors).toEqual(["Amber", "Ruby"]);
     expect(options.sets).toEqual(["Set A", "Set B"]);
-    expect(options.rarities).toEqual(["Common", "Rare"]);
+    expect(options.rarities).toEqual(["Common", "Legendary"]);
     expect(options.cardTypes).toEqual(["Action", "Character"]);
     expect(options.types).toEqual(["X", "Y", "Z"]);
+  });
+
+  it("orders sets by numeric release order, not alphabetically (REQ-POL-6)", () => {
+    const entries = [
+      makeEntry(makeCard({ id: "a", setCode: "2", setName: "Rise of the Floodborn" })),
+      makeEntry(makeCard({ id: "b", setCode: "1", setName: "The First Chapter" })),
+      makeEntry(makeCard({ id: "c", setCode: "13", setName: "Attack of the Vine!" })),
+      makeEntry(makeCard({ id: "d", setCode: "Q1", setName: "Illumineer's Quest" })),
+    ];
+
+    const options = ownedFilterOptions(entries);
+    expect(options.sets[0]).toBe("The First Chapter");
+    // Numeric setCode order (Q1 → 1 sorts early, matching the server rule);
+    // alphabetical order would put "Attack of the Vine!" first.
+    expect(options.sets).toEqual([
+      "The First Chapter",
+      "Illumineer's Quest",
+      "Rise of the Floodborn",
+      "Attack of the Vine!",
+    ]);
+  });
+
+  it("orders rarities by canonical hierarchy with unknowns appended (REQ-POL-7)", () => {
+    const entries = [
+      makeEntry(makeCard({ id: "a", rarity: "Special" })),
+      makeEntry(makeCard({ id: "b", rarity: "Legendary" })),
+      makeEntry(makeCard({ id: "c", rarity: "Common" })),
+      makeEntry(makeCard({ id: "d", rarity: "Enchanted" })),
+    ];
+
+    const options = ownedFilterOptions(entries);
+    expect(options.rarities[0]).toBe("Common");
+    expect(options.rarities[options.rarities.length - 1]).toBe("Special");
+    expect(options.rarities).toEqual(["Common", "Legendary", "Enchanted", "Special"]);
   });
 
   it("returns empty arrays for an empty collection", () => {

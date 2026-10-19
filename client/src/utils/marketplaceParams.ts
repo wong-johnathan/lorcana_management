@@ -67,6 +67,9 @@ export interface MarketplaceControls {
   inkable: string; // "" | "inkable" | "non-inkable"
   cardTypes: string; // CSV incl "Song"
   subtypes: string; // CSV keywords
+  colors: string; // CSV color values, "" = no constraint (REQ-POL-2)
+  sets: string; // CSV setName values, "" = no constraint (REQ-POL-2)
+  rarities: string; // CSV rarity values, "" = no constraint (REQ-POL-2)
   page: number; // 1-based
 }
 
@@ -81,6 +84,9 @@ export const MARKETPLACE_DEFAULTS: MarketplaceControls = {
   inkable: "",
   cardTypes: "",
   subtypes: "",
+  colors: "",
+  sets: "",
+  rarities: "",
   page: 1,
 };
 
@@ -144,6 +150,9 @@ export function marketplaceControlsFromParams(params: URLSearchParams): Marketpl
     inkable: pickInkable(params.get("inkable")),
     cardTypes: pickCsv(params.get("cardTypes")),
     subtypes: pickCsv(params.get("subtypes")),
+    colors: pickCsv(params.get("colors")),
+    sets: pickCsv(params.get("sets")),
+    rarities: pickCsv(params.get("rarities")),
     page: pickPage(params.get("page")),
   };
 }
@@ -160,6 +169,9 @@ export function marketplaceParamsFromControls(controls: MarketplaceControls): UR
   if (controls.inkable) params.set("inkable", controls.inkable);
   if (controls.cardTypes) params.set("cardTypes", controls.cardTypes);
   if (controls.subtypes) params.set("subtypes", controls.subtypes);
+  if (controls.colors) params.set("colors", controls.colors);
+  if (controls.sets) params.set("sets", controls.sets);
+  if (controls.rarities) params.set("rarities", controls.rarities);
   if (controls.page !== MARKETPLACE_DEFAULTS.page) params.set("page", String(controls.page));
   return params;
 }

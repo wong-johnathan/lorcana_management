@@ -179,6 +179,53 @@ describe("marketplace API namespace", () => {
     );
   });
 
+  it("forwards the color/set/rarity browse params", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) });
+
+    await marketplace.listings({
+      colors: "Amber,Ruby",
+      sets: "The First Chapter",
+      rarities: "Legendary,Enchanted",
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/marketplace/listings?colors=Amber%2CRuby&sets=The+First+Chapter&rarities=Legendary%2CEnchanted",
+      expect.any(Object)
+    );
+  });
+
+  it("sends an optional label on photo upload and patches the label", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true }) });
+
+    await marketplace.uploadPhoto("listing_1", {
+      dataUrl: "data:image/png;base64,AAAA",
+      contentType: "image/png",
+      label: "Front",
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/marketplace/listings/listing_1/photos",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          dataUrl: "data:image/png;base64,AAAA",
+          contentType: "image/png",
+          label: "Front",
+        }),
+      })
+    );
+
+    await marketplace.updatePhotoLabel("listing_1", "photo_1", "Back");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/marketplace/listings/listing_1/photos/photo_1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ label: "Back" }) })
+    );
+
+    await marketplace.updatePhotoLabel("listing_1", "photo_1", null);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/marketplace/listings/listing_1/photos/photo_1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ label: null }) })
+    );
+  });
+
   it("surfaces a non-json error body without crashing", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new Error("bad json"); } });
     await expect(marketplace.getEnquiries()).rejects.toThrow("Request failed: 500");
