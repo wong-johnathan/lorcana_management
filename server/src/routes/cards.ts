@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { analyzeCardMarket } from "../services/analysis.js";
+import { sortRarities } from "../utils/rarityOrder.js";
 import type { AuthPayload } from "../middleware/auth.js";
 
 const prisma = new PrismaClient();
@@ -231,7 +232,7 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
     const [colors, sets, rarities, cardTypes, typeValues, costValues] = await Promise.all([
       prisma.card.findMany({ select: { color: true }, distinct: ["color"], orderBy: { color: "asc" } }),
       prisma.card.findMany({ select: { setName: true, setCode: true }, distinct: ["setName"] }),
-      prisma.card.findMany({ select: { rarity: true }, distinct: ["rarity"], orderBy: { rarity: "asc" } }),
+      prisma.card.findMany({ select: { rarity: true }, distinct: ["rarity"] }),
       prisma.card.findMany({ select: { cardType: true }, distinct: ["cardType"], orderBy: { cardType: "asc" } }),
       prisma.card.findMany({ select: { types: true } }),
       prisma.card.findMany({ select: { inkCost: true }, distinct: ["inkCost"], orderBy: { inkCost: "asc" } }),
@@ -242,7 +243,7 @@ cardsRouter.get("/filters", async (_req: Request, res: Response) => {
     res.json({
       colors: colors.map((c) => c.color),
       sets: sets.sort((a, b) => numericSetCode(a.setCode) - numericSetCode(b.setCode)).map((s) => s.setName),
-      rarities: rarities.map((r) => r.rarity),
+      rarities: sortRarities(rarities.map((r) => r.rarity)),
       cardTypes: cardTypes.map((t) => t.cardType),
       types: allSubtypes,
       costs: costValues.map((c) => c.inkCost),
