@@ -1,14 +1,39 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { readFileSync } from "fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
+  fetchAndSaveRemote,
   parseData,
+  seedFromLocal,
   toCardData,
   upsertCards,
   type LorcanaCard,
   type LorcanaData,
 } from "../src/services/cardSync.js";
 import { prismaMock, resetPrismaMock } from "./prismaMock";
+
+// Wrap the fs I/O entry points cardSync.ts uses so the real-catalog test below
+// still reads the real DATA_PATH by default (the mocks default to the original
+// implementations), while seedFromLocal/fetchAndSaveRemote tests can override
+// readFileSync/writeFileSync without touching disk or the network.
+const realFs = vi.hoisted(() => ({
+  readFileSync: null as unknown as typeof import("fs")["readFileSync"],
+  writeFileSync: null as unknown as typeof import("fs")["writeFileSync"],
+}));
+
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs")>();
+  realFs.readFileSync = actual.readFileSync;
+  realFs.writeFileSync = actual.writeFileSync;
+  return {
+    ...actual,
+    readFileSync: vi.fn(actual.readFileSync),
+    writeFileSync: vi.fn(actual.writeFileSync),
+  };
+});
+
+const mockedReadFileSync = vi.mocked(readFileSync);
+const mockedWriteFileSync = vi.mocked(writeFileSync);
 
 const DATA_PATH = join(__dirname, "../data/allCards.json");
 
@@ -128,5 +153,92 @@ describe("seed/sync backfill mapping over the real catalog (AC-FILT-3.1)", () =>
     }
     expect(inkableTrue).toBe(2471);
     expect(inkableFalse).toBe(761);
+  });
+});
+
+describe("seedFromLocal() reads DATA_PATH and upserts the parsed cards", () => {
+  const fixture = JSON.stringify({
+    cards: [makeCard({ id: 100, inkwell: true })],
+    sets: setMap,
+  });
+
+  beforeEach(() => {
+    resetPrismaMock();
+    prismaMock.card.upsert.mockResolvedValue({ id: "db_1" });
+    mockedReadFileSync.mockReturnValue(fixture);
+  });
+
+  afterEach(() => {
+    // Restore the real fs implementation so the real-catalog test above (and
+    // any later file read) is unaffected regardless of execution order.
+    mockedReadFileSync.mockReset();
+    mockedReadFileSync.mockImplementation(realFs.readFileSync);
+  });
+
+  it("reads DATA_PATH, parses it, upserts, and returns { seeded, failed }", async () => {
+    const result = await seedFromLocal();
+
+    expect(mockedReadFileSync).toHaveBeenCalledWith(DATA_PATH, "utf-8");
+    expect(prismaMock.card.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { externalId: 100 },
+        create: expect.objectContaining({ externalId: 100, inkable: true }),
+      })
+    );
+    expect(result).toEqual({ seeded: 1, failed: 0 });
+  });
+
+  it("counts a card as failed when its upsert rejects", async () => {
+    prismaMock.card.upsert.mockRejectedValue(new Error("db unavailable"));
+
+    const result = await seedFromLocal();
+
+    expect(result).toEqual({ seeded: 0, failed: 1 });
+  });
+});
+
+describe("fetchAndSaveRemote() fetches and persists the remote catalog", () => {
+  const remoteUrl = "https://lorcanajson.org/files/current/en/allCards.json";
+  const raw = JSON.stringify({
+    cards: [makeCard({ id: 200, inkwell: false })],
+    sets: setMap,
+  });
+
+  beforeEach(() => {
+    mockedWriteFileSync.mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    mockedWriteFileSync.mockReset();
+    mockedWriteFileSync.mockImplementation(realFs.writeFileSync);
+    vi.unstubAllGlobals();
+  });
+
+  it("writes the response body and returns parseData(raw) on ok", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => raw,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchAndSaveRemote();
+
+    expect(fetchMock).toHaveBeenCalledWith(remoteUrl);
+    expect(mockedWriteFileSync).toHaveBeenCalledWith(DATA_PATH, raw, "utf-8");
+    expect(result).toEqual(parseData(raw));
+  });
+
+  it("throws with the response status on a non-ok response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: async () => "",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchAndSaveRemote()).rejects.toThrow(
+      "Failed to fetch LorcanaJSON: 503"
+    );
   });
 });
