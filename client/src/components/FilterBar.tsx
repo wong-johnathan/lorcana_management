@@ -3,6 +3,8 @@ import { cards as cardsApi } from "../services/api";
 import type { FilterOptions } from "../types";
 import SearchableMultiSelect from "./SearchableMultiSelect";
 import TriStateToggle, { type InkableValue } from "./TriStateToggle";
+import FilterSheet from "./FilterSheet";
+import { DESKTOP_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 
 interface FilterBarProps {
   filters: Record<string, string>;
@@ -36,6 +38,8 @@ export default function FilterBar({
   const [setOpen, setSetOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const rarityRef = useRef<HTMLDivElement>(null);
   const setRef = useRef<HTMLDivElement>(null);
   const colorRef = useRef<HTMLDivElement>(null);
@@ -120,6 +124,11 @@ export default function FilterBar({
     (k) => filters[k] && filters[k] !== ""
   ).length;
 
+  // The badge on the mobile trigger ignores `spares`, which bulk listing forces on.
+  const badgeCount = Object.keys(filters).filter(
+    (k) => k !== "spares" && filters[k] && filters[k] !== ""
+  ).length;
+
   const costOptions = (resolvedOptions.costs ?? []).map((cost) => String(cost));
   const inkableValue: InkableValue =
     filters.inkable === "inkable" || filters.inkable === "non-inkable"
@@ -129,28 +138,30 @@ export default function FilterBar({
   const fullDropdownClass =
     "bg-gray-800 border border-gray-700 rounded-md px-2 py-1.5 text-sm text-gray-100 hover:border-gray-600 focus:outline-none focus:border-amber-500 min-w-[130px] text-left whitespace-nowrap";
 
-  return (
-    <div className="flex flex-wrap gap-2 p-3 bg-gray-900 rounded-lg">
-      <div className="relative flex-1 min-w-[200px]">
-        <input
-          type="text"
-          placeholder="Search by name..."
-          value={filters.search || ""}
-          onChange={(e) => update("search", e.target.value)}
-          className={`w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-amber-500 ${isPicker ? "pr-7" : ""}`}
-        />
-        {isPicker && filters.search && (
-          <button
-            type="button"
-            aria-label="Clear search"
-            onClick={() => update("search", "")}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 text-sm px-1"
-          >
-            ✕
-          </button>
-        )}
-      </div>
+  const searchField = (
+    <div className="relative flex-1 min-w-[200px]">
+      <input
+        type="text"
+        placeholder="Search by name..."
+        value={filters.search || ""}
+        onChange={(e) => update("search", e.target.value)}
+        className={`w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-amber-500 ${isPicker ? "pr-7" : ""}`}
+      />
+      {isPicker && filters.search && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => update("search", "")}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 text-sm px-1"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
 
+  const filterFields = (
+    <>
       {isPicker ? (
         <>
           {/* Picker mode: enhanced filters + searchable multi-selects (REQ-FILT-6..11). */}
@@ -387,6 +398,35 @@ export default function FilterBar({
           ✕ Clear all{activeFilterCount > 1 ? ` (${activeFilterCount})` : ""}
         </button>
       )}
+    </>
+  );
+
+  if (!isDesktop) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          {searchField}
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-haspopup="dialog"
+            className="shrink-0 whitespace-nowrap rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm font-semibold text-gray-100 hover:border-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          >
+            {badgeCount > 0 ? `Filters (${badgeCount})` : "Filters"}
+          </button>
+        </div>
+
+        <FilterSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Filters">
+          <div className="flex flex-col gap-2">{filterFields}</div>
+        </FilterSheet>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2 p-3 bg-gray-900 rounded-lg">
+      {searchField}
+      {filterFields}
     </div>
   );
 }
