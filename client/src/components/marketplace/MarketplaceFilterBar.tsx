@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FilterOptions } from "../../types";
 import type { MarketplaceControls } from "../../utils/marketplaceParams";
 import {
@@ -7,6 +8,8 @@ import {
 } from "../../utils/marketplaceParams";
 import SearchableMultiSelect from "../SearchableMultiSelect";
 import TriStateToggle, { type InkableValue } from "../TriStateToggle";
+import FilterSheet from "../FilterSheet";
+import { DESKTOP_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
 
 interface MarketplaceFilterBarProps {
   controls: MarketplaceControls;
@@ -15,15 +18,37 @@ interface MarketplaceFilterBarProps {
   optionSource?: FilterOptions | null;
 }
 
+const CLEARED_CONTROLS: Partial<MarketplaceControls> = {
+  q: "",
+  variant: "",
+  condition: "",
+  priceMin: "",
+  priceMax: "",
+  currency: "",
+  costs: "",
+  inkable: "",
+  cardTypes: "",
+  subtypes: "",
+  colors: "",
+  sets: "",
+  rarities: "",
+};
+
 /**
  * Public marketplace filter bar. The browse page owns the URL, so this
  * component is fully controlled: it emits patches and never mutates state.
+ *
+ * Desktop shows the full bar. On a phone the controls move into a bottom
+ * sheet so the search stays visible and the page isn't swallowed by filters.
  */
 export default function MarketplaceFilterBar({
   controls,
   onChange,
   optionSource,
 }: MarketplaceFilterBarProps) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+
   const activeFilterCount = [
     controls.q,
     controls.variant,
@@ -64,31 +89,33 @@ export default function MarketplaceFilterBar({
 
   const costOptions = (optionSource?.costs ?? []).map((cost) => String(cost));
 
-  return (
-    <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
-      <label className="min-w-[200px] flex-1 text-xs text-gray-400">
-        Search
-        <div className="relative mt-1">
-          <input
-            type="text"
-            placeholder="Search by name or set..."
-            value={controls.q}
-            onChange={(event) => onChange({ q: event.target.value })}
-            className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 pr-8 text-sm text-gray-100 placeholder-gray-500 focus:border-amber-500 focus:outline-none"
-          />
-          {controls.q && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => onChange({ q: "" })}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      </label>
+  const searchField = (
+    <label className="min-w-[200px] flex-1 text-xs text-gray-400">
+      Search
+      <div className="relative mt-1">
+        <input
+          type="text"
+          placeholder="Search by name or set..."
+          value={controls.q}
+          onChange={(event) => onChange({ q: event.target.value })}
+          className="w-full rounded border border-gray-700 bg-gray-950 px-3 py-2 pr-8 text-sm text-gray-100 placeholder-gray-500 focus:border-amber-500 focus:outline-none"
+        />
+        {controls.q && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => onChange({ q: "" })}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    </label>
+  );
 
+  const filterFields = (
+    <>
       {optionSource && (
         <>
           <div className="text-xs text-gray-400">
@@ -240,28 +267,45 @@ export default function MarketplaceFilterBar({
       {activeFilterCount > 0 && (
         <button
           type="button"
-          onClick={() =>
-            onChange({
-              q: "",
-              variant: "",
-              condition: "",
-              priceMin: "",
-              priceMax: "",
-              currency: "",
-              costs: "",
-              inkable: "",
-              cardTypes: "",
-              subtypes: "",
-              colors: "",
-              sets: "",
-              rarities: "",
-            })
-          }
+          onClick={() => onChange(CLEARED_CONTROLS)}
           className="rounded border border-gray-700 px-3 py-2 text-sm text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200 focus:border-amber-500 focus:outline-none"
         >
           Clear all
         </button>
       )}
+    </>
+  );
+
+  if (isDesktop) {
+    return (
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+        {searchField}
+        {filterFields}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3">
+      <div className="flex items-end gap-2">
+        {searchField}
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          aria-haspopup="dialog"
+          className="shrink-0 whitespace-nowrap rounded border border-gray-700 bg-gray-950 px-3 py-2 text-sm font-semibold text-gray-100 hover:border-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+        >
+          {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : "Filters"}
+        </button>
+      </div>
+
+      <FilterSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title="Filter listings"
+      >
+        <div className="flex flex-col gap-3">{filterFields}</div>
+      </FilterSheet>
     </div>
   );
 }
