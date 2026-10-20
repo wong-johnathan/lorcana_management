@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { inventory as inventoryApi, profile as profileApi, settings as settingsApi } from "../services/api";
 import type { InventoryPolicy, ProfileImageUpload, UserProfile, UserProfileUpdate, UserSettings } from "../types";
@@ -8,6 +8,7 @@ import AccountSettingsPanel from "../components/profile/AccountSettingsPanel";
 import KeepPolicyPanel from "../components/inventory/KeepPolicyPanel";
 import TransactionHistory from "../components/profile/TransactionHistory";
 import { useAuth } from "../context/AuthContext";
+import { copyTextToClipboard } from "../utils/clipboard";
 
 export default function SettingsPage() {
   const { user, googleClientId, linkGoogleAccount, deleteAccount } = useAuth();
@@ -21,8 +22,18 @@ export default function SettingsPage() {
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareFailed, setShareFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const shareHelperId = useId();
+  const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     Promise.all([settingsApi.get(), profileApi.get(), inventoryApi.getPolicy()])
@@ -128,6 +139,21 @@ export default function SettingsPage() {
     }
   };
 
+  const handleShareProfile = async () => {
+    if (!user) return;
+    const url = `${window.location.origin}/marketplace/seller/${user.id}`;
+    const ok = await copyTextToClipboard(url);
+    if (ok) {
+      setShareCopied(true);
+      setShareFailed(false);
+      if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
+      shareTimerRef.current = setTimeout(() => setShareCopied(false), 2000);
+    } else {
+      setShareCopied(false);
+      setShareFailed(true);
+    }
+  };
+
   const handleLinkGoogle = async (credential: string) => {
     setLinkingGoogle(true);
     setError(null);
@@ -174,7 +200,38 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-6">
-      <h2 className="text-lg font-semibold">Profile Settings</h2>
+      <div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h2 className="mr-auto text-lg font-semibold">Profile Settings</h2>
+          {user && (
+            <button
+              type="button"
+              aria-describedby={shareHelperId}
+              onClick={handleShareProfile}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-sm font-medium text-gray-200 transition-colors hover:border-amber-500/60 hover:text-amber-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+            >
+              <span aria-hidden="true">{shareCopied ? "✓" : "↗"}</span>
+              {shareCopied ? "Copied!" : "Share profile"}
+            </button>
+          )}
+        </div>
+        <p id={shareHelperId} className="mt-2 text-sm text-gray-400">
+          Anyone with the link can view your public seller page.
+        </p>
+        {shareCopied && (
+          <span role="status" className="sr-only">
+            Profile link copied to clipboard.
+          </span>
+        )}
+        {shareFailed && user && (
+          <div role="status" className="mt-2 rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-200">
+            <p>Couldn’t copy the link. Copy it from here:</p>
+            <p className="mt-1 select-all font-mono break-all text-red-100">
+              {`${window.location.origin}/marketplace/seller/${user.id}`}
+            </p>
+          </div>
+        )}
+      </div>
       <div className={`rounded-lg border p-3 text-sm ${user?.emailVerifiedAt ? "border-emerald-900 bg-emerald-950/40 text-emerald-300" : "border-amber-900 bg-amber-950/30 text-amber-200"}`}>
         {user?.emailVerifiedAt
           ? `Email verified${user.email ? `: ${user.email}` : ""}`
