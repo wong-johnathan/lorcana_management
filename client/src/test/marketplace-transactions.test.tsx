@@ -137,6 +137,42 @@ describe("TransactionCard", () => {
     await waitFor(() => expect(postReviewMock).toHaveBeenCalledWith("tx_1", 4, "great"));
   });
 
+  it("shows the submitted state instead of the form when a review already exists (reload)", async () => {
+    renderCard("buyer_1", {
+      ...baseTransaction,
+      status: "COMPLETED",
+      completedCause: "BUYER_CONFIRM",
+      confirmedAt: "2026-10-31T00:00:00.000Z",
+      myReview: { rating: 4, comment: "great" },
+    });
+
+    expect(await screen.findByText("Review submitted.")).toBeInTheDocument();
+    expect(screen.getByText("4 stars")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit review" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Review the seller/)).not.toBeInTheDocument();
+  });
+
+  it("switches to the submitted state after a successful review re-fetch", async () => {
+    postReviewMock.mockResolvedValue({ id: "rev_1", rating: 4, comment: "great" });
+    const completed = {
+      ...baseTransaction,
+      status: "COMPLETED" as const,
+      completedCause: "BUYER_CONFIRM",
+      confirmedAt: "2026-10-31T00:00:00.000Z",
+      myReview: null,
+    };
+    getTransactionMock
+      .mockResolvedValueOnce(completed)
+      .mockResolvedValueOnce({ ...completed, myReview: { rating: 4, comment: "great" } });
+    render(<TransactionCard transactionId="tx_1" currentUserId="buyer_1" onChanged={vi.fn()} />);
+
+    await userEvent.selectOptions(await screen.findByLabelText("Rating"), "4");
+    await userEvent.click(screen.getByRole("button", { name: "Submit review" }));
+
+    expect(await screen.findByText("Review submitted.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit review" })).not.toBeInTheDocument();
+  });
+
   it("renders the loading state while the transaction is fetched", () => {
     getTransactionMock.mockReturnValue(new Promise(() => undefined));
     render(

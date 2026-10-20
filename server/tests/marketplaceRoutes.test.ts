@@ -1665,6 +1665,41 @@ describe("marketplace transaction route edges", () => {
     const res = await auth(request(app).get("/api/marketplace/transactions/tx1"), buyerToken).expect(200);
     expect(res.body.id).toBe("tx1");
   });
+
+  it("transaction detail serializes caller-relative review state (REQ-REV-4)", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValueOnce(
+      tx({
+        status: "COMPLETED",
+        buyer: { id: "buyer1", username: "buyer" },
+        seller: { id: "seller1", username: "seller" },
+        card: { id: "card1", name: "Mickey", setName: "Set 1" },
+        reviews: [
+          { reviewerId: "buyer1", rating: 5, comment: "great" },
+          { reviewerId: "seller1", rating: 4, comment: "ok" },
+        ],
+      })
+    );
+
+    const res = await auth(request(app).get("/api/marketplace/transactions/tx1"), buyerToken).expect(200);
+    expect(res.body.myReview).toEqual({ rating: 5, comment: "great" });
+    expect(res.body.counterpartReview).toEqual({ rating: 4, comment: "ok" });
+    expect(res.body.reviews).toBeUndefined();
+  });
+
+  it("transaction detail reports a null review when the caller has not reviewed", async () => {
+    prismaMock.marketplaceTransaction.findUnique.mockResolvedValueOnce(
+      tx({
+        status: "COMPLETED",
+        buyer: { id: "buyer1", username: "buyer" },
+        seller: { id: "seller1", username: "seller" },
+        card: { id: "card1", name: "Mickey", setName: "Set 1" },
+      })
+    );
+
+    const res = await auth(request(app).get("/api/marketplace/transactions/tx1"), buyerToken).expect(200);
+    expect(res.body.myReview).toBeNull();
+    expect(res.body.counterpartReview).toBeNull();
+  });
 });
 
 describe("marketplace me/pending buyer fallback", () => {
