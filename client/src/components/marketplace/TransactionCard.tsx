@@ -32,7 +32,6 @@ export default function TransactionCard({
   const [adjustQuantity, setAdjustQuantity] = useState("");
   const [rating, setRating] = useState("5");
   const [comment, setComment] = useState("");
-  const [reviewed, setReviewed] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -202,8 +201,14 @@ export default function TransactionCard({
 
       {isCompleted && (isBuyer || isSeller) && (
         <div className="mt-3 border-t border-gray-800 pt-3">
-          {reviewed ? (
-            <p className="text-sm text-emerald-300">Review submitted.</p>
+          {transaction.myReview ? (
+            <div>
+              <p className="text-sm font-medium text-emerald-300">Review submitted.</p>
+              <p className="mt-1 text-xs text-emerald-200/80">
+                {transaction.myReview.rating}{" "}
+                {transaction.myReview.rating === 1 ? "star" : "stars"}
+              </p>
+            </div>
           ) : (
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-widest text-gray-500">
@@ -240,9 +245,7 @@ export default function TransactionCard({
                 type="button"
                 onClick={() =>
                   void run(() =>
-                    marketplace.postReview(transaction.id, Number(rating), comment.trim() || undefined).then(() => {
-                      setReviewed(true);
-                    })
+                    marketplace.postReview(transaction.id, Number(rating), comment.trim() || undefined)
                   )
                 }
                 disabled={busy}

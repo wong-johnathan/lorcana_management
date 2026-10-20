@@ -1184,6 +1184,7 @@ marketplaceRouter.get("/transactions/:id", async (req: AuthRequest, res: Respons
         buyer: { select: { id: true, username: true } },
         seller: { select: { id: true, username: true } },
         card: { select: { id: true, name: true, setName: true } },
+        reviews: { select: { reviewerId: true, rating: true, comment: true } },
       },
     });
     if (!transaction) throw new MarketplaceError(404, "Transaction not found");
@@ -1191,7 +1192,19 @@ marketplaceRouter.get("/transactions/:id", async (req: AuthRequest, res: Respons
       throw new MarketplaceError(403, "You are not a party to this transaction");
     }
 
-    res.json(transaction);
+    // REQ-REV-4: expose caller-relative review state on the singular endpoint
+    // too (it previously omitted `reviews` entirely), so the transaction card
+    // shows "Review submitted" after a reload instead of re-opening the form.
+    const { reviews, ...rest } = transaction as any;
+    const mine = reviews.find((r: any) => r.reviewerId === userId) ?? null;
+    const counterpart = reviews.find((r: any) => r.reviewerId !== userId) ?? null;
+    res.json({
+      ...rest,
+      myReview: mine ? { rating: mine.rating, comment: mine.comment } : null,
+      counterpartReview: counterpart
+        ? { rating: counterpart.rating, comment: counterpart.comment }
+        : null,
+    });
   } catch (error) {
     sendError(res, error);
   }
