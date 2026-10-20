@@ -46,6 +46,7 @@ import type {
   EnquiryMessage,
   MarketplaceListing,
 } from "../types";
+import type { BulkCreateOutcome, BulkSkippedListingResponse } from "../utils/bulkListing";
 
 const API_BASE = "/api";
 
@@ -408,6 +409,50 @@ export const marketplace = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  /**
+   * POST /marketplace/listings for the bulk run (design §5.3 / AD-1): one
+   * normal-variant listing with the fixed bulk fields and the authoritative
+   * `skipIfAlreadyListed` guard. Never throws per item — the run loop needs a
+   * per-item outcome, including the verbatim server message on failure.
+   */
+  bulkCreateListing: async (body: {
+    cardId: string;
+    quantity: number;
+    priceMinor: number;
+    currency: string;
+  }): Promise<BulkCreateOutcome> => {
+    try {
+      const raw = await request<MarketplaceListing | BulkSkippedListingResponse>(
+        "/marketplace/listings",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            cardId: body.cardId,
+            variant: "normal",
+            quantity: body.quantity,
+            priceMinor: body.priceMinor,
+            currency: body.currency,
+            condition: null,
+            location: "",
+            note: null,
+            skipIfAlreadyListed: true,
+          }),
+        }
+      );
+      if ((raw as BulkSkippedListingResponse).skipped === true) {
+        return { status: "skipped", reason: "already listed" };
+      }
+      return { status: "created", listing: raw as MarketplaceListing };
+    } catch (err) {
+      const httpStatus = (err as { status?: number }).status;
+      return {
+        status: "failed",
+        error: err instanceof Error ? err.message : "Failed to create listing",
+        ...(httpStatus != null ? { httpStatus } : {}),
+      };
+    }
+  },
 
   /** PATCH /marketplace/listings/:id (REQ-7/8). */
   updateListing: (

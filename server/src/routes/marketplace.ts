@@ -7,6 +7,7 @@ import {
 } from "../middleware/auth.js";
 import {
   availableCount,
+  createListingLocked,
   lockInventoryEntry,
 } from "../services/marketplaceAvailability.js";
 import {
@@ -503,30 +504,35 @@ marketplaceRouter.post("/listings", async (req: AuthRequest, res: Response) => {
       throw new MarketplaceError(404, "Card not found");
     }
 
-    const listing = await prisma.$transaction(async (tx) => {
-      await lockInventoryEntry(tx, userId, cardId as string);
-      const available = await availableCount(tx, userId, cardId as string, variant as string);
-      if (quantity > available) {
-        throw new MarketplaceError(409, "Quantity exceeds available inventory");
-      }
-      return tx.marketplaceListing.create({
-        data: {
-          sellerId: userId,
-          cardId: cardId as string,
-          variant: variant as string,
-          quantity,
-          priceMinor,
-          currency: body.currency as string,
-          condition: (condition ?? null) as string | null,
-          location: typeof location === "string" ? location : "",
-          note: (note ?? null) as string | null,
-          status: "ACTIVE",
-        },
-        include: { card: true, photos: true },
-      });
-    });
+    // Bulk-listing backstop (REQ-BULK-9, AC-BULK-9.4). Optional and default
+    // false: when absent/false the single flow behaves exactly as before.
+    const skipIfAlreadyListed = body.skipIfAlreadyListed === true;
 
-    res.status(201).json(serializeListing(listing));
+    const result = await prisma.$transaction((tx) =>
+      createListingLocked(tx, {
+        sellerId: userId,
+        cardId: cardId as string,
+        variant: variant as string,
+        quantity,
+        priceMinor,
+        currency: body.currency as string,
+        condition: condition as string | null | undefined,
+        location: location as string | undefined,
+        note: note as string | null | undefined,
+        skipIfAlreadyListed,
+      })
+    );
+
+    if (result.kind === "skipped") {
+      // Nothing was written: commit nothing and report the skip (200, not 201).
+      res.json({ skipped: true, reason: "already listed", listing: null });
+      return;
+    }
+    if (result.kind === "exceeds-available") {
+      throw new MarketplaceError(409, "Quantity exceeds available inventory");
+    }
+
+    res.status(201).json(serializeListing(result.listing));
   } catch (error) {
     sendError(res, error);
   }

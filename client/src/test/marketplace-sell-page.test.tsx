@@ -153,6 +153,11 @@ beforeEach(() => {
   createListingMock.mockReset();
   updateListingMock.mockReset();
   deleteListingMock.mockReset();
+  // The sell page now also fetches inventory + keep policy on mount to power the
+  // in-page bulk-listing flow (REQ-BULK). Give every test safe defaults; tests
+  // that exercise inventory/policy override them explicitly below.
+  inventoryListMock.mockResolvedValue([]);
+  getPolicyMock.mockResolvedValue(null);
 });
 
 describe("MarketplaceSellPage", () => {
@@ -257,7 +262,7 @@ describe("MarketplaceSellPage", () => {
     expect(screen.getByRole("link", { name: "Edit listing: Elsa, Snow Queen, Normal" })).toBeInTheDocument();
   });
 
-  it("does not fetch inventory or keep policy on mount (AC-LC-8.1)", async () => {
+  it("fetches inventory and keep policy on mount to power the bulk flow (AC-LC-8.1 superseded by REQ-BULK)", async () => {
     signIn();
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
@@ -267,8 +272,11 @@ describe("MarketplaceSellPage", () => {
     await screen.findByText("Elsa, Snow Queen");
     expect(getMyListingsMock).toHaveBeenCalledTimes(1);
     expect(getTransactionsMock).toHaveBeenCalledWith("PENDING_CONFIRMATION");
-    expect(inventoryListMock).not.toHaveBeenCalled();
-    expect(getPolicyMock).not.toHaveBeenCalled();
+    // The in-page bulk-listing flow needs the collection + keep policy for its
+    // candidate maths, so the sell page now loads them eagerly (the bulk entry's
+    // disabled-until-ready gating depends on policy being present).
+    expect(inventoryListMock).toHaveBeenCalledTimes(1);
+    expect(getPolicyMock).toHaveBeenCalledTimes(1);
   });
 
   it("click-through: Create listing opens the create page route (AC-LC-1.1)", async () => {

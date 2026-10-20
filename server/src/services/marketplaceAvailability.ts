@@ -110,3 +110,75 @@ export async function lockInventoryEntry(
 ): Promise<{ id: string }[]> {
   return tx.$queryRaw<{ id: string }[]>`SELECT id FROM "InventoryEntry" WHERE "userId" = ${userId} AND "cardId" = ${cardId} FOR UPDATE`;
 }
+
+/** Inputs for the shared lock → availability → create core (design §4.4). */
+export interface CreateListingLockedInput {
+  sellerId: string;
+  cardId: string;
+  variant: string;
+  quantity: number;
+  priceMinor: number;
+  currency: string;
+  condition?: string | null;
+  location?: string;
+  note?: string | null;
+  /**
+   * Bulk-listing backstop (REQ-BULK-9, AC-BULK-9.4). When true the seller's
+   * existing non-hidden listing for (card, variant) makes this a no-op skip.
+   * Defaults to false, which keeps the single flow byte-identical.
+   */
+  skipIfAlreadyListed?: boolean;
+}
+
+/** A created listing with the relations `serializeListing` reads. */
+export type CreatedListing = Prisma.MarketplaceListingGetPayload<{
+  include: { card: true; photos: true };
+}>;
+
+/** Discriminated outcome of {@link createListingLocked}. */
+export type CreateListingLockedResult =
+  | { kind: "created"; listing: CreatedListing }
+  | { kind: "skipped" }
+  | { kind: "exceeds-available" };
+
+/**
+ * Design §4.4: the single source of truth for the listing-creation invariant.
+ * Must be called inside a transaction so the `FOR UPDATE` lock holds.
+ *
+ * Order is binding (design §4.2 / PI-1): lock → (optional) already-listed skip
+ * → availableCount check → create. The skip predicate keys on `hiddenAt: null`
+ * only, never on `status`.
+ */
+export async function createListingLocked(
+  tx: MarketplaceTx,
+  input: CreateListingLockedInput
+): Promise<CreateListingLockedResult> {
+  const { sellerId, cardId, variant, quantity } = input;
+
+  await lockInventoryEntry(tx, sellerId, cardId);
+
+  if (input.skipIfAlreadyListed) {
+    const alreadyListed = (await listedElsewhereCount(tx, sellerId, cardId, variant)) > 0;
+    if (alreadyListed) return { kind: "skipped" };
+  }
+
+  const available = await availableCount(tx, sellerId, cardId, variant);
+  if (quantity > available) return { kind: "exceeds-available" };
+
+  const listing = await tx.marketplaceListing.create({
+    data: {
+      sellerId,
+      cardId,
+      variant,
+      quantity,
+      priceMinor: input.priceMinor,
+      currency: input.currency,
+      condition: input.condition ?? null,
+      location: input.location ?? "",
+      note: input.note ?? null,
+      status: "ACTIVE",
+    },
+    include: { card: true, photos: true },
+  });
+  return { kind: "created", listing };
+}

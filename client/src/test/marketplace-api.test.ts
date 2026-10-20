@@ -242,4 +242,97 @@ describe("marketplace API namespace", () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => { throw new Error("bad json"); } });
     await expect(marketplace.getEnquiries()).rejects.toThrow("Request failed: 500");
   });
+
+  // REQ-BULK-7 / design §5.3: the bulk run needs a per-item outcome instead of
+  // a thrown error, so the loop can continue after a single failure.
+  describe("bulkCreateListing", () => {
+    const body = { cardId: "card_1", quantity: 2, priceMinor: 50, currency: "SGD" };
+    const expectedBody = JSON.stringify({
+      cardId: "card_1",
+      variant: "normal",
+      quantity: 2,
+      priceMinor: 50,
+      currency: "SGD",
+      condition: null,
+      location: "",
+      note: null,
+      skipIfAlreadyListed: true,
+    });
+
+    it("posts one normal-variant listing with the fixed bulk fields", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({ id: "listing_9", cardId: "card_1", variant: "normal" }),
+      });
+
+      const outcome = await marketplace.bulkCreateListing(body);
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/marketplace/listings",
+        expect.objectContaining({ method: "POST", body: expectedBody })
+      );
+      expect(outcome).toEqual({
+        status: "created",
+        listing: { id: "listing_9", cardId: "card_1", variant: "normal" },
+      });
+    });
+
+    it("maps the authoritative 200 skip without inventing a listing", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ skipped: true, reason: "already listed", listing: null }),
+      });
+
+      await expect(marketplace.bulkCreateListing(body)).resolves.toEqual({
+        status: "skipped",
+        reason: "already listed",
+      });
+    });
+
+    it("maps a 409 to a failed outcome with the verbatim server message", async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: "Quantity exceeds available inventory" }),
+      });
+
+      await expect(marketplace.bulkCreateListing(body)).resolves.toEqual({
+        status: "failed",
+        error: "Quantity exceeds available inventory",
+        httpStatus: 409,
+      });
+    });
+
+    it("keeps the 401 status so the run loop can stop the batch", async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: "Invalid or expired token" }),
+      });
+
+      await expect(marketplace.bulkCreateListing(body)).resolves.toEqual({
+        status: "failed",
+        error: "Invalid or expired token",
+        httpStatus: 401,
+      });
+    });
+
+    it("falls back to a generic message when the failure carries no body", async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => {
+          throw new Error("bad json");
+        },
+      });
+
+      await expect(marketplace.bulkCreateListing(body)).resolves.toEqual({
+        status: "failed",
+        error: "Request failed: 500",
+        httpStatus: 500,
+      });
+    });
+  });
 });
