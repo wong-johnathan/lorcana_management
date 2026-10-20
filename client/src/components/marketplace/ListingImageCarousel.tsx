@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
 import type { ListingImageItem } from "../../utils/listingImages";
 
 interface ListingImageCarouselProps {
@@ -8,6 +8,9 @@ interface ListingImageCarouselProps {
   startIndex: number;
   onClose: () => void;
 }
+
+/** Minimum horizontal drag before a touch gesture counts as a swipe. */
+const SWIPE_THRESHOLD_PX = 40;
 
 function clamp(index: number, length: number): number {
   if (length <= 0) return 0;
@@ -66,6 +69,29 @@ export default function ListingImageCarousel({
   const prev = () => setIndex((i) => Math.max(0, i - 1));
   const next = () => setIndex((i) => Math.min(images.length - 1, i + 1));
 
+  // Touch navigation: the arrows are the only way to move on a phone, and
+  // swiping is the gesture people actually try first.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+
+  const handleTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+    const dx = touch.clientX - start.x;
+    const dy = touch.clientY - start.y;
+    // Ignore taps and mostly-vertical drags; a swipe must be deliberate and
+    // horizontal so it can never fight a scroll.
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dx) <= Math.abs(dy)) return;
+    if (dx < 0) next();
+    else prev();
+  };
+
   return (
     <div
       role="dialog"
@@ -88,22 +114,20 @@ export default function ListingImageCarousel({
       </button>
 
       {/* The image content (arrows + image + indicator + caption) stops
-          propagation so only a genuine backdrop click closes the viewer. */}
+          propagation so only a genuine backdrop click closes the viewer.
+          Arrows overlay the image instead of sitting beside it: side-by-side
+          sizing pushed both of them off a phone viewport. */}
       <div
         onClick={(event) => event.stopPropagation()}
         className="flex max-h-full w-full flex-col items-center gap-4"
       >
-        <div className="flex w-full items-center justify-center gap-4">
-          <button
-            type="button"
-            aria-label="Previous image"
-            onClick={prev}
-            disabled={isFirst}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-600 bg-gray-900/80 text-2xl text-gray-200 hover:border-gray-400 hover:text-white focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            ‹
-          </button>
-
+        <div
+          role="group"
+          aria-label={current.caption}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="relative flex w-full items-center justify-center [touch-action:pan-y]"
+        >
           <img
             src={current.src}
             alt={current.caption}
@@ -112,10 +136,20 @@ export default function ListingImageCarousel({
 
           <button
             type="button"
+            aria-label="Previous image"
+            onClick={prev}
+            disabled={isFirst}
+            className="absolute left-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-500 bg-gray-950/70 pb-1 text-2xl text-gray-100 backdrop-blur-sm hover:border-gray-300 hover:text-white focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ‹
+          </button>
+
+          <button
+            type="button"
             aria-label="Next image"
             onClick={next}
             disabled={isLast}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gray-600 bg-gray-900/80 text-2xl text-gray-200 hover:border-gray-400 hover:text-white focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="absolute right-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-500 bg-gray-950/70 pb-1 text-2xl text-gray-100 backdrop-blur-sm hover:border-gray-300 hover:text-white focus:border-amber-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-30"
           >
             ›
           </button>
