@@ -1,23 +1,20 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
 import MarketplaceSellPage from "../pages/marketplace/MarketplaceSellPage";
-import type { InventoryEntry, InventoryPolicy, MarketplaceListing } from "../types";
+import type { MarketplaceListing } from "../types";
 
 const {
   inventoryListMock,
   getPolicyMock,
   getMyListingsMock,
   getTransactionsMock,
-  createListingMock,
 } = vi.hoisted(() => ({
   inventoryListMock: vi.fn(),
   getPolicyMock: vi.fn(),
   getMyListingsMock: vi.fn(),
   getTransactionsMock: vi.fn(),
-  createListingMock: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({
@@ -28,10 +25,6 @@ vi.mock("../services/api", () => ({
   marketplace: {
     getMyListings: getMyListingsMock,
     getTransactions: getTransactionsMock,
-    createListing: createListingMock,
-  },
-  cards: {
-    filters: vi.fn(),
   },
 }));
 
@@ -64,22 +57,6 @@ const card = {
   foilTypes: ["None", "Silver"],
   imageUrl: "",
   prices: [],
-};
-
-const inventoryEntry: InventoryEntry = {
-  id: "inv_1",
-  userId: "seller_1",
-  cardId: "card_1",
-  quantity: 3,
-  foilQuantity: 0,
-  holofoilQuantity: 0,
-  card,
-};
-
-const policy: InventoryPolicy = {
-  keepNormalQuantity: 4,
-  keepFoilQuantity: 1,
-  keepHolofoilQuantity: 1,
 };
 
 const closedListing: MarketplaceListing = {
@@ -131,26 +108,6 @@ const pendingTransaction = {
   card: { id: "card_1", name: "Elsa, Snow Queen", setName: "The First Chapter" },
 };
 
-const secondCard = {
-  ...card,
-  id: "card_2",
-  name: "Mickey Mouse, Brave Little Tailor",
-  subtitle: "Brave Little Tailor",
-  setCode: "ROTF",
-  setName: "Rise of the Floodborn",
-  foilTypes: ["Lava"],
-};
-
-const secondInventoryEntry: InventoryEntry = {
-  id: "inv_2",
-  userId: "seller_1",
-  cardId: "card_2",
-  quantity: 0,
-  foilQuantity: 0,
-  holofoilQuantity: 2,
-  card: secondCard,
-};
-
 function renderSellPage() {
   return render(
     <MemoryRouter>
@@ -159,19 +116,20 @@ function renderSellPage() {
   );
 }
 
-describe("MarketplaceSellPage", () => {
-  beforeEach(() => {
-    inventoryListMock.mockReset();
-    getPolicyMock.mockReset();
-    getMyListingsMock.mockReset();
-    getTransactionsMock.mockReset();
-    createListingMock.mockReset();
-  });
+function signIn() {
+  vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+}
 
+beforeEach(() => {
+  inventoryListMock.mockReset();
+  getPolicyMock.mockReset();
+  getMyListingsMock.mockReset();
+  getTransactionsMock.mockReset();
+});
+
+describe("MarketplaceSellPage", () => {
   it("renders a Transactions link to /marketplace/transactions (AC-NOTIF-2.2)", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([]);
-    getPolicyMock.mockResolvedValue(null);
+    signIn();
     getMyListingsMock.mockResolvedValue({ listings: [] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
@@ -183,10 +141,41 @@ describe("MarketplaceSellPage", () => {
     );
   });
 
-  it("lists a CLOSED (sold-out) listing as editable (D2)", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([]);
-    getPolicyMock.mockResolvedValue(null);
+  it("always renders Create listing as a link to /marketplace/sell/new (AC-LC-1.2/1.4)", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    renderSellPage();
+
+    await screen.findByText("Elsa, Snow Queen");
+    expect(screen.getByRole("link", { name: "Create listing" })).toHaveAttribute(
+      "href",
+      "/marketplace/sell/new"
+    );
+    // The flow is no longer inline on this page (AC-LC-1.3).
+    expect(screen.queryByText("Choose a card to list")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Variant")).not.toBeInTheDocument();
+  });
+
+  it("renders Create listing even in the empty state", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    renderSellPage();
+
+    expect(
+      await screen.findByText("You have no listings yet. Create one to start selling.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create listing" })).toHaveAttribute(
+      "href",
+      "/marketplace/sell/new"
+    );
+  });
+
+  it("lists a CLOSED (sold-out) listing with a Closed badge, lock label, and Edit link (D2)", async () => {
+    signIn();
     getMyListingsMock.mockResolvedValue({ listings: [closedListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
@@ -194,14 +183,16 @@ describe("MarketplaceSellPage", () => {
 
     expect(await screen.findByText("Elsa, Snow Queen")).toBeInTheDocument();
     expect(screen.getByText("Closed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    expect(await screen.findByText("Sold out — price/quantity locked")).toBeInTheDocument();
+    expect(screen.getByText("Sold out — price/quantity locked")).toBeInTheDocument();
+
+    expect(screen.getByText("Edit")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Edit listing: Elsa, Snow Queen, Normal" })
+    ).toHaveAttribute("href", "/marketplace/sell/listing_1/edit");
   });
 
   it("renders tiles with the card image, set, and collector number (REQ-POL-8)", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([]);
-    getPolicyMock.mockResolvedValue(null);
+    signIn();
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
@@ -213,9 +204,7 @@ describe("MarketplaceSellPage", () => {
   });
 
   it("renders a non-triggerable placeholder for a no-art, no-photo listing (AC-LB-3.3)", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([]);
-    getPolicyMock.mockResolvedValue(null);
+    signIn();
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
@@ -229,136 +218,28 @@ describe("MarketplaceSellPage", () => {
     expect(screen.queryByRole("button", { name: "View Elsa, Snow Queen" })).not.toBeInTheDocument();
   });
 
-  it("walks the two-step create flow with Back preserving filters and Cancel returning to the list", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([inventoryEntry]);
-    getPolicyMock.mockResolvedValue(policy);
-    getMyListingsMock.mockResolvedValue({ listings: [] });
-    getTransactionsMock.mockResolvedValue({ transactions: [] });
-
-    renderSellPage();
-
-    // Wait for initial load, then enter the create flow.
-    await screen.findByText("You have no listings yet. Create one to start selling.");
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-
-    // Step 1 — picker.
-    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
-    expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
-
-    // Type a search so we can assert it is preserved across Back.
-    await userEvent.type(screen.getByPlaceholderText("Search by name..."), "elsa");
-
-    // Step 2 — locked form.
-    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
-    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Card")).not.toBeInTheDocument();
-
-    // Back returns to the picker with the search text preserved.
-    await userEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Search by name...")).toHaveValue("elsa");
-
-    // Cancel returns to the listings list and discards the flow.
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("button", { name: "Create listing" })).toBeInTheDocument();
-    expect(screen.queryByText("Choose a card to list")).not.toBeInTheDocument();
-  });
-
-  it("submits the locked form, closes it, and refreshes listings", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([inventoryEntry]);
-    getPolicyMock.mockResolvedValue(policy);
-    getMyListingsMock.mockResolvedValue({ listings: [] });
-    getTransactionsMock.mockResolvedValue({ transactions: [] });
-    createListingMock.mockResolvedValue({ ...closedListing, status: "ACTIVE", quantity: 1 });
-
-    renderSellPage();
-
-    await screen.findByText("You have no listings yet. Create one to start selling.");
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-    await screen.findByText("Choose a card to list");
-    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
-
-    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "1" } });
-    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-
-    await waitFor(() => expect(createListingMock).toHaveBeenCalledTimes(1));
-    expect(createListingMock).toHaveBeenCalledWith(
-      expect.objectContaining({ cardId: "card_1", variant: "normal", quantity: 1, priceMinor: 1000 })
-    );
-
-    // The form closes (create button returns) and listings reload.
-    expect(await screen.findByRole("button", { name: "Create listing" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Variant")).not.toBeInTheDocument();
-  });
-
-  it("locks an ACTIVE listing with a PENDING_CONFIRMATION transaction (REQ-8)", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([inventoryEntry]);
-    getPolicyMock.mockResolvedValue(policy);
+  it("keeps the pending-sale lock label on an ACTIVE listing with a PENDING_CONFIRMATION transaction (REQ-8)", async () => {
+    signIn();
     getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [pendingTransaction] });
 
     renderSellPage();
 
     expect(await screen.findByText("Pending sale — price/quantity locked")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByLabelText(/Quantity/)).toBeDisabled();
-    expect(screen.getByLabelText("Currency")).toBeDisabled();
-    expect(screen.getByLabelText("Price")).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Edit listing: Elsa, Snow Queen, Normal" })).toBeInTheDocument();
   });
 
-  it("cancels from the Step 2 form back to the listings list", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([inventoryEntry]);
-    getPolicyMock.mockResolvedValue(policy);
-    getMyListingsMock.mockResolvedValue({ listings: [] });
+  it("does not fetch inventory or keep policy on mount (AC-LC-8.1)", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
     getTransactionsMock.mockResolvedValue({ transactions: [] });
 
     renderSellPage();
 
-    await screen.findByText("You have no listings yet. Create one to start selling.");
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-    await screen.findByText("Choose a card to list");
-    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
-    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(await screen.findByRole("button", { name: "Create listing" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Variant")).not.toBeInTheDocument();
-    expect(screen.queryByText("Choose a card to list")).not.toBeInTheDocument();
-  });
-
-  it("locks the newly-picked card's name/set and default variant after Back (REQ-UX-9)", async () => {
-    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
-    inventoryListMock.mockResolvedValue([inventoryEntry, secondInventoryEntry]);
-    getPolicyMock.mockResolvedValue(policy);
-    getMyListingsMock.mockResolvedValue({ listings: [] });
-    getTransactionsMock.mockResolvedValue({ transactions: [] });
-
-    renderSellPage();
-
-    await screen.findByText("You have no listings yet. Create one to start selling.");
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-    await screen.findByText("Choose a card to list");
-
-    // Pick Elsa (normal default variant).
-    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
-    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
-    expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
-    expect(screen.getByLabelText("Variant")).toHaveValue("normal");
-
-    // Back, then pick a DIFFERENT card (holofoil-only → default variant holofoil).
-    await userEvent.click(screen.getByRole("button", { name: "Back" }));
-    await screen.findByText("Choose a card to list");
-    await userEvent.click(screen.getByRole("button", { name: /Mickey Mouse, Brave Little Tailor/ }));
-
-    expect(await screen.findByLabelText("Variant")).toBeInTheDocument();
-    expect(screen.getByText("Mickey Mouse, Brave Little Tailor")).toBeInTheDocument();
-    expect(screen.getByText("Rise of the Floodborn")).toBeInTheDocument();
-    expect(screen.getByLabelText("Variant")).toHaveValue("holofoil");
+    await screen.findByText("Elsa, Snow Queen");
+    expect(getMyListingsMock).toHaveBeenCalledTimes(1);
+    expect(getTransactionsMock).toHaveBeenCalledWith("PENDING_CONFIRMATION");
+    expect(inventoryListMock).not.toHaveBeenCalled();
+    expect(getPolicyMock).not.toHaveBeenCalled();
   });
 });

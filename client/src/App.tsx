@@ -15,6 +15,8 @@ import MarketplaceSellerPage from "./pages/marketplace/MarketplaceSellerPage";
 import MarketplaceChatPage from "./pages/marketplace/MarketplaceChatPage";
 import MarketplaceChatThreadPage from "./pages/marketplace/MarketplaceChatThreadPage";
 import MarketplaceSellPage from "./pages/marketplace/MarketplaceSellPage";
+import MarketplaceCreateListingPage from "./pages/marketplace/MarketplaceCreateListingPage";
+import MarketplaceEditListingPage from "./pages/marketplace/MarketplaceEditListingPage";
 import MarketplaceTransactionsPage from "./pages/marketplace/MarketplaceTransactionsPage";
 
 export default function App() {
@@ -41,6 +43,8 @@ export default function App() {
         <Route path="/marketplace/chat" element={<MarketplaceChatPage />} />
         <Route path="/marketplace/chat/:id" element={<MarketplaceChatThreadPage />} />
         <Route path="/marketplace/sell" element={<MarketplaceSellPage />} />
+        <Route path="/marketplace/sell/new" element={<MarketplaceCreateListingPage />} />
+        <Route path="/marketplace/sell/:id/edit" element={<MarketplaceEditListingPage />} />
         <Route path="/marketplace/transactions" element={<MarketplaceTransactionsPage />} />
         <Route path="/collection/:userId" element={<PublicCollectionPage />} />
         {user ? (
