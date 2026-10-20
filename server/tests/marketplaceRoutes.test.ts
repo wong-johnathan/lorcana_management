@@ -1018,6 +1018,86 @@ describe("marketplace photo label relabeling (REQ-POL-15, PATCH)", () => {
   });
 });
 
+describe("marketplace photo ordering (PUT /photos/order)", () => {
+  const threePhotos = [
+    { id: "p1", url: "u1", sortOrder: 0, label: null },
+    { id: "p2", url: "u2", sortOrder: 1, label: null },
+    { id: "p3", url: "u3", sortOrder: 2, label: null },
+  ];
+
+  it("rewrites sortOrder from the submitted order", async () => {
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(
+      listing({ sellerId: "seller1", photos: threePhotos })
+    );
+    prismaMock.marketplaceListingPhoto.findMany.mockResolvedValueOnce([
+      { ...threePhotos[2], sortOrder: 0 },
+      { ...threePhotos[0], sortOrder: 1, label: "Front" },
+      { ...threePhotos[1], sortOrder: 2 },
+    ]);
+
+    const res = await auth(
+      request(app)
+        .put("/api/marketplace/listings/listing1/photos/order")
+        .send({ photoIds: ["p3", "p1", "p2"] }),
+      sellerToken
+    ).expect(200);
+
+    expect(res.body.photos.map((photo: { id: string }) => photo.id)).toEqual(["p3", "p1", "p2"]);
+    expect(prismaMock.marketplaceListingPhoto.update).toHaveBeenCalledWith({
+      where: { id: "p3" },
+      data: { sortOrder: 0 },
+    });
+    expect(prismaMock.marketplaceListingPhoto.update).toHaveBeenCalledWith({
+      where: { id: "p2" },
+      data: { sortOrder: 2 },
+    });
+  });
+
+  it("rejects a list that is not exactly the listing's photos", async () => {
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(
+      listing({ sellerId: "seller1", photos: threePhotos })
+    );
+    await auth(
+      request(app)
+        .put("/api/marketplace/listings/listing1/photos/order")
+        .send({ photoIds: ["p1", "p2"] }),
+      sellerToken
+    ).expect(400, { error: "photoIds must contain every photo of this listing exactly once" });
+
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(
+      listing({ sellerId: "seller1", photos: threePhotos })
+    );
+    await auth(
+      request(app)
+        .put("/api/marketplace/listings/listing1/photos/order")
+        .send({ photoIds: ["p1", "p1", "p2"] }),
+      sellerToken
+    ).expect(400, { error: "photoIds must contain every photo of this listing exactly once" });
+
+    expect(prismaMock.marketplaceListingPhoto.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-array body and a foreign seller", async () => {
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(
+      listing({ sellerId: "seller1", photos: threePhotos })
+    );
+    await auth(
+      request(app).put("/api/marketplace/listings/listing1/photos/order").send({ photoIds: "p1" }),
+      sellerToken
+    ).expect(400, { error: "photoIds must be an array of photo ids" });
+
+    prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(
+      listing({ sellerId: "other" , photos: threePhotos })
+    );
+    await auth(
+      request(app)
+        .put("/api/marketplace/listings/listing1/photos/order")
+        .send({ photoIds: ["p1", "p2", "p3"] }),
+      sellerToken
+    ).expect(403, { error: "Only the seller can manage this listing" });
+  });
+});
+
 describe("marketplace reports (REQ-22)", () => {
   it("validates and persists a report", async () => {
     await auth(request(app).post("/api/marketplace/reports").send({}), buyerToken).expect(400);
