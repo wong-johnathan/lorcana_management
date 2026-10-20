@@ -2,11 +2,8 @@ import type { BulkCandidate } from "../../utils/bulkListing";
 import { formatPriceMinor } from "../../utils/marketplaceParams";
 
 interface BulkListingTableProps {
-  /** Every match row, in grid order (the order never changes while deselecting). */
+  /** Every card in the batch, in grid order. */
   candidates: BulkCandidate[];
-  /** cardIds currently included in the batch. */
-  included: Set<string>;
-  onToggle: (cardId: string, include: boolean) => void;
   /** Per-row unit price; undefined → money cells show an em dash. */
   priceMinorFor: (candidate: BulkCandidate) => number | undefined;
   currency: string;
@@ -20,17 +17,15 @@ function MobileLabel({ children }: { children: string }) {
 }
 
 /**
- * Included-set preview table (REQ-BULK-6.1/6.4, UI C-11/C-12).
+ * Batch preview table (REQ-BULK-6.1/6.4, UI C-11/C-12).
  *
- * A real `<table>` with a `sr-only` caption, `th scope="col"` headers and the
- * card name as the row header. Below `sm` the same rows stack (display:block)
- * so the 320 px layout never scrolls the page, while the table semantics and a
- * single checkbox per row are preserved in the DOM.
+ * The batch is the filtered set, so every row is listed: there is no per-row
+ * include toggle anymore. A real `<table>` with an `sr-only` caption,
+ * `th scope="col"` headers and the card name as the row header. Below `sm` the
+ * same rows stack (display:block) so the 320 px layout never scrolls the page.
  */
 export default function BulkListingTable({
   candidates,
-  included,
-  onToggle,
   priceMinorFor,
   currency,
 }: BulkListingTableProps) {
@@ -42,12 +37,9 @@ export default function BulkListingTable({
       className="overflow-x-auto rounded-xl border border-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
     >
       <table className="w-full text-left text-sm text-gray-300">
-        <caption className="sr-only">Listings to create ({included.size})</caption>
+        <caption className="sr-only">Listings to create ({candidates.length})</caption>
         <thead className="hidden bg-gray-900 sm:table-header-group">
           <tr className="border-b border-gray-800">
-            <th scope="col" className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Include
-            </th>
             <th scope="col" className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
               Card
             </th>
@@ -74,7 +66,6 @@ export default function BulkListingTable({
         <tbody>
           {candidates.map((candidate) => {
             const card = candidate.card;
-            const isIncluded = included.has(card.id);
             const rowPriceMinor = priceMinorFor(candidate);
             const unitPrice =
               rowPriceMinor === undefined ? MONEY_DASH : formatPriceMinor(rowPriceMinor, currency);
@@ -86,28 +77,11 @@ export default function BulkListingTable({
             return (
               <tr
                 key={card.id}
-                className={`block border-b border-gray-800 last:border-0 sm:table-row ${
-                  isIncluded ? "hover:bg-gray-900/40" : "bg-gray-950/40"
-                }`}
+                className="block border-b border-gray-800 last:border-0 hover:bg-gray-900/40 sm:table-row"
               >
-                <td className="block px-3 pt-2 sm:table-cell sm:w-14 sm:py-2">
-                  <label className="-m-2 inline-flex min-h-11 min-w-11 cursor-pointer items-center p-2 sm:min-h-0 sm:min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={isIncluded}
-                      onChange={(event) => onToggle(card.id, event.target.checked)}
-                      className="h-[18px] w-[18px] rounded accent-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
-                    />
-                    <span className="sr-only">
-                      {`Include ${card.name} · ${card.setName} · ${card.cardNumber} in this batch`}
-                    </span>
-                  </label>
-                </td>
                 <th
                   scope="row"
-                  className={`block px-3 pb-1 text-left font-normal sm:table-cell sm:py-2 ${
-                    isIncluded ? "text-gray-100" : "text-gray-300"
-                  }`}
+                  className="block px-3 pb-1 text-left font-normal text-gray-100 sm:table-cell sm:py-2"
                 >
                   <span className="block text-sm font-semibold">{card.name}</span>
                   {card.subtitle ? (
@@ -116,46 +90,32 @@ export default function BulkListingTable({
                   <span className="block text-xs text-gray-400 sm:hidden">
                     {[card.setName, card.cardNumber].filter(Boolean).join(" · ")}
                   </span>
-                  {!isIncluded ? (
-                    <span
-                      aria-hidden="true"
-                      className="ml-2 inline-block rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300"
-                    >
-                      Removed from this batch
-                    </span>
-                  ) : null}
                 </th>
                 <td className="hidden px-3 py-2 text-xs text-gray-400 sm:table-cell">
                   {[card.setName, card.cardNumber].filter(Boolean).join(" · ")}
                 </td>
                 <td className="block px-3 py-0.5 text-sm sm:table-cell sm:py-2">
                   <MobileLabel>Rarity</MobileLabel>
-                  <span className={isIncluded ? "text-gray-300" : "text-gray-400"}>{card.rarity}</span>
+                  <span className="text-gray-300">{card.rarity}</span>
                 </td>
                 <td className="block px-3 py-0.5 text-sm sm:table-cell sm:py-2">
                   <MobileLabel>Variant</MobileLabel>
-                  <span className={isIncluded ? "text-gray-300" : "text-gray-400"}>Normal</span>
+                  <span className="text-gray-300">Normal</span>
                 </td>
                 <td className="block px-3 py-0.5 text-right text-sm tabular-nums sm:table-cell sm:py-2">
                   <MobileLabel>Copies</MobileLabel>
-                  <span className={isIncluded ? "text-gray-100" : "text-gray-400"}>
-                    {isIncluded ? candidate.quantity : MONEY_DASH}
-                  </span>
-                  {isIncluded && candidate.capped ? (
+                  <span className="text-gray-100">{candidate.quantity}</span>
+                  {candidate.capped ? (
                     <span className="block text-[10px] text-amber-300">{`capped from ${candidate.normalSpare} spares`}</span>
                   ) : null}
                 </td>
                 <td className="block px-3 py-0.5 text-right text-sm tabular-nums sm:table-cell sm:py-2">
                   <MobileLabel>Unit price</MobileLabel>
-                  <span className={isIncluded ? "text-gray-100" : "text-gray-400"}>
-                    {isIncluded ? unitPrice : MONEY_DASH}
-                  </span>
+                  <span className="text-gray-100">{unitPrice}</span>
                 </td>
                 <td className="block px-3 pb-2 text-right text-sm tabular-nums sm:table-cell sm:py-2">
                   <MobileLabel>Line total</MobileLabel>
-                  <span className={isIncluded ? "font-semibold text-gray-100" : "text-gray-400"}>
-                    {isIncluded ? lineTotal : MONEY_DASH}
-                  </span>
+                  <span className="font-semibold text-gray-100">{lineTotal}</span>
                 </td>
               </tr>
             );

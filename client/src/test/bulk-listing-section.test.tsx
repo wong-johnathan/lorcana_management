@@ -187,7 +187,7 @@ function renderSection(overrides: Partial<ComponentProps<typeof BulkListingSecti
 }
 
 async function selectAndReview() {
-  await userEvent.click(screen.getByRole("button", { name: /Select all matching \(/ }));
+  // The batch is the filtered set — step 1 has no selection affordance.
   await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
 }
 
@@ -225,8 +225,12 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
         "Bulk listing covers normal-printing spares only. Foil and holofoil spares stay as they are."
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("3 cards match these filters")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Select all matching (2)" })).toBeEnabled();
+    expect(screen.getByTestId("bulk-match-count")).toHaveTextContent(
+      "2 spares will be listed · 1 skipped"
+    );
+    expect(
+      screen.queryByRole("button", { name: /Select all matching/ })
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText("1 of these are already listed and will be skipped.")
     ).toBeInTheDocument();
@@ -254,7 +258,7 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
         "You have no cards in your collection. Add cards to your collection to list them for sale."
       )
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Select all matching/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Review and price →" })).not.toBeInTheDocument();
   });
 
   it("shows the no-match empty state and clears filters", async () => {
@@ -273,7 +277,7 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
     expect(screen.getByText("No spare cards match these filters")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(screen.getAllByText("2 cards match these filters").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("bulk-match-count")).toHaveTextContent("2 spares will be listed");
     expect(screen.getByPlaceholderText("Search by name...")).toHaveValue("");
   });
 
@@ -296,10 +300,11 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
       ],
     });
 
-    expect(screen.getByText("2 cards match these filters")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Select all matching (0)" })).toBeDisabled();
+    expect(screen.getByTestId("bulk-match-count")).toHaveTextContent(
+      "0 spares will be listed · 2 skipped"
+    );
     expect(
-      screen.getByText("Nothing in these filters can be listed right now")
+      screen.getByText("Nothing in these filters can be listed right now — widen the filters.")
     ).toBeInTheDocument();
     expect(
       screen.getByText("2 of these are already listed and will be skipped.")
@@ -307,48 +312,20 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
     expect(screen.queryByText("No spare cards match these filters")).not.toBeInTheDocument();
   });
 
-  it("selects all matching and announces the selection", async () => {
+  it("shows the batch count and no per-card selection controls", () => {
     renderSection();
-
-    await userEvent.click(screen.getByRole("button", { name: "Select all matching (2)" }));
 
     expect(screen.getByTestId("bulk-selection-count")).toHaveTextContent(
-      "2 cards selected · 2 listings to create"
+      "2 spares in this batch · 2 listings to create"
     );
     expect(
-      screen.getByText("Changing any filter reselects all matching cards.")
+      screen.getByText("The batch follows the filters — change a filter to change the batch.")
     ).toBeInTheDocument();
-    expect(within(document.getElementById("bulk-live-selection")!).getByText(
-      "2 cards selected, 2 listings to create"
-    )).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(screen.queryByText("Changing any filter reselects all matching cards.")).not.toBeInTheDocument();
-  });
-
-  it("announces row deselect and reselect through the selection region (RV-8)", async () => {
-    renderSection();
-    await selectAndReview();
-
-    // The region is throttled to ≤ 1 / 500 ms; the select-all announcement
-    // just landed, so let the window pass before asserting row transitions.
-    await new Promise((resolve) => setTimeout(resolve, 550));
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Elsa/ }));
     expect(
-      within(document.getElementById("bulk-live-selection")!).getByText(
-        "1 cards selected, 1 listings to create"
-      )
-    ).toBeInTheDocument();
-
-    await new Promise((resolve) => setTimeout(resolve, 550));
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Elsa/ }));
-    expect(
-      within(document.getElementById("bulk-live-selection")!).getByText(
-        "2 cards selected, 2 listings to create"
-      )
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /Select all matching/ })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear selection" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
   // 101 real rows is a legitimately heavy jsdom render; the assertion stays
@@ -364,15 +341,12 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
       );
       renderSection({ inventory, policy: { ...policy, keepNormalQuantity: 0 } });
 
-      expect(screen.getByText("101 cards match these filters")).toBeInTheDocument();
-      await userEvent.click(screen.getByRole("button", { name: "Select all matching (101)" }));
-
-      expect(screen.getByTestId("bulk-selection-count")).toHaveTextContent(
-        "101 cards selected · 101 listings to create"
+      expect(screen.getByTestId("bulk-match-count")).toHaveTextContent(
+        "101 spares will be listed"
       );
-      expect(within(document.getElementById("bulk-live-selection")!).getByText(
-        "101 cards selected, 101 listings to create"
-      )).toBeInTheDocument();
+      expect(screen.getByTestId("bulk-selection-count")).toHaveTextContent(
+        "101 spares in this batch · 101 listings to create"
+      );
 
       await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -405,19 +379,17 @@ describe("BulkListingSection — step 2 (review and price)", () => {
     await selectAndReview();
 
     expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(
-      screen.getByRole("checkbox", { name: "Include Elsa · The First Chapter · 42 in this batch" })
-    ).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: /Include Mickey Mouse/ })).toBeChecked();
+    expect(screen.getByText("Elsa")).toBeInTheDocument();
+    expect(screen.getByText("Mickey Mouse")).toBeInTheDocument();
+    // Every matching spare is in the batch — there is no include toggle.
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByText("Not included (1)")).toBeInTheDocument();
     expect(screen.getByText("already listed")).toBeInTheDocument();
     expect(screen.getByTestId("bulk-totals")).toHaveTextContent("2 listings");
 
     setPrice("0.50");
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Mickey Mouse/ }));
-
     expect(bulkCreateListingMock).not.toHaveBeenCalled();
-    expect(confirmButton()).toHaveTextContent("Create 1 listings");
+    expect(confirmButton()).toHaveTextContent("Create 2 listings");
   });
 
   it("shows em dashes for money until a valid price is typed", async () => {
@@ -501,6 +473,35 @@ describe("BulkListingSection — step 2 (review and price)", () => {
     expect(confirmButton()).toBeEnabled();
   });
 
+  it("raises cards below the minimum price to the floor", async () => {
+    renderSection({
+      inventory: [
+        makeEntry({ card: makeCard({ prices: [normalPrice(1)] }) }),
+        makeEntry({
+          card: makeCard({
+            id: "card_2",
+            name: "Mickey Mouse",
+            cardNumber: "111",
+            prices: [normalPrice(10)],
+          }),
+        }),
+      ],
+    });
+    await selectAndReview();
+    await userEvent.click(screen.getByRole("button", { name: /TCG market/ }));
+    // TCG mode still lets the seller pick the listing currency.
+    fireEvent.change(screen.getByLabelText("Currency"), { target: { value: "USD" } });
+
+    // USD needs no conversion: 1.00 and 10.00; the 2.00 floor lifts the 1.00 card.
+    fireEvent.change(screen.getByLabelText("Minimum price (per card)"), {
+      target: { value: "2.00" },
+    });
+
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toContain("$24.00");
+    expect(screen.queryByText("$1.00")).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+  });
+
   it("falls back to the typed price for rows without TCG data", async () => {
     renderSection({
       inventory: [
@@ -522,51 +523,18 @@ describe("BulkListingSection — step 2 (review and price)", () => {
     expect(confirmButton()).toBeEnabled();
   });
 
-  it("labels the confirm 'Nothing to create' when every row is removed", async () => {
+  it("recomputes the batch when a filter changes", async () => {
     renderSection();
     await selectAndReview();
     setPrice("1.00");
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Elsa/ }));
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Mickey Mouse/ }));
-
-    expect(screen.getAllByText("Removed from this batch")).toHaveLength(2);
-    expect(confirmButton()).toHaveTextContent("Nothing to create");
-    expect(confirmButton()).toBeDisabled();
-    expect(
-      screen.getByText("You removed every card from this batch — go back to add more.")
-    ).toBeInTheDocument();
-    // C-10/C-20 E-e: the explanation REPLACES the totals line …
-    expect(screen.queryByTestId("bulk-totals")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^0 listings/)).not.toBeInTheDocument();
-    // … while the table stays so the seller can re-tick a row (RV-8).
-    expect(screen.getByRole("table")).toBeInTheDocument();
-  });
-
-  it("keeps a deselected row in the table with the removed chip (DD-13)", async () => {
-    renderSection();
-    await selectAndReview();
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Elsa/ }));
-
-    expect(screen.getByRole("checkbox", { name: /Include Elsa/ })).not.toBeChecked();
-    expect(screen.getByTestId("bulk-totals")).toHaveTextContent("1 listings");
-    expect(screen.queryByText("Not included (1)")).not.toBeInTheDocument();
-  });
-
-  it("resets deselections when a filter changes (PI-2)", async () => {
-    renderSection();
-    await selectAndReview();
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Elsa/ }));
-    expect(confirmButton()).toHaveTextContent("Create 1 listings");
+    expect(confirmButton()).toHaveTextContent("Create 2 listings");
 
     await userEvent.click(screen.getByRole("button", { name: "Back to filters" }));
     await userEvent.click(screen.getByRole("button", { name: "All Sets" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "The First Chapter" }));
 
+    expect(screen.getByRole("checkbox", { name: "The First Chapter" })).toBeChecked();
     await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
-    expect(screen.getByRole("checkbox", { name: /Include Elsa/ })).toBeChecked();
     expect(confirmButton()).toHaveTextContent("Create 2 listings");
   });
 
@@ -605,7 +573,7 @@ describe("BulkListingSection — step 2 (review and price)", () => {
 
     expect(screen.getByRole("button", { name: "Review and price →" })).toHaveFocus();
     expect(screen.getByTestId("bulk-selection-count")).toHaveTextContent(
-      "2 cards selected · 2 listings to create"
+      "2 spares in this batch · 2 listings to create"
     );
   });
 
@@ -645,7 +613,7 @@ describe("BulkListingSection — batch total arithmetic (AC-BULK-4.4)", () => {
     expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total SGD 2.25");
   });
 
-  it("sums Σ(quantity × unit price) across rows and follows row removal", async () => {
+  it("sums Σ(quantity × unit price) across every row", async () => {
     // Elsa 3 spares, Mickey 1 spare at 0.75 → 3.00; a listing-count total
     // would read 1.50 and would never react to the quantities at all.
     renderSection({
@@ -659,13 +627,6 @@ describe("BulkListingSection — batch total arithmetic (AC-BULK-4.4)", () => {
       "2 listings · Batch total SGD 3.00"
     );
     expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total SGD 3.00");
-
-    await userEvent.click(screen.getByRole("checkbox", { name: /Include Mickey Mouse/ }));
-
-    expect(normalizedText(screen.getByTestId("bulk-totals"))).toBe(
-      "1 listings · Batch total SGD 2.25"
-    );
-    expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total SGD 2.25");
   });
 
   it("formats the batch total in the selected currency", async () => {
@@ -696,7 +657,7 @@ describe("BulkListingSection — preview row details (AC-BULK-4.4/5.4/3.3/2.7)",
     await selectAndReview();
     setPrice("0.50");
 
-    const row = screen.getByRole("checkbox", { name: /Include Elsa/ }).closest("tr")!;
+    const row = screen.getByRole("row", { name: /Elsa/ });
     expect(within(row).getByText("Unit price")).toBeInTheDocument();
     expect(within(row).getByText("SGD 0.50")).toBeInTheDocument();
     expect(within(row).getByText("Line total")).toBeInTheDocument();
@@ -720,8 +681,8 @@ describe("BulkListingSection — preview row details (AC-BULK-4.4/5.4/3.3/2.7)",
       expect(screen.queryByRole("textbox", { name })).not.toBeInTheDocument();
       expect(screen.queryByRole("combobox", { name })).not.toBeInTheDocument();
     }
-    // Step 2 offers exactly one text input (price) and one select (currency).
-    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    // Step 2 offers the price + minimum text fields and one currency select.
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
     expect(screen.getAllByRole("combobox")).toHaveLength(1);
   });
 
@@ -732,11 +693,10 @@ describe("BulkListingSection — preview row details (AC-BULK-4.4/5.4/3.3/2.7)",
       policy: { ...policy, keepNormalQuantity: 1 },
       pendingTransactions: [makeTransaction({ cardId: elsa.id, quantity: 3 })],
     });
-    expect(screen.getByRole("button", { name: "Select all matching (1)" })).toBeInTheDocument();
     await selectAndReview();
     setPrice("0.50");
 
-    const row = screen.getByRole("checkbox", { name: /Include Elsa/ }).closest("tr")!;
+    const row = screen.getByRole("row", { name: /Elsa/ });
     expect(within(row).getByText("capped from 4 spares")).toBeInTheDocument();
     expect(within(row).getByText("SGD 1.00")).toBeInTheDocument();
     // The capped quantity, not the spare count, drives the batch total.
@@ -774,7 +734,6 @@ describe("BulkListingSection — preview row details (AC-BULK-4.4/5.4/3.3/2.7)",
     expect(
       screen.getByText("1 of these have no copies available and will be skipped.")
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Select all matching (1)" })).toBeInTheDocument();
 
     await selectAndReview();
 
@@ -847,16 +806,9 @@ describe("BulkListingSection — amber focus rings (AC-BULK-11.1, UI_SPEC §2.5)
     renderSection();
 
     expectRing("button", "Cancel");
-    expectRing("button", "Select all matching (2)");
-
-    await userEvent.click(screen.getByRole("button", { name: "Select all matching (2)" }));
-    expectRing("button", "Clear selection");
     const review = expectRing("button", "Review and price →");
     // Sticky-bar descendants reserve 96 px below so the ring is never clipped.
     expect(review.className).toContain("scroll-mb-24");
-    expect(screen.getByRole("button", { name: "Clear selection" }).className).toContain(
-      "scroll-mb-24"
-    );
 
     await userEvent.click(review);
     expectClasses(
@@ -1318,7 +1270,6 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Bulk list spares" }));
     await screen.findByRole("heading", { name: "Bulk list spares" });
-    await userEvent.click(screen.getByRole("button", { name: "Select all matching (1)" }));
     await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
     setPrice("0.50");
     await screen.findByTestId("bulk-totals");
@@ -1346,7 +1297,6 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Bulk list spares" }));
       await screen.findByRole("heading", { name: "Bulk list spares" });
-      await userEvent.click(screen.getByRole("button", { name: "Select all matching (1)" }));
       await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
       setPrice("0.50");
       await userEvent.click(confirmButton());
@@ -1369,7 +1319,7 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
       // AC-BULK-9.4: re-opening after the refresh shows nothing left to create.
       await userEvent.click(screen.getByRole("button", { name: "Bulk list spares" }));
       expect(
-        await screen.findByRole("button", { name: "Select all matching (0)" })
+        await screen.findByRole("button", { name: "Review and price →" })
       ).toBeDisabled();
       expect(
         screen.getByText("1 of these are already listed and will be skipped.")
