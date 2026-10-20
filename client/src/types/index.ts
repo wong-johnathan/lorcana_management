@@ -473,6 +473,9 @@ export interface EnquiryMessage {
   createdAt: string;
 }
 
+/** A written review's rating + comment, exposed read-only (REQ-REV-2/4). */
+export type ReviewSummary = { rating: number; comment: string | null };
+
 export interface MarketplaceTransaction {
   id: string;
   enquiryId: string;
@@ -494,6 +497,9 @@ export interface MarketplaceTransaction {
   buyer: { id: string; username: string };
   seller: { id: string; username: string };
   card: { id: string; name: string; setName: string };
+  /** Populated only by GET /marketplace/transactions (absent from the singular endpoint). */
+  myReview?: ReviewSummary | null;
+  counterpartReview?: ReviewSummary | null;
 }
 
 /** GET /marketplace/me/pending — computed pending-sale breakdown (AC-15.3). */
@@ -559,7 +565,8 @@ export interface EnquiryTransaction {
   quantity: number;
   soldAt: string;
   confirmedAt: string | null;
-  myReview: { rating: number; comment: string | null } | null;
+  myReview: ReviewSummary | null;
+  counterpartReview: ReviewSummary | null;
 }
 
 export interface MarketplaceEnquiryDetailResponse {
