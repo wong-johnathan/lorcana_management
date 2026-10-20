@@ -284,6 +284,180 @@ describe("ListingImageGallery", () => {
     expect(screen.getByText(CARD_ART_CAPTION)).toBeInTheDocument();
   });
 
+  it("shows the selected photo after the card art failed to load (AC-GAL-3.3, 7.3)", async () => {
+    const user = userEvent.setup();
+    renderGallery(makeCard(), [front, back]);
+
+    // Card art 404s → the logo fallback renders in the primary slot.
+    fireEvent.error(within(primaryTrigger()).getByRole("img"));
+    expect(within(primaryTrigger()).getByRole("img")).toHaveAttribute("src", "/lorcana-logo.png");
+
+    await user.click(thumbnailButtons()[1]);
+
+    // The displayed image (not just the caption) must follow the selection.
+    const primary = primaryTrigger();
+    expect(primary).toHaveAccessibleName("View Front");
+    expect(within(primary).getByRole("img")).toHaveAttribute("src", front.url);
+    expect(within(primary).getByRole("img")).toHaveAttribute("alt", "Front");
+    expect(primary.querySelector("img")).not.toHaveAttribute("src", "/lorcana-logo.png");
+    expect(screen.getByText("Front")).toBeInTheDocument();
+    expect(thumbnailButtons()[1]).toHaveAttribute("aria-pressed", "true");
+
+    // Selecting the previously failed image again retries it (no latched failure).
+    await user.click(thumbnailButtons()[0]);
+    expect(within(primaryTrigger()).getByRole("img")).toHaveAttribute("src", CARD_ART_SRC);
+    expect(primaryTrigger()).toHaveAccessibleName(`View ${CARD_ART_CAPTION}`);
+  });
+
+  it("shows another condition photo after the previous one failed in the primary slot (AC-GAL-3.3)", async () => {
+    const user = userEvent.setup();
+    renderGallery(makeCard(), [front, back]);
+
+    const thumbs = thumbnailButtons();
+    await user.click(thumbs[1]);
+    fireEvent.error(within(primaryTrigger()).getByRole("img"));
+    expect(within(primaryTrigger()).getByRole("img")).toHaveAttribute("src", "/lorcana-logo.png");
+    expect(primaryTrigger()).toHaveAccessibleName("View Front");
+
+    await user.click(thumbs[2]);
+
+    expect(within(primaryTrigger()).getByRole("img")).toHaveAttribute("src", back.url);
+    expect(primaryTrigger()).toHaveAccessibleName("View Back");
+    expect(screen.getByText("Back")).toBeInTheDocument();
+    expect(thumbs[2]).toHaveAttribute("aria-pressed", "true");
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* Primary frame / thumbnail / caption invariants (D3)               */
+  /* ---------------------------------------------------------------- */
+
+  it("keeps a contain-fit primary inside one constant bounded dark frame (AC-GAL-4.1–4.5)", async () => {
+    const user = userEvent.setup();
+    renderGallery(makeCard(), [front, back]);
+
+    const primary = primaryTrigger();
+    const frameClassName = primary.className;
+    expect(frameClassName).toContain("w-full");
+    expect(frameClassName).toContain("h-[clamp(15rem,55vh,32.5rem)]");
+    expect(frameClassName).toContain("bg-gray-900");
+    expect(frameClassName).toContain("overflow-hidden");
+
+    const primaryImage = () => within(primaryTrigger()).getByRole("img");
+    expect(primaryImage().className).toContain("object-contain");
+    expect(primaryImage().className).not.toContain("object-cover");
+    expect(primaryImage().className).toContain("h-full");
+    expect(primaryImage().className).toContain("w-full");
+
+    // The frame is byte-identical after a selection change, so a portrait →
+    // landscape (or any) swap cannot resize it (AC-GAL-4.4, 4.5).
+    await user.click(thumbnailButtons()[1]);
+    expect(primaryTrigger()).toHaveAccessibleName("View Front");
+    expect(primaryTrigger().className).toBe(frameClassName);
+    expect(primaryImage().className).toContain("object-contain");
+    expect(primaryImage().className).not.toContain("object-cover");
+  });
+
+  it("wraps the caption instead of truncating it (AC-GAL-5.5)", async () => {
+    const user = userEvent.setup();
+    renderGallery(makeCard(), [front, back]);
+
+    const caption = screen.getByText(CARD_ART_CAPTION);
+    expect(caption.tagName).toBe("P");
+    expect(caption.className).toContain("break-words");
+    expect(caption.className).not.toContain("truncate");
+    expect(caption.className).not.toContain("line-clamp");
+    expect(caption.className).not.toContain("whitespace-nowrap");
+
+    await user.click(thumbnailButtons()[1]);
+    const nextCaption = screen.getByText("Front");
+    expect(nextCaption.className).toContain("break-words");
+    expect(nextCaption.className).not.toContain("truncate");
+    expect(nextCaption.className).not.toContain("line-clamp");
+  });
+
+  it("renders square cover-cropped, decorative thumbnails (AC-GAL-3.2)", () => {
+    renderGallery(makeCard(), [front, back]);
+
+    const thumbs = thumbnailButtons();
+    expect(thumbs).toHaveLength(3);
+    for (const thumb of thumbs) {
+      // h-12/w-12 = 3rem = 48 CSS px (md/lg step up responsively).
+      expect(thumb.className).toContain("h-12");
+      expect(thumb.className).toContain("w-12");
+      expect(thumb.className).toContain("shrink-0");
+
+      const image = thumb.querySelector("img") as HTMLImageElement;
+      expect(image).not.toBeNull();
+      expect(image.className).toContain("object-cover");
+      expect(image.className).not.toContain("object-contain");
+      expect(image).toHaveAttribute("alt", "");
+      // No visible text inside a thumbnail — the caption lives under the primary.
+      expect(thumb.textContent).toBe("");
+    }
+  });
+
+  it("moves the selected ring with the selection and is not colour-only (AC-GAL-3.4, 8.2)", async () => {
+    const user = userEvent.setup();
+    renderGallery(makeCard(), [front, back]);
+
+    const SELECTED_RING = "shadow-[0_0_0_2px_rgba(251,191,36,0.35)]";
+    const thumbs = thumbnailButtons();
+
+    expect(thumbs[0].className).toContain("border-amber-400");
+    expect(thumbs[0].className).toContain(SELECTED_RING);
+    expect(thumbs[1].className).toContain("border-gray-800");
+    expect(thumbs[1].className).not.toContain(SELECTED_RING);
+
+    await user.click(thumbs[1]);
+
+    expect(thumbs[1].className).toContain("border-amber-400");
+    expect(thumbs[1].className).toContain(SELECTED_RING);
+    expect(thumbs[0].className).not.toContain("border-amber-400");
+    expect(thumbs[0].className).not.toContain(SELECTED_RING);
+    expect(thumbs[0].className).toContain("border-gray-800");
+    // Every control keeps a keyboard focus ring (no hover-only affordance).
+    for (const thumb of thumbs) {
+      expect(thumb.className).toContain("focus-visible:ring-2");
+    }
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* Keyboard / no-side-effect guarantees (D5)                         */
+  /* ---------------------------------------------------------------- */
+
+  it("opens the lightbox when Space activates the primary trigger (AC-GAL-6.1)", async () => {
+    const user = userEvent.setup();
+    renderGallery(makeCard(), [front, back]);
+
+    primaryTrigger().focus();
+    await user.keyboard(" ");
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-label", CARD_ART_CAPTION);
+    expect(within(dialog).getByText("1 / 3")).toBeInTheDocument();
+  });
+
+  it("performs no network request and writes no storage when a thumbnail is selected (AC-GAL-1.4, 2.3)", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const localSetItem = vi.spyOn(localStorage, "setItem");
+    const sessionSetItem = vi.spyOn(sessionStorage, "setItem");
+    localStorage.clear();
+    sessionStorage.clear();
+
+    renderGallery(makeCard(), [front, back]);
+    await user.click(thumbnailButtons()[1]);
+    await user.click(thumbnailButtons()[2]);
+
+    expect(primaryTrigger()).toHaveAccessibleName("View Back");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(localSetItem).not.toHaveBeenCalled();
+    expect(sessionSetItem).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("orders focus primary → thumbnails → chevrons and is keyboard operable (AC-GAL-8.1, 3.5, 6.1)", async () => {
     const user = userEvent.setup();
     renderGallery(makeCard(), [front, back]);

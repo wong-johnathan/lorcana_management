@@ -89,7 +89,12 @@ export default function ListingImageGallery({ card, photos }: ListingImageGaller
           onClick={() => setCarouselIndex(currentIndex)}
           className={`w-full h-[clamp(15rem,55vh,32.5rem)] rounded-xl border border-gray-800 bg-gray-900 overflow-hidden cursor-zoom-in hover:border-gray-600 ${FOCUS_RING}`}
         >
+          {/* `key` resets MarketplaceImage's per-instance `failed` latch when the
+              selection changes: one instance now serves every image, so without
+              it a single 404 would pin the logo over all later selections
+              (AC-GAL-3.3). Remounting also retries a previously failed source. */}
           <MarketplaceImage
+            key={selected.src}
             src={selected.src}
             alt={caption}
             hasSource
