@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
 import MarketplaceCreateListingPage from "../pages/marketplace/MarketplaceCreateListingPage";
-import type { InventoryEntry, InventoryPolicy } from "../types";
+import type { InventoryEntry, InventoryPolicy, MarketplaceListing } from "../types";
 
 const {
   inventoryListMock,
@@ -104,6 +104,33 @@ const secondInventoryEntry: InventoryEntry = {
 
 const seller = { id: "seller_1", username: "alice" };
 
+/** card_2 with a normal copy, so both fixtures can appear in the picker. */
+const secondNormalEntry: InventoryEntry = {
+  ...secondInventoryEntry,
+  quantity: 2,
+  holofoilQuantity: 0,
+};
+
+const listedCardOne: MarketplaceListing = {
+  id: "listing_1",
+  sellerId: "seller_1",
+  cardId: "card_1",
+  variant: "normal",
+  quantity: 1,
+  priceMinor: 1000,
+  currency: "SGD",
+  condition: "NM",
+  location: "Singapore",
+  note: null,
+  status: "ACTIVE",
+  hiddenAt: null,
+  createdAt: "2026-10-18T00:00:00.000Z",
+  updatedAt: "2026-10-18T00:00:00.000Z",
+  card: null,
+  seller: null,
+  photos: [],
+};
+
 function renderCreatePage() {
   return render(
     <MemoryRouter initialEntries={["/marketplace/sell/new"]}>
@@ -125,13 +152,16 @@ beforeEach(() => {
   getMyListingsMock.mockReset();
   getTransactionsMock.mockReset();
   createListingMock.mockReset();
+  // Own listings drive the default "Unlisted only" filter; default to none.
+  getMyListingsMock.mockResolvedValue({ listings: [] });
 });
 
 describe("MarketplaceCreateListingPage", () => {
-  it("loads only inventory + keep policy on mount (policy failure tolerated)", async () => {
+  it("loads inventory, keep policy and own listings on mount (failures tolerated)", async () => {
     signIn();
     inventoryListMock.mockResolvedValue([inventoryEntry]);
     getPolicyMock.mockRejectedValue(new Error("policy down"));
+    getMyListingsMock.mockRejectedValue(new Error("listings down"));
 
     renderCreatePage();
 
@@ -139,10 +169,10 @@ describe("MarketplaceCreateListingPage", () => {
     expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Create a listing" })).toBeInTheDocument();
 
-    // AC-LC-2.1..2.4 — inventory/policy only; no listings or transactions.
+    // The collection plus the seller's own listings; no transactions.
     expect(inventoryListMock).toHaveBeenCalledTimes(1);
     expect(getPolicyMock).toHaveBeenCalledTimes(1);
-    expect(getMyListingsMock).not.toHaveBeenCalled();
+    expect(getMyListingsMock).toHaveBeenCalledTimes(1);
     expect(getTransactionsMock).not.toHaveBeenCalled();
 
     // AC-LC-2.4 — a null policy disables Spares only with the explanation.
@@ -152,6 +182,45 @@ describe("MarketplaceCreateListingPage", () => {
     ).toBeInTheDocument();
 
     expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("defaults to unlisted cards and includes the listed ones when unticked", async () => {
+    signIn();
+    inventoryListMock.mockResolvedValue([inventoryEntry, secondNormalEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+    getMyListingsMock.mockResolvedValue({ listings: [listedCardOne] });
+
+    renderCreatePage();
+
+    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
+
+    // card_1 already has a live listing → hidden by default.
+    expect(screen.queryByRole("button", { name: /Elsa, Snow Queen/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mickey Mouse/ })).toBeInTheDocument();
+    expect(screen.getByText("1 hidden — already listed")).toBeInTheDocument();
+
+    const unlistedOnly = screen.getByRole("checkbox", { name: "Unlisted only" });
+    expect(unlistedOnly).toBeChecked();
+
+    await userEvent.click(unlistedOnly);
+
+    expect(unlistedOnly).not.toBeChecked();
+    expect(screen.getByRole("button", { name: /Elsa, Snow Queen/ })).toBeInTheDocument();
+    expect(screen.queryByText("1 hidden — already listed")).not.toBeInTheDocument();
+  });
+
+  it("explains when every matching card is already listed", async () => {
+    signIn();
+    inventoryListMock.mockResolvedValue([inventoryEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+    getMyListingsMock.mockResolvedValue({ listings: [listedCardOne] });
+
+    renderCreatePage();
+
+    expect(
+      await screen.findByText(/The only matching card is already listed/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Untick “Unlisted only” to add another listing/)).toBeInTheDocument();
   });
 
   it("walks both steps, keeps filters across Back, and creates the listing once", async () => {
