@@ -87,7 +87,7 @@ function enquiryFixture(status = "ACTIVE") {
   };
 }
 
-function completedTransaction(myReview: unknown = null) {
+function completedTransaction(myReview: unknown = null, counterpartReview: unknown = null) {
   return {
     id: "tx1",
     status: "COMPLETED",
@@ -95,6 +95,7 @@ function completedTransaction(myReview: unknown = null) {
     soldAt: "2026-10-18T00:00:00.000Z",
     confirmedAt: "2026-10-18T00:01:00.000Z",
     myReview,
+    counterpartReview,
   };
 }
 
@@ -273,7 +274,7 @@ describe("MarketplaceChatThreadPage", () => {
     window.removeEventListener("unread:refresh", listener);
   });
 
-  it("links the post-mark-sold 'View transactions' to the singular transaction (AC-TX-1.1)", async () => {
+  it("links the post-mark-sold 'View transactions' to the list (AC-REV-3.1)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
     markSoldMock.mockResolvedValue({
       transactionId: "tx1",
@@ -288,28 +289,116 @@ describe("MarketplaceChatThreadPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
 
     const link = await screen.findByRole("link", { name: "View transactions" });
-    expect(link).toHaveAttribute("href", "/marketplace/transactions/tx1");
+    expect(link).toHaveAttribute("href", "/marketplace/transactions");
   });
 
-  it("links the pending-card seller 'View transactions' to the singular transaction (AC-TX-1.2)", async () => {
+  it("links the pending-card seller 'View transactions' to the list (AC-REV-3.2)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
     renderThread("seller_1", [], [
-      { id: "tx1", status: "PENDING_CONFIRMATION", quantity: 2, soldAt: "2026-10-18T00:00:00.000Z", confirmedAt: null, myReview: null },
+      { id: "tx1", status: "PENDING_CONFIRMATION", quantity: 2, soldAt: "2026-10-18T00:00:00.000Z", confirmedAt: null, myReview: null, counterpartReview: null },
     ]);
 
     const link = await screen.findByRole("link", { name: "View transactions" });
-    expect(link).toHaveAttribute("href", "/marketplace/transactions/tx1");
+    expect(link).toHaveAttribute("href", "/marketplace/transactions");
   });
 
-  it("renders a singular 'View transaction' link in the completed block and no bare list link (AC-TX-1.3/1.4)", async () => {
+  it("renders no 'View transaction' link in the completed block, only the accordion (AC-REV-2.1)", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
     const { container } = renderThread("buyer_1", [], [completedTransaction()]);
 
-    expect(await screen.findByRole("link", { name: "View transaction" })).toHaveAttribute(
-      "href",
-      "/marketplace/transactions/tx1"
-    );
-    expect(container.querySelector('a[href="/marketplace/transactions"]')).toBeNull();
+    expect(await screen.findByRole("button", { name: "View reviews" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View transaction" })).not.toBeInTheDocument();
+    expect(container.querySelector('a[href="/marketplace/transactions/tx1"]')).toBeNull();
+  });
+
+  it("renders the accordion collapsed with aria-expanded/aria-controls (AC-REV-2.3)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    const { container } = renderThread("buyer_1", [], [completedTransaction()]);
+
+    const button = await screen.findByRole("button", { name: "View reviews" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+
+    const panel = container.querySelector('[role="region"]');
+    expect(panel).not.toBeNull();
+    expect(button.getAttribute("aria-controls")).toBe(panel!.id);
+    expect(panel).toHaveAttribute("hidden");
+  });
+
+  it("toggles the review panel inline without navigation (AC-REV-2.2)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    const { container } = renderThread("buyer_1", [], [completedTransaction()]);
+
+    const button = await screen.findByRole("button", { name: "View reviews" });
+    const panel = container.querySelector('[role="region"]');
+
+    await userEvent.click(button);
+
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(panel).not.toHaveAttribute("hidden");
+
+    await userEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(panel).toHaveAttribute("hidden");
+  });
+
+  it("shows 'Your review' and 'Seller's review' with rating+comment for a buyer caller (AC-REV-2.4)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    renderThread("buyer_1", [], [
+      completedTransaction({ rating: 5, comment: "great" }, { rating: 4, comment: "ok" }),
+    ]);
+
+    await userEvent.click(await screen.findByRole("button", { name: "View reviews" }));
+
+    expect(screen.getByText("Your review")).toBeInTheDocument();
+    expect(screen.getByText("Seller's review")).toBeInTheDocument();
+    expect(screen.getByLabelText("5 out of 5")).toBeInTheDocument();
+    expect(screen.getByLabelText("4 out of 5")).toBeInTheDocument();
+    expect(screen.getByText("great")).toBeInTheDocument();
+    expect(screen.getByText("ok")).toBeInTheDocument();
+  });
+
+  it("labels the counterpart review 'Buyer's review' for a seller caller (AC-REV-2.4)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
+    renderThread("seller_1", [], [
+      completedTransaction({ rating: 5, comment: null }, { rating: 3, comment: "nice" }),
+    ]);
+
+    await userEvent.click(await screen.findByRole("button", { name: "View reviews" }));
+
+    expect(screen.getByText("Buyer's review")).toBeInTheDocument();
+    expect(screen.queryByText("Seller's review")).not.toBeInTheDocument();
+  });
+
+  it("shows 'no review yet' for absent reviews while the prompt remains (AC-REV-2.5)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    renderThread("buyer_1", [], [completedTransaction(null, null)]);
+
+    await userEvent.click(await screen.findByRole("button", { name: "View reviews" }));
+
+    expect(screen.getAllByText("no review yet")).toHaveLength(2);
+    expect(screen.getByText("Review the seller")).toBeInTheDocument();
+  });
+
+  it("toggles the accordion with the Enter key (AC-REV-2.3)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    renderThread("buyer_1", [], [completedTransaction()]);
+
+    const button = await screen.findByRole("button", { name: "View reviews" });
+    button.focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(button).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("toggles the accordion with the Space key (AC-REV-2.3)", async () => {
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    renderThread("buyer_1", [], [completedTransaction()]);
+
+    const button = await screen.findByRole("button", { name: "View reviews" });
+    button.focus();
+    await userEvent.keyboard(" ");
+
+    expect(button).toHaveAttribute("aria-expanded", "true");
   });
 
   it("renders the inline review prompt for the buyer labelled 'Review the seller' (AC-TX-3.1/3.3)", async () => {

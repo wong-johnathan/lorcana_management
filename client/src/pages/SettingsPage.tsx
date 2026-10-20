@@ -6,6 +6,7 @@ import ProfileForm from "../components/profile/ProfileForm";
 import ProfileImageUploader from "../components/profile/ProfileImageUploader";
 import AccountSettingsPanel from "../components/profile/AccountSettingsPanel";
 import KeepPolicyPanel from "../components/inventory/KeepPolicyPanel";
+import TransactionHistory from "../components/profile/TransactionHistory";
 import { useAuth } from "../context/AuthContext";
 
 export default function SettingsPage() {
@@ -245,6 +246,8 @@ export default function SettingsPage() {
         </div>
         <ProfileForm profile={profile} saving={saving} canExposeContactFields={Boolean(user?.emailVerifiedAt)} onSubmit={handleProfileSave} />
       </div>
+
+      <TransactionHistory />
 
     </div>
   );

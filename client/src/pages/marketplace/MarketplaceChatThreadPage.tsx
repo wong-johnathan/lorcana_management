@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
 import InlineReviewForm from "../../components/marketplace/InlineReviewForm";
+import ReviewAccordion from "../../components/marketplace/ReviewAccordion";
 import { marketplace } from "../../services/api";
 import type {
   MarketplaceEnquiryDetail,
@@ -37,7 +38,6 @@ export default function MarketplaceChatThreadPage() {
   const [markSoldOpen, setMarkSoldOpen] = useState(false);
   const [soldQuantity, setSoldQuantity] = useState(1);
   const [soldResult, setSoldResult] = useState<string | null>(null);
-  const [soldTransactionId, setSoldTransactionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -126,7 +126,6 @@ export default function MarketplaceChatThreadPage() {
     try {
       const result = await marketplace.markSold(enquiry.id, soldQuantity);
       setMarkSoldOpen(false);
-      setSoldTransactionId(result.transactionId);
       setSoldResult(`Marked ${result.quantity} as sold — a pending transaction was created.`);
       void load();
     } catch (err) {
@@ -197,11 +196,7 @@ export default function MarketplaceChatThreadPage() {
         <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/40 p-4 text-sm text-emerald-200">
           {soldResult}{" "}
           <Link
-            to={
-              soldTransactionId
-                ? `/marketplace/transactions/${soldTransactionId}`
-                : "/marketplace/transactions"
-            }
+            to="/marketplace/transactions"
             className="underline hover:text-emerald-100"
           >
             View transactions
@@ -240,7 +235,7 @@ export default function MarketplaceChatThreadPage() {
                 </p>
               </div>
               <Link
-                to={`/marketplace/transactions/${pendingTransaction.id}`}
+                to="/marketplace/transactions"
                 className="text-sm text-amber-400 hover:text-amber-300"
               >
                 View transactions
@@ -254,13 +249,12 @@ export default function MarketplaceChatThreadPage() {
         <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/40 p-4 text-sm text-emerald-200">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>Sale complete — {completedTransaction.quantity} transferred to the buyer.</span>
-            <Link
-              to={`/marketplace/transactions/${completedTransaction.id}`}
-              className="shrink-0 text-sm text-emerald-300 underline hover:text-emerald-100"
-            >
-              View transaction
-            </Link>
           </div>
+          <ReviewAccordion
+            myReview={completedTransaction.myReview ?? null}
+            counterpartReview={completedTransaction.counterpartReview ?? null}
+            counterpartRole={isBuyer ? "seller" : "buyer"}
+          />
           {completedTransaction.status === "COMPLETED" && (
             <InlineReviewForm
               transactionId={completedTransaction.id}

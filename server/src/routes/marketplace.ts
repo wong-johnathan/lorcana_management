@@ -946,21 +946,19 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
       update: { lastReadAt: new Date() },
     });
 
-    // REQ-TX-4 (AC-TX-4.1): derive the caller's own review state for each
-    // embedded transaction in a single batched query (no N+1), guarded against
-    // an empty transaction list so we never issue `in: []`.
+    // REQ-REV-2 (AC-REV-2.6/2.7): fetch ALL reviews for the enquiry's transaction
+    // ids in a single batched query (no N+1), guarded against an empty transaction
+    // list so we never issue `in: []`, then split in-memory by reviewerId === userId
+    // (caller's own) vs reviewerId !== userId (the counterpart's review of the caller).
     const transactionIds = enquiry.transactions.map((t: any) => t.id);
     const reviews = transactionIds.length
-      ? await prisma.marketplaceReview.findMany({
-          where: { reviewerId: userId, transactionId: { in: transactionIds } },
-        })
+      ? await prisma.marketplaceReview.findMany({ where: { transactionId: { in: transactionIds } } })
       : [];
-    const reviewByTransaction = new Map<string, { rating: number; comment: string | null }>();
+    const myReviewByTransaction = new Map<string, { rating: number; comment: string | null }>();
+    const counterpartReviewByTransaction = new Map<string, { rating: number; comment: string | null }>();
     for (const review of reviews) {
-      reviewByTransaction.set(review.transactionId, {
-        rating: review.rating,
-        comment: review.comment,
-      });
+      const target = review.reviewerId === userId ? myReviewByTransaction : counterpartReviewByTransaction;
+      target.set(review.transactionId, { rating: review.rating, comment: review.comment });
     }
 
     res.json({
@@ -986,14 +984,14 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
         createdAt: message.createdAt,
       })),
       transactions: enquiry.transactions.map((transaction: any) => {
-        const review = reviewByTransaction.get(transaction.id);
         return {
           id: transaction.id,
           status: transaction.status,
           quantity: transaction.quantity,
           soldAt: transaction.soldAt,
           confirmedAt: transaction.confirmedAt,
-          myReview: review ? { rating: review.rating, comment: review.comment } : null,
+          myReview: myReviewByTransaction.get(transaction.id) ?? null,
+          counterpartReview: counterpartReviewByTransaction.get(transaction.id) ?? null,
         };
       }),
     });
@@ -1153,10 +1151,25 @@ marketplaceRouter.get("/transactions", async (req: AuthRequest, res: Response) =
         buyer: { select: { id: true, username: true } },
         seller: { select: { id: true, username: true } },
         card: { select: { id: true, name: true, setName: true } },
+        reviews: { select: { reviewerId: true, rating: true, comment: true } },
       },
     });
 
-    res.json({ transactions });
+    // REQ-REV-4 (AC-REV-4.x): strip the raw reviews array and expose the
+    // caller-relative myReview/counterpartReview, preserving every other field
+    // via `...rest` so the list page and account-page history are unaffected.
+    res.json({
+      transactions: transactions.map((t: any) => {
+        const { reviews, ...rest } = t;
+        const mine = reviews.find((r: any) => r.reviewerId === userId) ?? null;
+        const counterpart = reviews.find((r: any) => r.reviewerId !== userId) ?? null;
+        return {
+          ...rest,
+          myReview: mine ? { rating: mine.rating, comment: mine.comment } : null,
+          counterpartReview: counterpart ? { rating: counterpart.rating, comment: counterpart.comment } : null,
+        };
+      }),
+    });
   } catch (error) {
     sendError(res, error);
   }
