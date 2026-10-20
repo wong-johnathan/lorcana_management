@@ -144,18 +144,109 @@ test("removed singular transaction route redirects to /database (AC-REV-1.3)", a
   await expect(page.getByRole("link", { name: "← All transactions" })).toHaveCount(0);
 });
 
-test("profile transaction history shows the trade and a counterpart link (AC-REV-4.x)", async ({ page }) => {
+test("profile transaction history starts collapsed and reveals the trade on demand (AC-ACC-1.3, AC-REV-4.x)", async ({ page }) => {
   await login(page);
   await page.goto("/profile");
 
-  await expect(page.getByRole("heading", { name: "Transaction history" })).toBeVisible();
+  const toggle = page.getByRole("button", { name: /transaction history/i });
+  await expect(page.getByRole("heading", { name: /transaction history/i })).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText("1 transaction")).toBeVisible();
+  await expect(page.getByText("Mickey Mouse")).toBeHidden();
+  await expect(page.getByRole("link", { name: "Sold by alice" })).toHaveCount(0);
+
+  await toggle.click();
+
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Mickey Mouse")).toBeVisible();
   await expect(page.getByText(/Normal · Qty 2/)).toBeVisible();
-  await expect(page.getByText("Completed")).toBeVisible();
+  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sold by alice" })).toHaveAttribute(
     "href",
     "/marketplace/seller/seller_1"
   );
+});
+
+test("profile transaction history paginates five entries per page (AC-PAG-1.x)", async ({ page }) => {
+  const many = Array.from({ length: 12 }, (_, index) => ({
+    ...transaction,
+    id: `tx_${index + 1}`,
+    card: { id: `card_${index + 1}`, name: `Card ${index + 1}`, setName: "The First Chapter" },
+  }));
+  await page.route("**/api/marketplace/transactions", (route) =>
+    route.fulfill({ json: { transactions: many } })
+  );
+
+  await login(page);
+  await page.goto("/profile");
+
+  await expect(page.getByRole("button", { name: /transaction history/i })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText("12 transactions")).toBeVisible();
+
+  await page.getByRole("button", { name: /transaction history/i }).click();
+
+  await expect(page.getByTestId("transaction-history-entry")).toHaveCount(5);
+  await expect(page.getByText("Card 1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 1 of 3")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next page" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Next page" }).click();
+
+  await expect(page.getByText("Page 2 of 3")).toBeVisible();
+  await expect(page.getByText("Card 6", { exact: true })).toBeVisible();
+  await expect(page.getByText("Card 1", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Previous page" })).toBeEnabled();
+});
+
+test("share profile copies the public seller URL (AC-SHP-1.2/1.5/1.8)", async ({ page, browser }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          (window as unknown as { __copied?: string }).__copied = text;
+        },
+      },
+    });
+  });
+
+  await login(page);
+  await page.goto("/profile");
+
+  const shareButton = page.getByRole("button", { name: "Share profile" });
+  await expect(shareButton).toBeVisible();
+  await expect(shareButton).toHaveAttribute("aria-describedby", /.+/);
+
+  const profileUrlBefore = page.url();
+  await shareButton.click();
+
+  await expect(page.getByRole("button", { name: "Copied!" })).toBeVisible();
+  expect(page.url()).toBe(profileUrlBefore);
+
+  const copied = await page.evaluate(() => (window as unknown as { __copied?: string }).__copied);
+  expect(copied).toBe("http://127.0.0.1:5173/marketplace/seller/user_1");
+
+  // The copied URL is the public, ungated seller page: it renders logged-out.
+  const anonContext = await browser.newContext();
+  const anonPage = await anonContext.newPage();
+  await anonPage.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/auth/config") {
+      return route.fulfill({ json: { registrationEnabled: true, googleClientId: null } });
+    }
+    if (path === "/api/marketplace/sellers/user_1") {
+      return route.fulfill({
+        json: { user: { id: "user_1", username: "jw", profile: {} }, listings: [], reviews: [], references: [] },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: `Unhandled mocked API route: ${path}` } });
+  });
+
+  await anonPage.goto(copied as string);
+  await expect(anonPage).toHaveURL(/\/marketplace\/seller\/user_1$/);
+  await expect(anonPage.getByRole("heading", { level: 1, name: "jw" })).toBeVisible();
+  await anonContext.close();
 });
 
 test("chat thread accordion reveals labelled reviews without a View transaction link (AC-REV-2.x)", async ({ page }) => {
