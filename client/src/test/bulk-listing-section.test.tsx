@@ -8,6 +8,7 @@ import MarketplaceSellPage from "../pages/marketplace/MarketplaceSellPage";
 import { useAuth } from "../context/AuthContext";
 import type {
   Card,
+  CardPrice,
   InventoryEntry,
   InventoryPolicy,
   MarketplaceListing,
@@ -72,6 +73,17 @@ function makeCard(overrides: Partial<Card> = {}): Card {
     imageUrl: "",
     prices: [],
     ...overrides,
+  };
+}
+
+function normalPrice(marketPrice: number | null): CardPrice {
+  return {
+    variant: "Normal",
+    lowPrice: null,
+    midPrice: null,
+    highPrice: null,
+    marketPrice,
+    updatedAt: "2026-10-01T00:00:00.000Z",
   };
 }
 
@@ -342,7 +354,7 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
   // 101 real rows is a legitimately heavy jsdom render; the assertion stays
   // exact, only the time budget is raised above Vitest's 5 s default.
   it(
-    "keeps the review step reachable over the 100-listing limit but blocks confirm",
+    "allows a batch over 100 listings and enables confirm (no cap)",
     async () => {
       const inventory = Array.from({ length: 101 }, (_, index) =>
         makeEntry({
@@ -356,19 +368,19 @@ describe("BulkListingSection — step 1 (choose cards)", () => {
       await userEvent.click(screen.getByRole("button", { name: "Select all matching (101)" }));
 
       expect(screen.getByTestId("bulk-selection-count")).toHaveTextContent(
-        "101 cards selected · over the 100-listing limit. Narrow your filters to continue."
+        "101 cards selected · 101 listings to create"
       );
       expect(within(document.getElementById("bulk-live-selection")!).getByText(
-        "Over the 100-listing limit"
+        "101 cards selected, 101 listings to create"
       )).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "101 listings is over the 100-listing limit. Remove 1 cards below or narrow your filters."
-      );
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       const confirm = screen.getByRole("button", { name: "Create 101 listings" });
       expect(confirm).toBeDisabled();
-      expect(confirm).toHaveAttribute("aria-describedby", "bulk-overcap");
+
+      await userEvent.type(screen.getByLabelText("Unit price (per copy)"), "0.75");
+      expect(confirm).toBeEnabled();
     },
     20000
   );
@@ -437,6 +449,77 @@ describe("BulkListingSection — step 2 (review and price)", () => {
     expect(screen.queryByText("Enter a unit price to continue.")).not.toBeInTheDocument();
     expect(confirmButton()).toBeEnabled();
     expect(bulkCreateListingMock).not.toHaveBeenCalled();
+  });
+
+  it("prices each row from its own TCG market value at 0% (USD→SGD)", async () => {
+    renderSection({
+      inventory: [
+        makeEntry({ card: makeCard({ prices: [normalPrice(10)] }) }),
+        makeEntry({
+          card: makeCard({
+            id: "card_2",
+            name: "Mickey Mouse",
+            cardNumber: "111",
+            prices: [normalPrice(4)],
+          }),
+        }),
+      ],
+    });
+    await selectAndReview();
+
+    await userEvent.click(screen.getByRole("button", { name: /TCG market/ }));
+
+    // 10.00 USD × 1.35 = 13.50 SGD, 4.00 USD × 1.35 = 5.40 SGD; 2 spares each.
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toContain("SGD 37.80");
+    expect(screen.getAllByText("SGD 13.50").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SGD 5.40").length).toBeGreaterThan(0);
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it("applies one batch adjustment % to every row", async () => {
+    renderSection({
+      inventory: [
+        makeEntry({ card: makeCard({ prices: [normalPrice(10)] }) }),
+        makeEntry({
+          card: makeCard({
+            id: "card_2",
+            name: "Mickey Mouse",
+            cardNumber: "111",
+            prices: [normalPrice(4)],
+          }),
+        }),
+      ],
+    });
+    await selectAndReview();
+    await userEvent.click(screen.getByRole("button", { name: /TCG market/ }));
+
+    fireEvent.change(screen.getByLabelText("Adjustment %"), { target: { value: "-10" } });
+
+    // 10 × 1.35 × 0.9 = 12.15, 4 × 1.35 × 0.9 = 4.86 → 2 × 12.15 + 2 × 4.86 = 34.02.
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toContain("SGD 34.02");
+    expect(screen.getAllByText("SGD 12.15").length).toBeGreaterThan(0);
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it("falls back to the typed price for rows without TCG data", async () => {
+    renderSection({
+      inventory: [
+        makeEntry({ card: makeCard({ prices: [normalPrice(10)] }) }),
+        makeEntry({
+          card: makeCard({ id: "card_2", name: "Mickey Mouse", cardNumber: "111" }),
+        }),
+      ],
+    });
+    await selectAndReview();
+    await userEvent.click(screen.getByRole("button", { name: /TCG market/ }));
+
+    fireEvent.change(screen.getByLabelText("Fallback price (cards without TCG data)"), {
+      target: { value: "1.00" },
+    });
+
+    // Elsa 13.50 × 2 + Mickey 1.00 × 2 = 29.00.
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toContain("SGD 29.00");
+    expect(confirmButton()).toBeEnabled();
   });
 
   it("labels the confirm 'Nothing to create' when every row is removed", async () => {
@@ -850,6 +933,40 @@ describe("BulkListingSection — running and results", () => {
     expect(
       within(document.getElementById("bulk-live-run")!).getByText("2 listings created")
     ).toBeInTheDocument();
+  });
+
+  it("sends each row's own TCG-derived price at run time", async () => {
+    bulkCreateListingMock.mockResolvedValue({ status: "created", listing: makeListing() });
+    renderSection({
+      inventory: [
+        makeEntry({ card: makeCard({ prices: [normalPrice(10)] }) }),
+        makeEntry({
+          card: makeCard({
+            id: "card_2",
+            name: "Mickey Mouse",
+            cardNumber: "111",
+            prices: [normalPrice(4)],
+          }),
+        }),
+      ],
+    });
+    await selectAndReview();
+    await userEvent.click(screen.getByRole("button", { name: /TCG market/ }));
+    await userEvent.click(confirmButton());
+
+    await screen.findByTestId("bulk-results-summary");
+    expect(bulkCreateListingMock).toHaveBeenCalledWith({
+      cardId: "card_1",
+      quantity: 2,
+      priceMinor: 1350,
+      currency: "SGD",
+    });
+    expect(bulkCreateListingMock).toHaveBeenCalledWith({
+      cardId: "card_2",
+      quantity: 2,
+      priceMinor: 540,
+      currency: "SGD",
+    });
   });
 
   it("shows determinate progress and a last-item line while running", async () => {
