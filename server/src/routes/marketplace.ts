@@ -752,6 +752,70 @@ marketplaceRouter.patch(
   }
 );
 
+// Photo ordering (arrow reorder in the listing form): the seller sends the full
+// ordered id list and every photo's sortOrder is rewritten atomically.
+marketplaceRouter.put(
+  "/listings/:id/photos/order",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.userId;
+      const id = req.params.id as string;
+
+      const listing = await prisma.marketplaceListing.findUnique({
+        where: { id },
+        include: { photos: true },
+      });
+      if (!listing) throw new MarketplaceError(404, "Listing not found");
+      if (listing.sellerId !== userId) {
+        throw new MarketplaceError(403, "Only the seller can manage this listing");
+      }
+
+      const photoIds = req.body?.photoIds;
+      if (!Array.isArray(photoIds) || photoIds.some((photoId) => typeof photoId !== "string")) {
+        throw new MarketplaceError(400, "photoIds must be an array of photo ids");
+      }
+
+      const existingIds = new Set(listing.photos.map((photo) => photo.id));
+      const uniqueIds = new Set(photoIds);
+      if (
+        uniqueIds.size !== photoIds.length ||
+        photoIds.length !== existingIds.size ||
+        photoIds.some((photoId) => !existingIds.has(photoId))
+      ) {
+        throw new MarketplaceError(
+          400,
+          "photoIds must contain every photo of this listing exactly once"
+        );
+      }
+
+      await prisma.$transaction(async (tx) => {
+        for (const [index, photoId] of photoIds.entries()) {
+          await tx.marketplaceListingPhoto.update({
+            where: { id: photoId },
+            data: { sortOrder: index },
+          });
+        }
+      });
+
+      const ordered = await prisma.marketplaceListingPhoto.findMany({
+        where: { listingId: id },
+        orderBy: { sortOrder: "asc" },
+      });
+
+      res.json({
+        photos: ordered.map((photo) => ({
+          id: photo.id,
+          url: photo.url,
+          sortOrder: photo.sortOrder,
+          label: photo.label ?? null,
+        })),
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  }
+);
+
 marketplaceRouter.post("/listings/:id/enquire", async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;

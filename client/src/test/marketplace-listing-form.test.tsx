@@ -11,6 +11,7 @@ const {
   uploadPhotoMock,
   deletePhotoMock,
   updatePhotoLabelMock,
+  reorderPhotosMock,
 } = vi.hoisted(() => ({
   createListingMock: vi.fn(),
   updateListingMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   uploadPhotoMock: vi.fn(),
   deletePhotoMock: vi.fn(),
   updatePhotoLabelMock: vi.fn(),
+  reorderPhotosMock: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({
@@ -28,6 +30,7 @@ vi.mock("../services/api", () => ({
     uploadPhoto: uploadPhotoMock,
     deletePhoto: deletePhotoMock,
     updatePhotoLabel: updatePhotoLabelMock,
+    reorderPhotos: reorderPhotosMock,
   },
 }));
 
@@ -104,6 +107,7 @@ describe("ListingForm", () => {
     uploadPhotoMock.mockReset();
     deletePhotoMock.mockReset();
     updatePhotoLabelMock.mockReset();
+    reorderPhotosMock.mockReset();
   });
 
   it("offers variant, condition, and currency dropdowns with the preselected card", async () => {
@@ -729,6 +733,109 @@ describe("ListingForm", () => {
     expect(screen.getByText(/b\.jpg/)).toBeInTheDocument();
   });
 
+  it("previews each pending photo and numbers it so it can be labelled", async () => {
+    const createObjectUrl = vi.fn((file: File) => `blob:preview-${file.name}`);
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectUrl,
+    });
+
+    try {
+      render(
+        <ListingForm
+          mode="create"
+          preselectedCardId="card_1"
+          inventory={inventory}
+          policy={policy}
+          onSaved={vi.fn()}
+        />
+      );
+
+      const file = new File(["a"], "a.jpg", { type: "image/jpeg" });
+      await userEvent.upload(screen.getByLabelText("Add photos"), file);
+
+      expect(screen.getByTestId("photo-previews")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "a.jpg preview" })).toHaveAttribute(
+        "src",
+        "blob:preview-a.jpg"
+      );
+      expect(screen.getByText("#1")).toBeInTheDocument();
+      expect(createObjectUrl).toHaveBeenCalledWith(file);
+    } finally {
+      delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
+    }
+  });
+
+  it("reorders pending photos and uploads them in that order", async () => {
+    createListingMock.mockResolvedValue(editListing);
+    uploadPhotoMock.mockResolvedValue({
+      id: "photo_new",
+      url: "https://img.example/p.jpg",
+      sortOrder: 0,
+      label: null,
+    });
+
+    render(
+      <ListingForm
+        mode="create"
+        preselectedCardId="card_1"
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.upload(screen.getByLabelText("Add photos"), [
+      new File(["a"], "a.jpg", { type: "image/jpeg" }),
+      new File(["b"], "b.jpg", { type: "image/jpeg" }),
+    ]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Move photo 2 up" }));
+
+    const tiles = within(screen.getByTestId("photo-previews")).getAllByRole("img");
+    expect(tiles[0]).toHaveAccessibleName("b.jpg preview");
+    expect(tiles[1]).toHaveAccessibleName("a.jpg preview");
+
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+
+    await waitFor(() => expect(uploadPhotoMock).toHaveBeenCalledTimes(2));
+    // "b" is uploaded first because it now sits at position 1.
+    expect(uploadPhotoMock.mock.calls[0][1].dataUrl).toContain("Yg==");
+    expect(uploadPhotoMock.mock.calls[1][1].dataUrl).toContain("YQ==");
+  });
+
+  it("persists a new photo order immediately in edit mode", async () => {
+    const listing = {
+      ...editListing,
+      photos: [
+        { id: "photo_1", url: "https://img.example/1.jpg", sortOrder: 0, label: "Front" },
+        { id: "photo_2", url: "https://img.example/2.jpg", sortOrder: 1, label: "Back" },
+      ],
+    };
+    reorderPhotosMock.mockResolvedValue({ photos: listing.photos });
+
+    render(
+      <ListingForm
+        mode="edit"
+        listing={listing}
+        inventory={inventory}
+        policy={policy}
+        onSaved={vi.fn()}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Move photo 2 up" }));
+
+    const tiles = within(screen.getByTestId("photo-previews")).getAllByRole("img");
+    expect(tiles[0]).toHaveAccessibleName("Elsa, Snow Queen — condition photo (Back)");
+
+    await waitFor(() =>
+      expect(reorderPhotosMock).toHaveBeenCalledWith("listing_1", ["photo_2", "photo_1"])
+    );
+  });
+
   it("renders the TCG price reference under Price and updates on variant change (REQ-POL-11)", async () => {
     const pricedCard = {
       ...card,
@@ -842,7 +949,7 @@ describe("ListingForm", () => {
     );
   });
 
-  it("renders pending create-mode files as non-triggerable text rows (AC-LB-7.2)", async () => {
+  it("renders pending create-mode files as non-triggerable previews (AC-LB-7.2)", async () => {
     render(
       <ListingForm
         mode="create"
@@ -858,8 +965,8 @@ describe("ListingForm", () => {
       new File(["x"], "a.jpg", { type: "image/jpeg" })
     );
 
-    // Pending (not-yet-uploaded) files render as a text row (name + KiB) with
-    // no image preview and no carousel trigger — no "View …" button, no dialog.
+    // Pending (not-yet-uploaded) files render as a preview tile with no
+    // carousel trigger — no "View …" button, no dialog.
     expect(screen.getByText(/a\.jpg/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^View / })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { marketplace } from "../../services/api";
 import type {
   InventoryEntry,
@@ -52,8 +52,44 @@ interface ListingFormProps {
 }
 
 interface PendingFile {
+  /** Stable client id (`saved:` / `pending:` keys drive reordering). */
+  localId: string;
   file: File;
   label: string | null;
+  /** Object URL used for the pre-upload preview ("" when unsupported). */
+  previewUrl: string;
+}
+
+/** Saved and pending photos in one ordered list so they can be reordered together. */
+type PhotoEntry =
+  | { key: string; kind: "saved"; photo: MarketplaceListingPhoto }
+  | { key: string; kind: "pending"; pending: PendingFile };
+
+const toSavedEntry = (photo: MarketplaceListingPhoto): PhotoEntry => ({
+  key: `saved:${photo.id}`,
+  kind: "saved",
+  photo,
+});
+
+let pendingSeq = 0;
+
+/** `URL.createObjectURL` is missing in jsdom and rejects non-Node Blobs — degrade to "". */
+function createPreviewUrl(file: File): string {
+  if (typeof URL === "undefined" || typeof URL.createObjectURL !== "function") return "";
+  try {
+    return URL.createObjectURL(file);
+  } catch {
+    return "";
+  }
+}
+
+function revokePreviewUrl(url: string) {
+  if (!url) return;
+  try {
+    URL.revokeObjectURL?.(url);
+  } catch {
+    // A URL we didn't create (or a stub) — nothing to release.
+  }
 }
 
 /**
@@ -99,8 +135,10 @@ export default function ListingForm({
   const [condition, setCondition] = useState<string>(listing?.condition ?? "");
   const [location, setLocation] = useState<string>(listing?.location ?? "");
   const [note, setNote] = useState<string>(listing?.note ?? "");
-  const [photos, setPhotos] = useState<MarketplaceListingPhoto[]>(listing?.photos ?? []);
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [entries, setEntries] = useState<PhotoEntry[]>(() =>
+    (listing?.photos ?? []).map(toSavedEntry)
+  );
+  const previewUrls = useRef<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -121,9 +159,28 @@ export default function ListingForm({
   const keep = policy ? keepCountForVariant(policy, variant) : 0;
   const surplus = policy ? surplusForVariant(owned, keep) : 0;
 
-  const totalPhotos = photos.length + pendingFiles.length;
+  const photos = useMemo(
+    () => entries.flatMap((entry) => (entry.kind === "saved" ? [entry.photo] : [])),
+    [entries]
+  );
+
+  const pendingFiles = useMemo(
+    () => entries.flatMap((entry) => (entry.kind === "pending" ? [entry.pending] : [])),
+    [entries]
+  );
+
+  const totalPhotos = entries.length;
 
   const images = listingImageItems(card, photos);
+
+  // Trailers for the pre-upload previews must be released on unmount.
+  useEffect(() => {
+    const urls = previewUrls.current;
+    return () => {
+      for (const url of urls) revokePreviewUrl(url);
+      urls.clear();
+    };
+  }, []);
 
   const summarySrc = card ? cardArtUrl(card) : "";
   const summaryHasSource = !!card?.imageUrl;
@@ -140,6 +197,32 @@ export default function ListingForm({
       return null;
     }
     return parsed;
+  };
+
+  /** Edit mode only: push the visible order to the server (sortOrder = index). */
+  const persistOrder = async (list: PhotoEntry[]) => {
+    if (!listing) return;
+    const ids = list.flatMap((entry) => (entry.kind === "saved" ? [entry.photo.id] : []));
+    if (ids.length < 2) return;
+    try {
+      await marketplace.reorderPhotos(listing.id, ids);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : "Failed to update photo order");
+    }
+  };
+
+  const addPendingEntries = (files: File[]) => {
+    const added: PhotoEntry[] = files.map((file) => {
+      const previewUrl = createPreviewUrl(file);
+      if (previewUrl) previewUrls.current.add(previewUrl);
+      const localId = `p${pendingSeq++}`;
+      return {
+        key: `pending:${localId}`,
+        kind: "pending",
+        pending: { localId, file, label: null, previewUrl },
+      };
+    });
+    setEntries((prev) => [...prev, ...added]);
   };
 
   const onFilesSelected = async (files: FileList | null) => {
@@ -161,6 +244,7 @@ export default function ListingForm({
 
     if (mode === "edit" && listing) {
       // Edit mode: the listing already exists, so upload immediately (REQ-7/8).
+      const created: PhotoEntry[] = [];
       for (const file of incoming) {
         try {
           const dataUrl = await readFileAsDataUrl(file);
@@ -168,41 +252,74 @@ export default function ListingForm({
             dataUrl,
             contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
           });
-          setPhotos((prev) => [...prev, photo]);
+          created.push(toSavedEntry(photo));
         } catch (err) {
           setPhotoError(err instanceof Error ? err.message : "Failed to upload photo");
         }
       }
+      if (created.length > 0) {
+        const next = [...entries, ...created];
+        setEntries(next);
+        // Deleting photos leaves sortOrder gaps/ties, so renormalise after appending.
+        void persistOrder(next);
+      }
     } else {
-      // Create mode: buffer, upload after the listing is created.
-      setPendingFiles((prev) => [...prev, ...incoming.map((file) => ({ file, label: null }))]);
+      // Create mode: buffer with a preview, upload after the listing is created.
+      addPendingEntries(incoming);
     }
   };
 
-  const removePhoto = async (photoId: string) => {
+  const removeEntry = async (entry: PhotoEntry) => {
+    if (entry.kind === "pending") {
+      if (entry.pending.previewUrl) {
+        revokePreviewUrl(entry.pending.previewUrl);
+        previewUrls.current.delete(entry.pending.previewUrl);
+      }
+      setEntries((prev) => prev.filter((item) => item.key !== entry.key));
+      return;
+    }
     if (!listing) return;
     try {
-      await marketplace.deletePhoto(listing.id, photoId);
-      setPhotos((prev) => prev.filter((photo) => photo.id !== photoId));
+      await marketplace.deletePhoto(listing.id, entry.photo.id);
+      setEntries((prev) => prev.filter((item) => item.key !== entry.key));
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : "Failed to remove photo");
     }
   };
 
-  const relabelPhoto = async (photoId: string, label: string | null) => {
+  const relabelEntry = async (entry: PhotoEntry, label: string | null) => {
+    if (entry.kind === "pending") {
+      setEntries((prev) =>
+        prev.map((item) =>
+          item.key === entry.key && item.kind === "pending"
+            ? { ...item, pending: { ...item.pending, label } }
+            : item
+        )
+      );
+      return;
+    }
     if (!listing) return;
     try {
-      const updated = await marketplace.updatePhotoLabel(listing.id, photoId, label);
-      setPhotos((prev) => prev.map((photo) => (photo.id === photoId ? updated : photo)));
+      const updated = await marketplace.updatePhotoLabel(listing.id, entry.photo.id, label);
+      setEntries((prev) =>
+        prev.map((item) =>
+          item.key === entry.key && item.kind === "saved" ? { ...item, photo: updated } : item
+        )
+      );
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : "Failed to update photo label");
     }
   };
 
-  const setPendingLabel = (index: number, label: string | null) => {
-    setPendingFiles((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, label } : item))
-    );
+  /** Swap one row with its neighbour; edit mode persists the new order at once. */
+  const moveEntry = (key: string, delta: -1 | 1) => {
+    const index = entries.findIndex((entry) => entry.key === key);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= entries.length) return;
+    const next = [...entries];
+    [next[index], next[target]] = [next[target], next[index]];
+    setEntries(next);
+    if (mode === "edit") void persistOrder(next);
   };
 
   const photoAlt = (photo: MarketplaceListingPhoto): string =>
@@ -218,7 +335,7 @@ export default function ListingForm({
       onChange={(event) =>
         onChangeLabel(event.target.value === "" ? null : event.target.value)
       }
-      className="rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200 focus:border-amber-500 focus:outline-none"
+      className="w-full rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-200 focus:border-amber-500 focus:outline-none"
     >
       <option value="">No label</option>
       {PHOTO_LABEL_OPTIONS.map((label) => (
@@ -272,6 +389,7 @@ export default function ListingForm({
         });
       }
 
+      // Upload in the order shown: the server assigns sortOrder sequentially.
       for (const { file, label } of pendingFiles) {
         const dataUrl = await readFileAsDataUrl(file);
         await marketplace.uploadPhoto(saved.id, {
@@ -280,7 +398,7 @@ export default function ListingForm({
           label,
         });
       }
-      setPendingFiles([]);
+      setEntries((prev) => prev.filter((entry) => entry.kind !== "pending"));
       onSaved(saved);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save listing");
@@ -466,55 +584,85 @@ export default function ListingForm({
           </p>
         )}
 
-        {(photos.length > 0 || pendingFiles.length > 0) && (
-          <ul className="mt-3 space-y-2">
-            {photos.map((photo) => (
-              <li
-                key={photo.id}
-                className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 p-2"
-              >
-                <MarketplaceImage
-                  src={photo.url}
-                  alt={photoAlt(photo)}
-                  hasSource
-                  className="h-12 w-12 rounded object-cover"
-                  onOpen={
-                    images.length > 0
-                      ? () => setCarouselIndex(photoStartIndex(card, photos, photo))
-                      : undefined
-                  }
-                />
-                <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
-                  {photo.label ? `Saved photo · ${photo.label}` : "Saved photo"}
-                </span>
-                {renderLabelSelect(photo.label, (label) => void relabelPhoto(photo.id, label))}
-                <button
-                  type="button"
-                  onClick={() => void removePhoto(photo.id)}
-                  className="rounded-md border border-gray-700 px-2 py-1 text-xs text-red-300 hover:border-red-700"
+        {entries.length > 0 && (
+          <ul
+            className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3"
+            data-testid="photo-previews"
+          >
+            {entries.map((entry, index) => {
+              const label = entry.kind === "saved" ? entry.photo.label : entry.pending.label;
+              const src = entry.kind === "saved" ? entry.photo.url : entry.pending.previewUrl;
+              const alt =
+                entry.kind === "saved"
+                  ? photoAlt(entry.photo)
+                  : `${entry.pending.file.name} preview`;
+              const caption =
+                entry.kind === "saved"
+                  ? entry.photo.label
+                    ? `Saved photo · ${entry.photo.label}`
+                    : "Saved photo"
+                  : entry.pending.file.name;
+
+              return (
+                <li
+                  key={entry.key}
+                  className="rounded-lg border border-gray-800 bg-gray-950 p-2"
                 >
-                  Remove
-                </button>
-              </li>
-            ))}
-            {pendingFiles.map(({ file, label }, index) => (
-              <li
-                key={`${file.name}-${index}`}
-                className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-950 p-2"
-              >
-                <span className="min-w-0 flex-1 truncate text-xs text-gray-400">
-                  {file.name} ({(file.size / 1024).toFixed(0)} KiB) — saved on submit
-                </span>
-                {renderLabelSelect(label, (next) => setPendingLabel(index, next))}
-                <button
-                  type="button"
-                  onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
-                  className="rounded-md border border-gray-700 px-2 py-1 text-xs text-red-300 hover:border-red-700"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
+                  <div className="relative">
+                    <MarketplaceImage
+                      src={src}
+                      alt={alt}
+                      hasSource={src !== ""}
+                      className="aspect-[5/7] w-full rounded object-cover"
+                      onOpen={
+                        entry.kind === "saved" && images.length > 0
+                          ? () => setCarouselIndex(photoStartIndex(card, photos, entry.photo))
+                          : undefined
+                      }
+                    />
+                    <span className="absolute left-1.5 top-1.5 rounded bg-gray-950/85 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                      #{index + 1}
+                    </span>
+                  </div>
+
+                  <p className="mt-1 truncate text-[11px] text-gray-400" title={caption}>
+                    {caption}
+                  </p>
+
+                  <div className="mt-1">{renderLabelSelect(label, (next) => void relabelEntry(entry, next))}</div>
+
+                  <div className="mt-1 flex items-center justify-between gap-1">
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        aria-label={`Move photo ${index + 1} up`}
+                        disabled={index === 0}
+                        onClick={() => moveEntry(entry.key, -1)}
+                        className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move photo ${index + 1} down`}
+                        disabled={index === entries.length - 1}
+                        onClick={() => moveEntry(entry.key, 1)}
+                        className="rounded border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void removeEntry(entry)}
+                      className="rounded-md border border-gray-700 px-2 py-1 text-xs text-red-300 hover:border-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
 

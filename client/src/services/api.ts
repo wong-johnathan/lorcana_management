@@ -394,6 +394,16 @@ export const marketplace = {
       }
     ),
 
+  /** PUT /marketplace/listings/:id/photos/order — send the full ordered id list. */
+  reorderPhotos: (listingId: string, photoIds: string[]) =>
+    request<{ photos: MarketplacePhotoUploadResult[] }>(
+      `/marketplace/listings/${listingId}/photos/order`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ photoIds }),
+      }
+    ),
+
   /** POST /marketplace/listings (REQ-3/4/5). */
   createListing: (body: {
     cardId: string;
