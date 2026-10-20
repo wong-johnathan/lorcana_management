@@ -946,6 +946,23 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
       update: { lastReadAt: new Date() },
     });
 
+    // REQ-TX-4 (AC-TX-4.1): derive the caller's own review state for each
+    // embedded transaction in a single batched query (no N+1), guarded against
+    // an empty transaction list so we never issue `in: []`.
+    const transactionIds = enquiry.transactions.map((t: any) => t.id);
+    const reviews = transactionIds.length
+      ? await prisma.marketplaceReview.findMany({
+          where: { reviewerId: userId, transactionId: { in: transactionIds } },
+        })
+      : [];
+    const reviewByTransaction = new Map<string, { rating: number; comment: string | null }>();
+    for (const review of reviews) {
+      reviewByTransaction.set(review.transactionId, {
+        rating: review.rating,
+        comment: review.comment,
+      });
+    }
+
     res.json({
       enquiry: {
         id: enquiry.id,
@@ -968,13 +985,17 @@ marketplaceRouter.get("/enquiries/:id", async (req: AuthRequest, res: Response) 
         body: message.body,
         createdAt: message.createdAt,
       })),
-      transactions: enquiry.transactions.map((transaction: any) => ({
-        id: transaction.id,
-        status: transaction.status,
-        quantity: transaction.quantity,
-        soldAt: transaction.soldAt,
-        confirmedAt: transaction.confirmedAt,
-      })),
+      transactions: enquiry.transactions.map((transaction: any) => {
+        const review = reviewByTransaction.get(transaction.id);
+        return {
+          id: transaction.id,
+          status: transaction.status,
+          quantity: transaction.quantity,
+          soldAt: transaction.soldAt,
+          confirmedAt: transaction.confirmedAt,
+          myReview: review ? { rating: review.rating, comment: review.comment } : null,
+        };
+      }),
     });
   } catch (error) {
     sendError(res, error);
