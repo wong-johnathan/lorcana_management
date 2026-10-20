@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,9 @@ vi.mock("../services/api", () => ({
 vi.mock("../context/AuthContext", () => ({
   useAuth: vi.fn(),
 }));
+
+const CARD_ART_SRC = "/api/card-images/card_elsa";
+const CARD_ART_CAPTION = "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1";
 
 const card = {
   id: "card_elsa",
@@ -45,6 +48,11 @@ const card = {
   prices: [],
 };
 
+const photos = [
+  { id: "photo_1", url: "https://img.example/front.jpg", sortOrder: 0, label: "Front" },
+  { id: "photo_2", url: "https://img.example/back.jpg", sortOrder: 1, label: "Back" },
+];
+
 const listing = {
   id: "listing_1",
   sellerId: "seller_1",
@@ -62,7 +70,8 @@ const listing = {
   updatedAt: "2026-10-18T00:00:00.000Z",
   card,
   seller: { id: "seller_1", username: "alice", profile: {} },
-  photos: [{ id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0, label: null }],
+  photos,
+  pendingQuantity: 0,
 };
 
 function renderPage() {
@@ -75,34 +84,113 @@ function renderPage() {
   );
 }
 
+async function thumbnailButtons(): Promise<HTMLElement[]> {
+  return within(await screen.findByRole("group", { name: "Image thumbnails" })).getAllByRole(
+    "button"
+  );
+}
+
+function primaryTrigger(): HTMLElement {
+  return screen.getByRole("button", { name: /^View / });
+}
+
 describe("MarketplaceListingPage", () => {
   beforeEach(() => {
-    vi.mocked(useAuth).mockReturnValue({ user: null } as any);
+    vi.mocked(useAuth).mockReturnValue({ user: null } as never);
     listingMock.mockReset();
     reportMock.mockReset();
   });
 
-  it("labels photos as actual condition photos and shows the premium-rarity hint", async () => {
-    listingMock.mockResolvedValue({ ...listing, pendingQuantity: 0 });
+  it("renders one merged gallery with the card art as primary and every image as a thumbnail (AC-GAL-1.1, 2.2, 9.1)", async () => {
+    listingMock.mockResolvedValue(listing);
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Actual condition photos" })).toBeInTheDocument();
-    expect(screen.getByAltText(/actual condition photo/i)).toBeInTheDocument();
-    expect(screen.getByText(/Enchanted cards are high-value/)).toBeInTheDocument();
+    const thumbs = await thumbnailButtons();
+    expect(thumbs).toHaveLength(3);
+    expect(thumbs.map((thumb) => thumb.querySelector("img")?.getAttribute("src"))).toEqual([
+      CARD_ART_SRC,
+      photos[0].url,
+      photos[1].url,
+    ]);
+    expect(thumbs[0]).toHaveAttribute("aria-pressed", "true");
+
+    const primary = primaryTrigger();
+    expect(primary).toHaveAccessibleName(`View ${CARD_ART_CAPTION}`);
+    expect(within(primary).getByRole("img")).toHaveAttribute("src", CARD_ART_SRC);
+    expect(screen.getByText(CARD_ART_CAPTION)).toBeInTheDocument();
+
+    // The superseded headings are gone.
+    expect(screen.queryByRole("heading", { name: "Actual condition photos" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Card" })).toBeNull();
+
+    // The premium-rarity hint is still present, unchanged, below the gallery.
+    expect(screen.getByText(/Enchanted cards are high-value — condition photos help verify/)).toBeInTheDocument();
   });
 
-  it("includes the position label in the photo alt when set (REQ-POL-15)", async () => {
-    listingMock.mockResolvedValue({
-      ...listing,
-      photos: [
-        { id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0, label: "Back Top Left" },
-      ],
-      pendingQuantity: 0,
-    });
+  it("promotes a clicked thumbnail to the primary image with its caption and pressed state (AC-GAL-3.3, 3.4, 5.2, 9.1)", async () => {
+    const user = userEvent.setup();
+    listingMock.mockResolvedValue(listing);
     renderPage();
 
+    const thumbs = await thumbnailButtons();
+    await user.click(thumbs[1]);
+
+    const primary = primaryTrigger();
+    expect(primary).toHaveAccessibleName("View Front");
+    expect(within(primary).getByRole("img")).toHaveAttribute("src", photos[0].url);
+    expect(screen.getByText("Front")).toBeInTheDocument();
+
+    expect(thumbs[1]).toHaveAttribute("aria-pressed", "true");
+    expect(thumbs[0]).toHaveAttribute("aria-pressed", "false");
+    expect(thumbs[2]).toHaveAttribute("aria-pressed", "false");
+    // Selecting a thumbnail never opens the lightbox.
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("opens the lightbox at the selected index with the right N / M (AC-GAL-6.2, 9.1)", async () => {
+    const user = userEvent.setup();
+    listingMock.mockResolvedValue(listing);
+    renderPage();
+
+    const thumbs = await thumbnailButtons();
+    await user.click(thumbs[1]);
+    await user.click(primaryTrigger());
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("aria-label", "Front");
+    expect(within(dialog).getByText("2 / 3")).toBeInTheDocument();
+    expect(within(dialog).getByRole("img", { name: "Front" })).toHaveAttribute(
+      "src",
+      photos[0].url
+    );
+  });
+
+  it("renders photos only, without a card-art thumbnail, when the card has no art (AC-GAL-2.4, 9.1)", async () => {
+    listingMock.mockResolvedValue({ ...listing, card: { ...card, imageUrl: "" } });
+    renderPage();
+
+    const thumbs = await thumbnailButtons();
+    expect(thumbs).toHaveLength(2);
+    expect(thumbs.map((thumb) => thumb.querySelector("img")?.getAttribute("src"))).toEqual([
+      photos[0].url,
+      photos[1].url,
+    ]);
+    expect(primaryTrigger()).toHaveAccessibleName("View Front");
+    expect(screen.queryByText(CARD_ART_CAPTION)).toBeNull();
+  });
+
+  it("renders a non-triggerable placeholder when the listing has no art and no photos (AC-GAL-7.1, 9.1)", async () => {
+    listingMock.mockResolvedValue({ ...listing, card: { ...card, imageUrl: "" }, photos: [] });
+    renderPage();
+
+    expect(await screen.findByText("No condition photos")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^View / })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Image thumbnails" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Premium hint keeps its no-photos copy (AC-GAL-7.2).
     expect(
-      await screen.findByAltText("Elsa, Snow Queen — actual condition photo (Back Top Left)")
+      screen.getByText(/Enchanted cards are high-value — ask the seller for actual condition photos/)
     ).toBeInTheDocument();
   });
 
@@ -111,17 +199,18 @@ describe("MarketplaceListingPage", () => {
       ...listing,
       card: { ...card, rarity: "Legendary" },
       photos: [],
-      pendingQuantity: 0,
     });
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Elsa, Snow Queen" })).toBeInTheDocument();
-    expect(screen.getByText("No condition photos")).toBeInTheDocument();
-    expect(screen.queryByText(/high-value/)).not.toBeInTheDocument();
+    // Card art only → a single-image gallery (no strip) and no premium hint.
+    expect(screen.queryByRole("group", { name: "Image thumbnails" })).toBeNull();
+    expect(primaryTrigger()).toHaveAccessibleName(`View ${CARD_ART_CAPTION}`);
+    expect(screen.queryByText(/high-value/)).toBeNull();
   });
 
   it("prompts anonymous visitors to sign in to enquire", async () => {
-    listingMock.mockResolvedValue({ ...listing, pendingQuantity: 0 });
+    listingMock.mockResolvedValue(listing);
     renderPage();
 
     expect(await screen.findByRole("link", { name: "Sign in to enquire" })).toHaveAttribute(
@@ -130,75 +219,20 @@ describe("MarketplaceListingPage", () => {
     );
   });
 
-  it("renders the card art and opens the carousel at index 0 (AC-LB-4.1/4.2)", async () => {
-    listingMock.mockResolvedValue({ ...listing, pendingQuantity: 0 });
+  it("keeps the signed-in Enquire entry point and the report modal", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useAuth).mockReturnValue({ user: { id: "buyer_1", username: "bob" } } as never);
+    listingMock.mockResolvedValue(listing);
     renderPage();
 
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: "View Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
-      })
-    );
+    await user.click(await screen.findByRole("button", { name: "Enquire" }));
+    expect(screen.getByLabelText("Quantity")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start enquiry" })).toBeInTheDocument();
 
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAttribute(
-      "aria-label",
-      "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1"
-    );
-    expect(
-      within(dialog).getByRole("img", {
-        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
-      })
-    ).toHaveAttribute("src", "/api/card-images/card_elsa");
-    expect(within(dialog).getByText("1 / 2")).toBeInTheDocument();
-  });
+    await user.click(screen.getByRole("button", { name: "Report listing" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
-  it("opens the carousel at the clicked condition photo's index with the position-label caption (AC-LB-4.2/4.3)", async () => {
-    listingMock.mockResolvedValue({
-      ...listing,
-      photos: [
-        { id: "photo_1", url: "https://img.example/condition.jpg", sortOrder: 0, label: "Back Top Left" },
-      ],
-      pendingQuantity: 0,
-    });
-    renderPage();
-
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: "View Elsa, Snow Queen — actual condition photo (Back Top Left)",
-      })
-    );
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-label", "Back Top Left");
-    expect(within(dialog).getByRole("img", { name: "Back Top Left" })).toHaveAttribute(
-      "src",
-      "https://img.example/condition.jpg"
-    );
-    expect(within(dialog).getByText("2 / 2")).toBeInTheDocument();
-
-    // Previous reveals the card-art caption.
-    await userEvent.click(within(dialog).getByRole("button", { name: "Previous image" }));
-    expect(
-      within(dialog).getByRole("img", {
-        name: "Elsa, Snow Queen · The First Chapter · 1/204 • EN • 1",
-      })
-    ).toHaveAttribute("src", "/api/card-images/card_elsa");
-  });
-
-  it("renders a non-triggerable placeholder for a listing with no art and no photos (AC-LB-3.3)", async () => {
-    listingMock.mockResolvedValue({
-      ...listing,
-      card: { ...card, imageUrl: "" },
-      photos: [],
-      pendingQuantity: 0,
-    });
-    renderPage();
-
-    // Empty set → "No condition photos" placeholder only; nothing opens a carousel.
-    expect(await screen.findByText("No condition photos")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^View / })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // Gallery and enquiries remain independent surfaces.
+    expect(screen.queryByRole("group", { name: "Image thumbnails" })).toBeInTheDocument();
   });
 });

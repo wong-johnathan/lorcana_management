@@ -2,17 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import ReportModal from "../../components/marketplace/ReportModal";
-import MarketplaceImage from "../../components/marketplace/MarketplaceImage";
-import ListingImageCarousel from "../../components/marketplace/ListingImageCarousel";
+import ListingImageGallery from "../../components/marketplace/ListingImageGallery";
 import { marketplace } from "../../services/api";
 import type { MarketplaceListingDetail } from "../../types";
-import { cardArtUrl } from "../../utils/cardImages";
-import {
-  cardArtCaption,
-  hasCardArt,
-  listingImageItems,
-  photoStartIndex,
-} from "../../utils/listingImages";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
@@ -32,7 +24,6 @@ export default function MarketplaceListingPage() {
   const [quantity, setQuantity] = useState(1);
   const [enquireError, setEnquireError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -76,8 +67,6 @@ export default function MarketplaceListingPage() {
   }
 
   const card = listing.card;
-  const hasArt = hasCardArt(card);
-  const images = listingImageItems(card, listing.photos);
   const isPremium = card ? PREMIUM_RARITIES.includes(card.rarity) : false;
   const canEnquire = listing.status === "ACTIVE" && listing.quantity > 0;
   const quantityOptions = Array.from({ length: Math.max(0, listing.quantity) }, (_, i) => i + 1);
@@ -103,50 +92,12 @@ export default function MarketplaceListingPage() {
       </Link>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Card art (REQ-LB-4) + condition photos */}
-        <section>
-          {hasArt && card && (
-            <>
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400">
-                Card
-              </h2>
-              <div className="mt-2">
-                <MarketplaceImage
-                  src={cardArtUrl(card)}
-                  alt={cardArtCaption(card)}
-                  hasSource
-                  className="aspect-[5/7] w-full rounded-xl border border-gray-800 object-cover"
-                  onOpen={() => setCarouselIndex(0)}
-                />
-              </div>
-            </>
-          )}
-
-          <h2 className="mt-4 text-xs font-semibold uppercase tracking-widest text-gray-400">
-            Actual condition photos
-          </h2>
-          {listing.photos.length === 0 ? (
-            <div className="mt-2 flex aspect-[5/7] items-center justify-center rounded-xl border border-gray-800 bg-gray-900/60 text-sm text-gray-500">
-              No condition photos
-            </div>
-          ) : (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {listing.photos.map((photo) => (
-                <MarketplaceImage
-                  key={photo.id}
-                  src={photo.url}
-                  alt={`${card?.name ?? "Card"} — actual condition photo${photo.label ? ` (${photo.label})` : ""}`}
-                  hasSource
-                  className="aspect-[5/7] w-full rounded-xl border border-gray-800 object-cover"
-                  onOpen={
-                    images.length > 0
-                      ? () => setCarouselIndex(photoStartIndex(card, listing.photos, photo))
-                      : undefined
-                  }
-                />
-              ))}
-            </div>
-          )}
+        {/* One merged image gallery (REQ-GAL-1) + the premium-rarity hint as a
+            sibling below it (REQ-GAL-7.2 — nothing but images inside the region).
+            `min-w-0` lets this grid track shrink below the thumbnail strip's
+            content width so the strip scrolls instead of widening the page. */}
+        <div className="min-w-0">
+          <ListingImageGallery card={card} photos={listing.photos} />
 
           {isPremium && (
             <p className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/30 p-3 text-sm text-amber-300">
@@ -155,7 +106,7 @@ export default function MarketplaceListingPage() {
                 : `${card?.rarity} cards are high-value — condition photos help verify the card's true state.`}
             </p>
           )}
-        </section>
+        </div>
 
         {/* Info */}
         <section className="space-y-4">
@@ -300,14 +251,6 @@ export default function MarketplaceListingPage() {
           </div>
         </section>
       </div>
-
-      {carouselIndex != null && (
-        <ListingImageCarousel
-          images={images}
-          startIndex={carouselIndex}
-          onClose={() => setCarouselIndex(null)}
-        />
-      )}
     </div>
   );
 }
