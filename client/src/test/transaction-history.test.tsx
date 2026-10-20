@@ -207,6 +207,34 @@ describe("SettingsPage transaction history", () => {
       expect(historyPanel()).toBeVisible();
     });
 
+    it("also toggles with the Space key, both ways (AC-ACC-1.2)", async () => {
+      const user = userEvent.setup();
+      getTransactionsMock.mockResolvedValue({ transactions: makeTransactions(2) });
+
+      renderHistory("buyer_1");
+
+      const toggle = await screen.findByRole("button", { name: /transaction history/i });
+      const panel = document.getElementById(toggle.getAttribute("aria-controls")!) as HTMLElement;
+      toggle.focus();
+      expect(toggle).toHaveFocus();
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(panel).not.toBeVisible();
+
+      await user.keyboard(" ");
+
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel).not.toHaveAttribute("hidden");
+      expect(panel).toBeVisible();
+      expect(screen.getByText("Your marketplace trades, newest first.")).toBeVisible();
+
+      await user.keyboard(" ");
+
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(panel).toHaveAttribute("hidden");
+      expect(panel).not.toBeVisible();
+      expect(screen.queryByRole("region", { name: /transaction history/i })).not.toBeInTheDocument();
+    });
+
     it("shows the loading chip while collapsed (AC-ACC-1.4/1.6)", async () => {
       getTransactionsMock.mockReturnValue(new Promise(() => {}));
 
@@ -504,6 +532,35 @@ describe("SettingsPage transaction history", () => {
         delete (window as unknown as { matchMedia?: unknown }).matchMedia;
       }
       expect(historyPanel().querySelector(".scroll-mt-4")).not.toBeNull();
+    });
+
+    it("still changes page and scrolls smoothly when matchMedia is unavailable (D6)", async () => {
+      const scrollIntoView = Element.prototype.scrollIntoView as unknown as ReturnType<typeof vi.fn>;
+      const originalMatchMedia = Object.getOwnPropertyDescriptor(window, "matchMedia");
+      getTransactionsMock.mockResolvedValue({ transactions: makeTransactions(12) });
+
+      renderHistory("buyer_1");
+      await expandHistory();
+      scrollIntoView.mockClear();
+
+      Reflect.deleteProperty(window as unknown as Record<string, unknown>, "matchMedia");
+      try {
+        expect(typeof (window as unknown as { matchMedia?: unknown }).matchMedia).toBe("undefined");
+
+        const next = await screen.findByRole("button", { name: "Next page" });
+        expect(() => fireEvent.click(next)).not.toThrow();
+
+        expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+        expect(entryCardNames()).toEqual(["Card 6", "Card 7", "Card 8", "Card 9", "Card 10"]);
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" });
+      } finally {
+        // Put the environment back exactly as it was found.
+        if (originalMatchMedia) {
+          Object.defineProperty(window, "matchMedia", originalMatchMedia);
+        } else {
+          Reflect.deleteProperty(window as unknown as Record<string, unknown>, "matchMedia");
+        }
+      }
     });
 
     it("renders no page control for 5 or fewer entries (AC-PAG-1.5)", async () => {

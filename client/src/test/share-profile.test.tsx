@@ -118,6 +118,24 @@ function stubExecCommand(result: boolean) {
   return execCommand;
 }
 
+/**
+ * Fallback stub that records the payload handed to the legacy technique: the
+ * helper appends a temporary `<input>` carrying the text and calls
+ * `document.execCommand("copy")`, so the value read inside the stub is exactly
+ * what the browser would put on the clipboard.
+ */
+function stubExecCommandCapturing(result: boolean) {
+  const captured: { value: string; input: HTMLInputElement }[] = [];
+  const execCommand = vi.fn(() => {
+    const inputs = Array.from(document.body.querySelectorAll("input"));
+    const input = inputs[inputs.length - 1];
+    if (input) captured.push({ value: input.value, input });
+    return result;
+  });
+  Object.defineProperty(document, "execCommand", { value: execCommand, writable: true, configurable: true });
+  return { execCommand, captured };
+}
+
 afterEach(() => {
   delete (navigator as unknown as { clipboard?: unknown }).clipboard;
   delete (document as unknown as { execCommand?: unknown }).execCommand;
@@ -164,8 +182,8 @@ describe("SettingsPage share profile (REQ-SHP-1)", () => {
     expect(await screen.findByText("Copied!")).toBeInTheDocument();
   });
 
-  it("falls back to document.execCommand when the Clipboard API is absent (AC-SHP-1.3)", async () => {
-    const execCommand = stubExecCommand(true);
+  it("falls back to document.execCommand when the Clipboard API is absent and copies the exact share URL (AC-SHP-1.3)", async () => {
+    const { execCommand, captured } = stubExecCommandCapturing(true);
 
     renderSettings();
     const button = await screen.findByRole("button", { name: "Share profile" });
@@ -173,6 +191,10 @@ describe("SettingsPage share profile (REQ-SHP-1)", () => {
 
     expect(await screen.findByText("Copied!")).toBeInTheDocument();
     expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(captured).toHaveLength(1);
+    expect(captured[0].value).toBe(EXPECTED_SHARE_URL);
+    expect(captured[0].value).toBe("http://localhost/marketplace/seller/buyer_1");
+    expect(document.body.contains(captured[0].input)).toBe(false);
     expect(screen.queryByText(/Couldn’t copy the link/)).not.toBeInTheDocument();
   });
 
@@ -291,6 +313,24 @@ describe("copyTextToClipboard", () => {
 
     await expect(copyTextToClipboard("hello")).resolves.toBe(true);
     expect(execCommand).toHaveBeenCalledWith("copy");
+  });
+
+  it("puts the exact payload on the fallback input, including non-ASCII characters (AC-SHP-1.3)", async () => {
+    const payload = "https://localhost/marketplace/seller/\u00fcn\u00efcode-\u2713";
+    Object.defineProperty(navigator, "clipboard", { value: {}, configurable: true });
+    const { execCommand, captured } = stubExecCommandCapturing(true);
+
+    await expect(copyTextToClipboard(payload)).resolves.toBe(true);
+
+    expect(execCommand).toHaveBeenCalledTimes(1);
+    expect(captured).toHaveLength(1);
+    // Byte-identical: same UTF-16 code units and the same UTF-8 bytes
+    // (ü = C3 BC, ï = C3 AF, ✓ = E2 9C 93) as the input string.
+    expect(captured[0].value).toBe(payload);
+    expect(encodeURIComponent(captured[0].value)).toBe(
+      "https%3A%2F%2Flocalhost%2Fmarketplace%2Fseller%2F%C3%BCn%C3%AFcode-%E2%9C%93"
+    );
+    expect(document.body.contains(captured[0].input)).toBe(false);
   });
 
   it("returns false and never throws when the fallback cannot run", async () => {
