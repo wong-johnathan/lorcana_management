@@ -5,7 +5,6 @@ import RequireAuth from "../../components/marketplace/RequireAuth";
 import ListingForm from "../../components/marketplace/ListingForm";
 import ListingPicker from "../../components/marketplace/ListingPicker";
 import MarketplaceImage from "../../components/marketplace/MarketplaceImage";
-import ListingImageCarousel from "../../components/marketplace/ListingImageCarousel";
 import { inventory as inventoryApi, marketplace } from "../../services/api";
 import type {
   InventoryEntry,
@@ -13,7 +12,6 @@ import type {
   MarketplaceListing,
 } from "../../types";
 import { cardArtUrl } from "../../utils/cardImages";
-import { listingImageItems } from "../../utils/listingImages";
 import {
   formatPriceMinor,
   marketplaceVariantLabel,
@@ -39,10 +37,6 @@ export default function MarketplaceSellPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [pickerFilters, setPickerFilters] = useState<Record<string, string>>({});
-  const [carousel, setCarousel] = useState<{
-    listing: MarketplaceListing;
-    startIndex: number;
-  } | null>(null);
 
   const load = async () => {
     if (!user) return;
@@ -200,7 +194,6 @@ export default function MarketplaceSellPage() {
               const artSrc = card ? cardArtUrl(card) : "";
               const hasSource = !!card?.imageUrl;
               const name = card?.name ?? "Card";
-              const images = listingImageItems(card, listing.photos);
               return (
                 <div
                   key={listing.id}
@@ -212,11 +205,6 @@ export default function MarketplaceSellPage() {
                       alt={name}
                       hasSource={hasSource}
                       className="h-full w-full object-cover"
-                      onOpen={
-                        images.length > 0
-                          ? () => setCarousel({ listing, startIndex: 0 })
-                          : undefined
-                      }
                     />
                   </div>
                   <div className="flex flex-col gap-1 p-3 text-sm">
@@ -263,13 +251,6 @@ export default function MarketplaceSellPage() {
         )}
       </div>
 
-      {carousel && (
-        <ListingImageCarousel
-          images={listingImageItems(carousel.listing.card, carousel.listing.photos)}
-          startIndex={carousel.startIndex}
-          onClose={() => setCarousel(null)}
-        />
-      )}
     </RequireAuth>
   );
 }
