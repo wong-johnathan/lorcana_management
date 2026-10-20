@@ -881,7 +881,7 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
     expect(entry).toHaveAttribute("aria-describedby", "sell-error-banner");
   });
 
-  it("keeps exactly one of create / edit / bulk open at a time", async () => {
+  it("keeps bulk as the only in-page overlay; create/edit stay routed links (AC-BULK-1.2)", async () => {
     inventoryListMock.mockResolvedValue([makeEntry()]);
     getPolicyMock.mockResolvedValue(policy);
     getMyListingsMock.mockResolvedValue({ listings: [] });
@@ -890,16 +890,21 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
     renderPage();
     await screen.findByText("You have no listings yet. Create one to start selling.");
 
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
+    // Create/edit were extracted to dedicated routes by the listing-creation work,
+    // so no inline form competes with the bulk section on this page.
+    expect(screen.getByRole("link", { name: "Create listing" })).toHaveAttribute(
+      "href",
+      "/marketplace/sell/new"
+    );
+    expect(screen.queryByText("Choose a card to list")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Bulk list spares" }));
     expect(await screen.findByRole("heading", { name: "Bulk list spares" })).toBeInTheDocument();
-    expect(screen.queryByText("Choose a card to list")).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
-    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Bulk list spares" })).not.toBeInTheDocument();
+    // The listings grid and the bulk entry both yield while the flow is open.
+    expect(
+      screen.queryByText("You have no listings yet. Create one to start selling.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bulk list spares" })).not.toBeInTheDocument();
   });
 
   // Full page + section + run under coverage instrumentation: keep the exact
@@ -931,7 +936,10 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
       await waitFor(() => expect(getMyListingsMock).toHaveBeenCalledTimes(2));
 
       // Results phase: the page's listings grid is visible again below the panel (IA-5).
-      expect(await screen.findByRole("button", { name: "Edit" })).toBeInTheDocument();
+      // Create/edit are now routed links, so the tile's Edit is a link, not a button.
+      expect(
+        await screen.findByRole("link", { name: "Edit listing: Elsa, Normal" })
+      ).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: "Done — view your listings" }));
       expect(screen.queryByRole("heading", { name: "Bulk list spares" })).not.toBeInTheDocument();
