@@ -528,6 +528,132 @@ describe("marketplace create listing (REQ-3/4)", () => {
   });
 });
 
+describe("marketplace create listing — skipIfAlreadyListed (REQ-BULK-9, AC-BULK-9.4/PI-1)", () => {
+  it("skips without writing when a non-hidden listing already exists", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card1" });
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([{ quantity: 3 }]);
+
+    const res = await auth(
+      request(app)
+        .post("/api/marketplace/listings")
+        .send({ cardId: "card1", variant: "normal", quantity: 1, priceMinor: 100, currency: "USD", skipIfAlreadyListed: true }),
+      sellerToken
+    ).expect(200);
+
+    expect(res.body).toEqual({ skipped: true, reason: "already listed", listing: null });
+    // Double-run safety: the skip decision commits nothing (AC-BULK-9.4).
+    expect(prismaMock.marketplaceListing.create).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceListing.update).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceListing.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceListing.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.inventoryEntry.update).not.toHaveBeenCalled();
+    // The row lock is still taken before the decision (design §8).
+    expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(1);
+    // The predicate is keyed on hiddenAt only — no status filter (PI-1).
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledTimes(1);
+    const where = prismaMock.marketplaceListing.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ sellerId: "seller1", cardId: "card1", variant: "normal", hiddenAt: null });
+  });
+
+  it("decides the skip on a non-hidden CLOSED listing too (status is ignored, PI-1)", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card1" });
+    // Non-hidden CLOSED row: the predicate must not filter on status.
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([{ quantity: 2, status: "CLOSED" }]);
+
+    const res = await auth(
+      request(app)
+        .post("/api/marketplace/listings")
+        .send({ cardId: "card1", variant: "normal", quantity: 1, priceMinor: 100, currency: "USD", skipIfAlreadyListed: true }),
+      sellerToken
+    ).expect(200);
+
+    expect(res.body).toEqual({ skipped: true, reason: "already listed", listing: null });
+    expect(prismaMock.marketplaceListing.create).not.toHaveBeenCalled();
+    expect(prismaMock.marketplaceListing.findMany.mock.calls[0][0].where).not.toHaveProperty("status");
+  });
+
+  it("does not skip on a hidden listing (hiddenAt non-null is excluded, PI-1)", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card1" });
+    // A hidden-only row is excluded by `hiddenAt: null`, so the predicate sees 0.
+    prismaMock.marketplaceListing.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 5, foilQuantity: 0, holofoilQuantity: 0 });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.create.mockResolvedValueOnce(listing({ id: "new-hidden", quantity: 1 }));
+
+    const res = await auth(
+      request(app)
+        .post("/api/marketplace/listings")
+        .send({ cardId: "card1", variant: "normal", quantity: 1, priceMinor: 100, currency: "USD", skipIfAlreadyListed: true }),
+      sellerToken
+    ).expect(201);
+
+    expect(res.body.id).toBe("new-hidden");
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenNthCalledWith(1, {
+      where: { sellerId: "seller1", cardId: "card1", variant: "normal", hiddenAt: null },
+      select: { quantity: true },
+    });
+  });
+
+  it("creates normally when skipIfAlreadyListed is true and nothing is listed", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card1" });
+    prismaMock.marketplaceListing.findMany
+      .mockResolvedValueOnce([]) // skip predicate
+      .mockResolvedValueOnce([]); // availableCount's listedElsewhere
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 5, foilQuantity: 0, holofoilQuantity: 0 });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.create.mockResolvedValueOnce(listing({ id: "new2", quantity: 2 }));
+
+    const res = await auth(
+      request(app)
+        .post("/api/marketplace/listings")
+        .send({ cardId: "card1", variant: "normal", quantity: 2, priceMinor: 100, currency: "USD", skipIfAlreadyListed: true }),
+      sellerToken
+    ).expect(201);
+
+    expect(res.body.id).toBe("new2");
+    expect(prismaMock.marketplaceListing.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("never queries the skip predicate when the flag is false (single flow unchanged, AC-BULK-11.3)", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card1" });
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 5, foilQuantity: 0, holofoilQuantity: 0 });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.findMany.mockResolvedValueOnce([]);
+    prismaMock.marketplaceListing.create.mockResolvedValueOnce(listing({ id: "new3", quantity: 1 }));
+
+    const res = await auth(
+      request(app)
+        .post("/api/marketplace/listings")
+        .send({ cardId: "card1", variant: "normal", quantity: 1, priceMinor: 100, currency: "USD", skipIfAlreadyListed: false }),
+      sellerToken
+    ).expect(201);
+
+    expect(res.body.id).toBe("new3");
+    // One findMany only: availableCount's listedElsewhere, exactly as today.
+    expect(prismaMock.marketplaceListing.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("still rejects an over-available quantity with the verbatim 409 under the flag (AC-BULK-9.1)", async () => {
+    prismaMock.card.findUnique.mockResolvedValueOnce({ id: "card1" });
+    prismaMock.marketplaceListing.findMany
+      .mockResolvedValueOnce([]) // skip predicate: nothing listed
+      .mockResolvedValueOnce([]); // availableCount
+    prismaMock.inventoryEntry.findFirst.mockResolvedValueOnce({ quantity: 2, foilQuantity: 0, holofoilQuantity: 0 });
+    prismaMock.marketplaceTransaction.findMany.mockResolvedValueOnce([]);
+
+    await auth(
+      request(app)
+        .post("/api/marketplace/listings")
+        .send({ cardId: "card1", variant: "normal", quantity: 5, priceMinor: 100, currency: "USD", skipIfAlreadyListed: true }),
+      sellerToken
+    ).expect(409, { error: "Quantity exceeds available inventory" });
+
+    expect(prismaMock.marketplaceListing.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("marketplace edit listing (REQ-7/8)", () => {
   it("rejects edits by non-sellers and locks price/currency/quantity while pending", async () => {
     prismaMock.marketplaceListing.findUnique.mockResolvedValueOnce(listing({ sellerId: "someoneElse" }));
