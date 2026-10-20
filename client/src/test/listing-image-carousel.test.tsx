@@ -175,4 +175,57 @@ describe("ListingImageCarousel", () => {
     render(<ListingImageCarousel images={[]} startIndex={0} onClose={vi.fn()} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("swipes forward on a leftward drag", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const stage = screen.getByRole("group", { name: images[0].caption });
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 260, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 150, clientY: 308 }] });
+
+    expect(screen.getByText("2 / 3")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Front" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("swipes backward on a rightward drag", async () => {
+    render(<Harness startIndex={1} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const stage = screen.getByRole("group", { name: "Front" });
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 150, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 260, clientY: 300 }] });
+
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+  });
+
+  it("ignores taps, short drags and vertical drags", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const stage = screen.getByRole("group", { name: images[0].caption });
+
+    // Tap: no movement.
+    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 200, clientY: 300 }] });
+    // Short horizontal drag, under the swipe threshold.
+    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 180, clientY: 300 }] });
+    // Mostly vertical drag (a scroll).
+    fireEvent.touchStart(stage, { touches: [{ clientX: 200, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 150, clientY: 200 }] });
+
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+  });
+
+  it("stops at the last image when swiping forward", async () => {
+    render(<Harness startIndex={2} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    const stage = screen.getByRole("group", { name: images[2].caption });
+
+    fireEvent.touchStart(stage, { touches: [{ clientX: 260, clientY: 300 }] });
+    fireEvent.touchEnd(stage, { changedTouches: [{ clientX: 120, clientY: 300 }] });
+
+    expect(screen.getByText("3 / 3")).toBeInTheDocument();
+  });
 });
