@@ -1,4 +1,4 @@
-import type { FilterOptions, InventoryEntry, InventoryPolicy } from "../types";
+import type { FilterOptions, InventoryEntry, InventoryPolicy, MarketplaceListing } from "../types";
 import { totalInventoryCount } from "./cardVariants";
 import { sortRarities } from "./rarityOrder";
 
@@ -144,6 +144,21 @@ export function ownedFilterOptions(entries: InventoryEntry[]): FilterOptions {
     costs: [...costs].sort((a, b) => a - b),
     inkable: ["inkable", "non-inkable"],
   };
+}
+
+/**
+ * Card ids the seller already has on the market. Mirrors the bulk flow's
+ * "already listed" rule (PI-1): any non-hidden NORMAL listing for the card,
+ * whatever its status. Foil/holofoil listings don't hide the normal card.
+ */
+export function listedCardIdSet(listings: MarketplaceListing[]): Set<string> {
+  const ids = new Set<string>();
+  for (const listing of listings) {
+    if (listing.variant === "normal" && listing.hiddenAt === null) {
+      ids.add(listing.cardId);
+    }
+  }
+  return ids;
 }
 
 /**

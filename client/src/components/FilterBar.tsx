@@ -22,6 +22,13 @@ interface FilterBarProps {
    * additive to `sparesDisabled`, which keeps its "policy missing" meaning.
    */
   lockSparesOn?: boolean;
+  /**
+   * Listing picker: render an "Unlisted only" checkbox (checked by default) so
+   * cards the seller already has on the market are hidden until they opt in.
+   */
+  showListedToggle?: boolean;
+  /** Cards hidden by that checkbox, surfaced as a hint next to it. */
+  listedHiddenCount?: number;
 }
 
 export default function FilterBar({
@@ -32,6 +39,8 @@ export default function FilterBar({
   optionSource,
   sparesDisabled = false,
   lockSparesOn = false,
+  showListedToggle = false,
+  listedHiddenCount = 0,
 }: FilterBarProps) {
   const [options, setOptions] = useState<FilterOptions | null>(null);
   const [rarityOpen, setRarityOpen] = useState(false);
@@ -211,6 +220,24 @@ export default function FilterBar({
               </>
             )}
           </div>
+          {showListedToggle && (
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-100 rounded-md border border-gray-700 bg-gray-800 cursor-pointer whitespace-nowrap hover:bg-gray-700 focus-within:border-amber-500">
+                <input
+                  type="checkbox"
+                  checked={filters.includeListed !== "1"}
+                  onChange={(e) => update("includeListed", e.target.checked ? "" : "1")}
+                  className="rounded accent-amber-500"
+                />
+                Unlisted only
+              </label>
+              {filters.includeListed !== "1" && listedHiddenCount > 0 && (
+                <span className="text-xs text-gray-400">
+                  {listedHiddenCount} hidden — already listed
+                </span>
+              )}
+            </div>
+          )}
           <SearchableMultiSelect
             label="Types"
             options={resolvedOptions.cardTypes}

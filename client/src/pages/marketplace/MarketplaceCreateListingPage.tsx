@@ -4,22 +4,25 @@ import { useAuth } from "../../context/AuthContext";
 import RequireAuth from "../../components/marketplace/RequireAuth";
 import ListingForm from "../../components/marketplace/ListingForm";
 import ListingPicker from "../../components/marketplace/ListingPicker";
-import { inventory as inventoryApi } from "../../services/api";
+import { inventory as inventoryApi, marketplace } from "../../services/api";
+import { listedCardIdSet } from "../../utils/listingPicker";
 import type { InventoryEntry, InventoryPolicy } from "../../types";
 
 /**
  * Dedicated create-listing page (REQ-LC-1..4, AC-LC-2/3): the two-step flow
  * that used to be inlined on the sell page. Step 1 picks an owned card, step 2
- * is the unchanged create-mode `ListingForm`. Only the collection (inventory +
- * keep policy) is fetched — no listings or transactions belong on this page
- * (AC-LC-2.2/2.3). Step 2's card and the picker filters are page-local, so a
- * remount always returns to step 1 (AC-LC-4.3).
+ * is the unchanged create-mode `ListingForm`. It fetches the collection
+ * (inventory + keep policy) plus the seller's own listings, which drive the
+ * picker's default "Unlisted only" filter — a failed listings fetch degrades to
+ * "nothing is listed". Step 2's card and the picker filters are page-local, so
+ * a remount always returns to step 1 (AC-LC-4.3).
  */
 export default function MarketplaceCreateListingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [inventory, setInventory] = useState<InventoryEntry[]>([]);
   const [policy, setPolicy] = useState<InventoryPolicy | null>(null);
+  const [listedCardIds, setListedCardIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -34,13 +37,15 @@ export default function MarketplaceCreateListingPage() {
     setLoading(true);
     setError(null);
     try {
-      // TD-4 — one parallel batch; a failed keep policy is tolerated.
-      const [inv, pol] = await Promise.all([
+      // TD-4 — one parallel batch; a failed keep policy or listings fetch is tolerated.
+      const [inv, pol, mine] = await Promise.all([
         inventoryApi.list(),
         inventoryApi.getPolicy().catch(() => null),
+        marketplace.getMyListings().catch(() => null),
       ]);
       setInventory(inv);
       setPolicy(pol);
+      setListedCardIds(listedCardIdSet(mine?.listings ?? []));
     } catch {
       setError("Couldn't load your collection.");
     } finally {
@@ -90,6 +95,7 @@ export default function MarketplaceCreateListingPage() {
               inventory={inventory}
               policy={policy}
               loading={loading}
+              listedCardIds={listedCardIds}
               filters={pickerFilters}
               onFiltersChange={setPickerFilters}
               onSelectCard={(card) => setSelectedCardId(card.id)}

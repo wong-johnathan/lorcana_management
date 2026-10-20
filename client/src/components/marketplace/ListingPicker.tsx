@@ -14,6 +14,11 @@ interface ListingPickerProps {
   inventory: InventoryEntry[];
   policy: InventoryPolicy | null;
   loading: boolean;
+  /**
+   * Card ids the seller already has on the market. Cards in this set are hidden
+   * while "Unlisted only" is ticked, which is the default.
+   */
+  listedCardIds?: Set<string>;
   /** Controlled filter state, lifted to the page so it survives Back/forward. */
   filters: Record<string, string>;
   onFiltersChange: (filters: Record<string, string>) => void;
@@ -25,11 +30,15 @@ interface ListingPickerProps {
  * Step 1 of the two-step create flow (REQ-UX-1..4): a visual owned-card grid
  * driven by the shared FilterBar (search + set/rarity/color) with client-side
  * filtering only — no new network request (AC-UX-2.3).
+ *
+ * Cards the seller already has listed are hidden by default ("Unlisted only"),
+ * so the picker leads with something to do; unticking it includes them.
  */
 export default function ListingPicker({
   inventory,
   policy,
   loading,
+  listedCardIds,
   filters,
   onFiltersChange,
   onSelectCard,
@@ -42,16 +51,25 @@ export default function ListingPicker({
     [inventory, filters, surplus]
   );
 
-  const cards = useMemo(() => ownedEntries.map((entry) => entry.card), [ownedEntries]);
+  const includeListed = filters.includeListed === "1";
+
+  const visibleEntries = useMemo(() => {
+    if (includeListed || !listedCardIds) return ownedEntries;
+    return ownedEntries.filter((entry) => !listedCardIds.has(entry.cardId));
+  }, [ownedEntries, includeListed, listedCardIds]);
+
+  const hiddenListedCount = ownedEntries.length - visibleEntries.length;
+
+  const cards = useMemo(() => visibleEntries.map((entry) => entry.card), [visibleEntries]);
 
   const ownedCardIds = useMemo(
-    () => new Set(ownedEntries.map((entry) => entry.cardId)),
-    [ownedEntries]
+    () => new Set(visibleEntries.map((entry) => entry.cardId)),
+    [visibleEntries]
   );
 
   const ownedQuantities = useMemo(() => {
     const map = new Map<string, InventoryCounts>();
-    for (const entry of ownedEntries) {
+    for (const entry of visibleEntries) {
       map.set(entry.cardId, {
         quantity: entry.quantity,
         foilQuantity: entry.foilQuantity,
@@ -59,7 +77,7 @@ export default function ListingPicker({
       });
     }
     return map;
-  }, [ownedEntries]);
+  }, [visibleEntries]);
 
   const options = useMemo(() => ownedFilterOptions(inventory), [inventory]);
 
@@ -87,6 +105,8 @@ export default function ListingPicker({
         filters={filters}
         onChange={onFiltersChange}
         sparesDisabled={policy === null}
+        showListedToggle={listedCardIds !== undefined}
+        listedHiddenCount={hiddenListedCount}
       />
 
       {loading ? (
@@ -100,6 +120,13 @@ export default function ListingPicker({
       ) : filters.spares === "1" && cards.length === 0 ? (
         <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">
           No spare cards found — you don't hold more copies than your keep policy for any matching card.
+        </div>
+      ) : cards.length === 0 && hiddenListedCount > 0 ? (
+        <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-8 text-center text-sm text-gray-400">
+          {hiddenListedCount === 1
+            ? "The only matching card is already listed."
+            : `All ${hiddenListedCount} matching cards are already listed.`}{" "}
+          Untick “Unlisted only” to add another listing for the same card.
         </div>
       ) : (
         <CardGrid
