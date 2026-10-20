@@ -16,7 +16,6 @@ import MarketplaceChatPage from "./pages/marketplace/MarketplaceChatPage";
 import MarketplaceChatThreadPage from "./pages/marketplace/MarketplaceChatThreadPage";
 import MarketplaceSellPage from "./pages/marketplace/MarketplaceSellPage";
 import MarketplaceTransactionsPage from "./pages/marketplace/MarketplaceTransactionsPage";
-import MarketplaceTransactionPage from "./pages/marketplace/MarketplaceTransactionPage";
 
 export default function App() {
   const { user, isLoading } = useAuth();
@@ -43,7 +42,6 @@ export default function App() {
         <Route path="/marketplace/chat/:id" element={<MarketplaceChatThreadPage />} />
         <Route path="/marketplace/sell" element={<MarketplaceSellPage />} />
         <Route path="/marketplace/transactions" element={<MarketplaceTransactionsPage />} />
-        <Route path="/marketplace/transactions/:id" element={<MarketplaceTransactionPage />} />
         <Route path="/collection/:userId" element={<PublicCollectionPage />} />
         {user ? (
           <>
