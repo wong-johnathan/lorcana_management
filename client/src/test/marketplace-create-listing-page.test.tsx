@@ -82,6 +82,26 @@ const policy: InventoryPolicy = {
   keepHolofoilQuantity: 1,
 };
 
+const secondCard = {
+  ...card,
+  id: "card_2",
+  name: "Mickey Mouse, Brave Little Tailor",
+  subtitle: "Brave Little Tailor",
+  setCode: "ROTF",
+  setName: "Rise of the Floodborn",
+  foilTypes: ["Lava"],
+};
+
+const secondInventoryEntry: InventoryEntry = {
+  id: "inv_2",
+  userId: "seller_1",
+  cardId: "card_2",
+  quantity: 0,
+  foilQuantity: 0,
+  holofoilQuantity: 2,
+  card: secondCard,
+};
+
 const seller = { id: "seller_1", username: "alice" };
 
 function renderCreatePage() {
@@ -184,6 +204,49 @@ describe("MarketplaceCreateListingPage", () => {
 
     // AC-LC-7.3 — save navigates to the listings surface.
     expect(await screen.findByText("Sell listings page")).toBeInTheDocument();
+  });
+
+  it("re-derives identity and default variant after Back to a different card (REQ-UX-9 / AC-LC-3.1)", async () => {
+    signIn();
+    inventoryListMock.mockResolvedValue([inventoryEntry, secondInventoryEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+
+    renderCreatePage();
+
+    await screen.findByText("Choose a card to list");
+
+    // Pick Elsa (normal default variant); the card identity is read-only.
+    await userEvent.click(screen.getByRole("button", { name: /Elsa, Snow Queen/ }));
+    expect(await screen.findByLabelText("Variant")).toHaveValue("normal");
+    expect(screen.getByText("Elsa, Snow Queen")).toBeInTheDocument();
+    expect(screen.getByText("The First Chapter")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Card")).not.toBeInTheDocument();
+
+    // Back, then pick a DIFFERENT, holofoil-only card (REQ-UX-9).
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /Mickey Mouse, Brave Little Tailor/ })
+    );
+
+    // The new card's identity + default variant replace the old ones.
+    expect(await screen.findByLabelText("Variant")).toHaveValue("holofoil");
+    expect(screen.getByText("Mickey Mouse, Brave Little Tailor")).toBeInTheDocument();
+    expect(screen.getByText("Rise of the Floodborn")).toBeInTheDocument();
+    expect(screen.queryByText("Elsa, Snow Queen")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Card")).not.toBeInTheDocument();
+    expect(screen.getByText("You own 2 Holofoil copies.")).toBeInTheDocument();
+
+    // The owned cap follows the new variant: 3 > 2 holofoil copies.
+    fireEvent.change(screen.getByLabelText(/Quantity/), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Price"), { target: { value: "10" } });
+    await userEvent.click(screen.getByRole("button", { name: "Create listing" }));
+
+    expect(
+      await screen.findByText("You can only list up to 2 Holofoil copies you own")
+    ).toBeInTheDocument();
+    expect(createListingMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Variant")).toHaveValue("holofoil");
   });
 
   it("shows the no-cards message when the collection holds no owned cards", async () => {

@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "../context/AuthContext";
+import MarketplaceCreateListingPage from "../pages/marketplace/MarketplaceCreateListingPage";
+import MarketplaceEditListingPage from "../pages/marketplace/MarketplaceEditListingPage";
 import MarketplaceSellPage from "../pages/marketplace/MarketplaceSellPage";
 import type { MarketplaceListing } from "../types";
 
@@ -10,11 +13,17 @@ const {
   getPolicyMock,
   getMyListingsMock,
   getTransactionsMock,
+  createListingMock,
+  updateListingMock,
+  deleteListingMock,
 } = vi.hoisted(() => ({
   inventoryListMock: vi.fn(),
   getPolicyMock: vi.fn(),
   getMyListingsMock: vi.fn(),
   getTransactionsMock: vi.fn(),
+  createListingMock: vi.fn(),
+  updateListingMock: vi.fn(),
+  deleteListingMock: vi.fn(),
 }));
 
 vi.mock("../services/api", () => ({
@@ -25,6 +34,9 @@ vi.mock("../services/api", () => ({
   marketplace: {
     getMyListings: getMyListingsMock,
     getTransactions: getTransactionsMock,
+    createListing: createListingMock,
+    updateListing: updateListingMock,
+    deleteListing: deleteListingMock,
   },
 }));
 
@@ -116,6 +128,19 @@ function renderSellPage() {
   );
 }
 
+/** The three sell routes registered by App.tsx, so link clicks can be followed. */
+function renderSellRoutes() {
+  return render(
+    <MemoryRouter initialEntries={["/marketplace/sell"]}>
+      <Routes>
+        <Route path="/marketplace/sell" element={<MarketplaceSellPage />} />
+        <Route path="/marketplace/sell/new" element={<MarketplaceCreateListingPage />} />
+        <Route path="/marketplace/sell/:id/edit" element={<MarketplaceEditListingPage />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
 function signIn() {
   vi.mocked(useAuth).mockReturnValue({ user: { id: "seller_1", username: "alice" } } as never);
 }
@@ -125,6 +150,9 @@ beforeEach(() => {
   getPolicyMock.mockReset();
   getMyListingsMock.mockReset();
   getTransactionsMock.mockReset();
+  createListingMock.mockReset();
+  updateListingMock.mockReset();
+  deleteListingMock.mockReset();
 });
 
 describe("MarketplaceSellPage", () => {
@@ -241,5 +269,49 @@ describe("MarketplaceSellPage", () => {
     expect(getTransactionsMock).toHaveBeenCalledWith("PENDING_CONFIRMATION");
     expect(inventoryListMock).not.toHaveBeenCalled();
     expect(getPolicyMock).not.toHaveBeenCalled();
+  });
+
+  it("click-through: Create listing opens the create page route (AC-LC-1.1)", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+    inventoryListMock.mockResolvedValue([]);
+    getPolicyMock.mockResolvedValue(null);
+
+    renderSellRoutes();
+
+    await screen.findByText("You have no listings yet. Create one to start selling.");
+    await userEvent.click(screen.getByRole("link", { name: "Create listing" }));
+
+    // The link resolves to /marketplace/sell/new instead of the catch-all.
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Create a listing" })
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Choose a card to list")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "Your listings" })).not.toBeInTheDocument();
+  });
+
+  it("click-through: a tile Edit link opens the hydrated edit page (AC-LC-6.1)", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [activeListing] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+    inventoryListMock.mockResolvedValue([]);
+    getPolicyMock.mockResolvedValue(null);
+
+    renderSellRoutes();
+
+    await screen.findByText("Elsa, Snow Queen");
+    await userEvent.click(
+      screen.getByRole("link", { name: "Edit listing: Elsa, Snow Queen, Normal" })
+    );
+
+    // The tile link resolves to /marketplace/sell/:id/edit with saved values.
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Edit listing" })
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText(/Quantity/)).toHaveValue(2);
+    expect(screen.getByLabelText("Price")).toHaveValue("25.00");
+    expect(screen.getByLabelText("Location")).toHaveValue("London");
+    expect(screen.queryByRole("heading", { level: 1, name: "Your listings" })).not.toBeInTheDocument();
   });
 });
