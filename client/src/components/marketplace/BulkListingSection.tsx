@@ -32,6 +32,16 @@ const BULK_LIMIT = 100;
 const SESSION_EXPIRED_MESSAGE =
   "Your session expired. Sign in again to retry the failed cards.";
 
+/**
+ * UI_SPEC §2.5 (new bulk controls only, UD-10): a 2 px amber `focus-visible`
+ * ring at 2 px offset on every interactive control this flow adds.
+ */
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950";
+
+/** UI_SPEC §2.5: sticky-bar descendants keep the ring clear of the bar edge. */
+const STICKY_RING = `scroll-mb-24 ${FOCUS_RING}`;
+
 export type BulkPhase = "choose" | "review" | "running" | "results";
 
 interface BulkRunRow {
@@ -169,6 +179,13 @@ export default function BulkListingSection({
   const overCap = included.length > BULK_LIMIT;
   const priceMinor = priceMinorFromMajor(price);
   const priceValid = priceMinor !== undefined;
+  // AC-BULK-4.4 / UX RV-6: the batch total is the sum of the per-row line
+  // totals (quantity × unit price), never the listing count × price.
+  const batchTotalMinor = included.reduce(
+    (total, candidate) => total + candidate.quantity * (priceMinor ?? 0),
+    0
+  );
+
   const showPriceError = priceTouched && !priceValid;
   const canConfirm = priceValid && included.length >= 1 && !overCap;
   const alreadyListedCount = candidateSet.skipped.filter(
@@ -395,7 +412,7 @@ export default function BulkListingSection({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500"
+            className={`rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500 ${FOCUS_RING}`}
           >
             Cancel
           </button>
@@ -433,7 +450,7 @@ export default function BulkListingSection({
               <button
                 type="button"
                 onClick={handleClearFilters}
-                className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500"
+                className={`rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500 ${FOCUS_RING}`}
               >
                 Clear filters
               </button>
@@ -448,7 +465,7 @@ export default function BulkListingSection({
                   type="button"
                   onClick={handleSelectAll}
                   disabled={eligible === 0}
-                  className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-semibold text-gray-300 tabular-nums whitespace-nowrap hover:border-gray-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-400 disabled:hover:border-gray-800"
+                  className={`rounded-lg border border-gray-700 px-3 py-1.5 text-sm font-semibold text-gray-300 tabular-nums whitespace-nowrap hover:border-gray-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-400 disabled:hover:border-gray-800 ${FOCUS_RING}`}
                 >
                   {`Select all matching (${eligible})`}
                 </button>
@@ -510,7 +527,7 @@ export default function BulkListingSection({
                     <button
                       type="button"
                       onClick={handleClearSelection}
-                      className="rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500"
+                      className={`rounded-lg border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-500 ${STICKY_RING}`}
                     >
                       Clear selection
                     </button>
@@ -519,7 +536,7 @@ export default function BulkListingSection({
                       type="button"
                       onClick={() => setMode("review")}
                       disabled={selectedCount === 0}
-                      className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900 disabled:text-amber-300 disabled:hover:bg-amber-900"
+                      className={`rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900 disabled:text-amber-300 disabled:hover:bg-amber-900 ${STICKY_RING}`}
                     >
                       Review and price →
                     </button>
@@ -609,7 +626,7 @@ export default function BulkListingSection({
               <span className="text-gray-500"> · </span>
               Batch total{" "}
               <span className="font-semibold text-gray-100">
-                {priceValid ? formatPriceMinor(included.length * priceMinor, currency) : "—"}
+                {priceValid ? formatPriceMinor(batchTotalMinor, currency) : "—"}
               </span>
             </p>
           )}
@@ -641,14 +658,14 @@ export default function BulkListingSection({
             <button
               type="button"
               onClick={goBackToFilters}
-              className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:border-gray-500"
+              className={`rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:border-gray-500 ${STICKY_RING}`}
             >
               Back to filters
             </button>
-            <span className="text-sm text-gray-300 tabular-nums">
+            <span className="text-sm text-gray-300 tabular-nums" data-testid="bulk-sticky-total">
               Batch total{" "}
               <span className="font-semibold text-gray-100">
-                {priceValid ? formatPriceMinor(included.length * priceMinor, currency) : "—"}
+                {priceValid ? formatPriceMinor(batchTotalMinor, currency) : "—"}
               </span>
             </span>
             <button
@@ -659,7 +676,7 @@ export default function BulkListingSection({
               aria-describedby={
                 overCap ? "bulk-overcap" : showPriceError ? "bulk-price-error" : undefined
               }
-              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 tabular-nums whitespace-nowrap hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900 disabled:text-amber-300 disabled:hover:bg-amber-900"
+              className={`rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 tabular-nums whitespace-nowrap hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900 disabled:text-amber-300 disabled:hover:bg-amber-900 ${STICKY_RING}`}
             >
               {included.length === 0 ? "Nothing to create" : `Create ${included.length} listings`}
             </button>

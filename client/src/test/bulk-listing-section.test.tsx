@@ -183,6 +183,11 @@ function setPrice(value: string) {
   fireEvent.change(screen.getByLabelText("Unit price (per copy)"), { target: { value } });
 }
 
+/** `Intl` separates the currency code and the amount with U+00A0; compare in text. */
+function normalizedText(element: Element | null): string {
+  return (element?.textContent ?? "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function confirmButton() {
   return screen.getByRole("button", { name: /Create \d+ listings|Nothing to create/ });
 }
@@ -533,6 +538,275 @@ describe("BulkListingSection — step 2 (review and price)", () => {
     expect(screen.queryByLabelText("Unit price (per copy)")).not.toBeInTheDocument();
     expect(props.onCancel).not.toHaveBeenCalled();
     expect(bulkCreateListingMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("BulkListingSection — batch total arithmetic (AC-BULK-4.4)", () => {
+  beforeEach(() => {
+    bulkCreateListingMock.mockReset();
+    bulkCreateListingMock.mockResolvedValue({ status: "created", listing: makeListing() });
+  });
+
+  it("multiplies the unit price by the row quantity, never by the listing count", async () => {
+    // QA D1 repro: one candidate, 3 spares at 0.75 → SGD 2.25, not SGD 0.75.
+    renderSection({
+      inventory: [makeEntry({ quantity: 4 })],
+      policy: { ...policy, keepNormalQuantity: 1 },
+    });
+    await selectAndReview();
+    setPrice("0.75");
+
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toBe(
+      "1 listings · Batch total SGD 2.25"
+    );
+    expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total SGD 2.25");
+  });
+
+  it("sums Σ(quantity × unit price) across rows and follows row removal", async () => {
+    // Elsa 3 spares, Mickey 1 spare at 0.75 → 3.00; a listing-count total
+    // would read 1.50 and would never react to the quantities at all.
+    renderSection({
+      inventory: [makeEntry({ quantity: 4 }), makeEntry({ card: mickey, quantity: 2 })],
+      policy: { ...policy, keepNormalQuantity: 1 },
+    });
+    await selectAndReview();
+    setPrice("0.75");
+
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toBe(
+      "2 listings · Batch total SGD 3.00"
+    );
+    expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total SGD 3.00");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Include Mickey Mouse/ }));
+
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toBe(
+      "1 listings · Batch total SGD 2.25"
+    );
+    expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total SGD 2.25");
+  });
+
+  it("formats the batch total in the selected currency", async () => {
+    renderSection({
+      inventory: [makeEntry({ quantity: 3 })],
+      policy: { ...policy, keepNormalQuantity: 1 },
+    });
+    await selectAndReview();
+    setPrice("1.20");
+    fireEvent.change(screen.getByLabelText("Currency"), { target: { value: "USD" } });
+
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toBe(
+      "1 listings · Batch total $2.40"
+    );
+    expect(normalizedText(screen.getByTestId("bulk-sticky-total"))).toBe("Batch total $2.40");
+  });
+});
+
+describe("BulkListingSection — preview row details (AC-BULK-4.4/5.4/3.3/2.7)", () => {
+  beforeEach(() => {
+    bulkCreateListingMock.mockReset();
+    bulkCreateListingMock.mockResolvedValue({ status: "created", listing: makeListing() });
+  });
+
+  it("shows each row's unit price and quantity × price line total (AC-BULK-4.4)", async () => {
+    // Default fixtures: Elsa 4 owned, keep 2 → 2 spares at 0.50 → SGD 1.00.
+    renderSection();
+    await selectAndReview();
+    setPrice("0.50");
+
+    const row = screen.getByRole("checkbox", { name: /Include Elsa/ }).closest("tr")!;
+    expect(within(row).getByText("Unit price")).toBeInTheDocument();
+    expect(within(row).getByText("SGD 0.50")).toBeInTheDocument();
+    expect(within(row).getByText("Line total")).toBeInTheDocument();
+    expect(within(row).getByText("SGD 1.00")).toBeInTheDocument();
+    expect(within(row).getByText("Copies")).toBeInTheDocument();
+  });
+
+  it("states the fixed condition/photos/location/note line and offers no inputs for them (AC-BULK-5.4)", async () => {
+    renderSection();
+    await selectAndReview();
+
+    expect(
+      screen.getByText("Condition: Not specified · no photos · no location or note")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("You can change these on any listing afterwards from Your listings.")
+    ).toBeInTheDocument();
+
+    for (const name of [/condition/i, /location/i, /\bnote\b/i]) {
+      expect(screen.queryByLabelText(name)).not.toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name })).not.toBeInTheDocument();
+    }
+    // Step 2 offers exactly one text input (price) and one select (currency).
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(screen.getAllByRole("combobox")).toHaveLength(1);
+  });
+
+  it("renders 'capped from N spares' when availability limits the row (AC-BULK-3.3)", async () => {
+    // 5 owned, keep 1 → 4 spares, but 3 are reserved → quantity 2, capped at 4.
+    renderSection({
+      inventory: [makeEntry({ quantity: 5 })],
+      policy: { ...policy, keepNormalQuantity: 1 },
+      pendingTransactions: [makeTransaction({ cardId: elsa.id, quantity: 3 })],
+    });
+    expect(screen.getByRole("button", { name: "Select all matching (1)" })).toBeInTheDocument();
+    await selectAndReview();
+    setPrice("0.50");
+
+    const row = screen.getByRole("checkbox", { name: /Include Elsa/ }).closest("tr")!;
+    expect(within(row).getByText("capped from 4 spares")).toBeInTheDocument();
+    expect(within(row).getByText("SGD 1.00")).toBeInTheDocument();
+    // The capped quantity, not the spare count, drives the batch total.
+    expect(normalizedText(screen.getByTestId("bulk-totals"))).toBe(
+      "1 listings · Batch total SGD 1.00"
+    );
+  });
+
+  it("reports the excluded foil/holofoil-only count, including the zero case (AC-BULK-2.7)", () => {
+    const SCOPE = "Bulk listing covers normal-printing spares only. Foil and holofoil spares stay as they are.";
+    const { unmount } = renderSection({
+      inventory: [
+        makeEntry(),
+        makeEntry({ card: makeCard({ id: "card_f", name: "Foil Only" }), quantity: 1, foilQuantity: 4 }),
+      ],
+    });
+    expect(normalizedText(screen.getByText(SCOPE).parentElement)).toContain(
+      "1 cards in this filter have only foil or holofoil spares and can't be bulk listed."
+    );
+    unmount();
+
+    renderSection();
+    expect(normalizedText(screen.getByText(SCOPE).parentElement)).toContain(
+      "No cards in this filter are excluded for foil or holofoil spares."
+    );
+  });
+
+  it("lists a no-copies card in the preview skip list with its reason (AC-BULK-3.3/6.2)", async () => {
+    renderSection({
+      inventory: [makeEntry(), makeEntry({ card: mickey })],
+      // All four of Mickey's copies are reserved by a pending sale.
+      pendingTransactions: [makeTransaction({ cardId: mickey.id, quantity: 4 })],
+    });
+
+    expect(
+      screen.getByText("1 of these have no copies available and will be skipped.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select all matching (1)" })).toBeInTheDocument();
+
+    await selectAndReview();
+
+    const skipList = screen.getByText("Not included (1)").parentElement!;
+    expect(within(skipList).getByText("Mickey Mouse")).toBeInTheDocument();
+    expect(within(skipList).getAllByText(/no copies available/).map(normalizedText)).toContain(
+      "— no copies available (reserved or listed elsewhere)"
+    );
+  });
+
+  it("fails a 409 item exactly once with the unchanged quantity (AC-BULK-9.3)", async () => {
+    bulkCreateListingMock.mockResolvedValue({
+      status: "failed",
+      error: "Quantity exceeds available inventory",
+      httpStatus: 409,
+    });
+
+    renderSection({
+      inventory: [makeEntry({ quantity: 5 })],
+      policy: { ...policy, keepNormalQuantity: 1 },
+    });
+    await selectAndReview();
+    setPrice("0.75");
+    await userEvent.click(confirmButton());
+
+    expect(await screen.findByTestId("bulk-results-summary")).toHaveTextContent(
+      "0 listings created · 1 failed"
+    );
+    // No silent reduced-quantity retry: one call, same quantity as the preview.
+    expect(bulkCreateListingMock).toHaveBeenCalledTimes(1);
+    expect(bulkCreateListingMock).toHaveBeenCalledWith({
+      cardId: "card_1",
+      quantity: 4,
+      priceMinor: 75,
+      currency: "SGD",
+    });
+    expect(screen.getByText("Quantity exceeds available inventory")).toBeInTheDocument();
+  });
+});
+
+describe("BulkListingSection — amber focus rings (AC-BULK-11.1, UI_SPEC §2.5)", () => {
+  const RING_CLASSES = [
+    "focus-visible:outline-none",
+    "focus-visible:ring-2",
+    "focus-visible:ring-amber-500",
+    "focus-visible:ring-offset-2",
+    "focus-visible:ring-offset-gray-950",
+  ];
+  // The price input and currency select predate this change and already carry
+  // the amber ring (with `focus:outline-none`); the card scopes them out.
+  const PRE_EXISTING_CONTROL_CLASSES = RING_CLASSES.filter(
+    (className) => className !== "focus-visible:outline-none"
+  );
+
+  function expectClasses(element: HTMLElement, classes: string[]) {
+    for (const className of classes) expect(element.className).toContain(className);
+    return element;
+  }
+
+  function expectRing(role: "button" | "textbox" | "combobox", name: string | RegExp) {
+    return expectClasses(screen.getByRole(role, { name }), RING_CLASSES);
+  }
+
+  beforeEach(() => {
+    bulkCreateListingMock.mockReset();
+    bulkCreateListingMock.mockResolvedValue({ status: "created", listing: makeListing() });
+  });
+
+  it("rings every new bulk button across choose, review and results", async () => {
+    renderSection();
+
+    expectRing("button", "Cancel");
+    expectRing("button", "Select all matching (2)");
+
+    await userEvent.click(screen.getByRole("button", { name: "Select all matching (2)" }));
+    expectRing("button", "Clear selection");
+    const review = expectRing("button", "Review and price →");
+    // Sticky-bar descendants reserve 96 px below so the ring is never clipped.
+    expect(review.className).toContain("scroll-mb-24");
+    expect(screen.getByRole("button", { name: "Clear selection" }).className).toContain(
+      "scroll-mb-24"
+    );
+
+    await userEvent.click(review);
+    expectClasses(
+      screen.getByRole("textbox", { name: "Unit price (per copy)" }),
+      PRE_EXISTING_CONTROL_CLASSES
+    );
+    expectClasses(
+      screen.getByRole("combobox", { name: "Currency" }),
+      PRE_EXISTING_CONTROL_CLASSES
+    );
+    expectRing("button", "Back to filters");
+    expect(screen.getByRole("button", { name: "Back to filters" }).className).toContain(
+      "scroll-mb-24"
+    );
+
+    setPrice("0.50");
+    const confirm = expectRing("button", /Create 2 listings/);
+    expect(confirm.className).toContain("scroll-mb-24");
+
+    bulkCreateListingMock
+      .mockResolvedValueOnce({ status: "created", listing: makeListing() })
+      .mockResolvedValueOnce({ status: "failed", error: "boom", httpStatus: 409 });
+    await userEvent.click(confirm);
+    await screen.findByTestId("bulk-results-summary");
+
+    expectRing("button", "Retry failed (1)");
+    expectRing("button", "Done — view your listings");
+  });
+
+  it("rings the empty-state Clear filters button", () => {
+    renderSection({ inventory: [makeEntry({ quantity: 1 })] });
+
+    expectRing("button", "Clear filters");
   });
 });
 
@@ -905,6 +1179,36 @@ describe("MarketplaceSellPage — bulk entry and mutual exclusion", () => {
       screen.queryByText("You have no listings yet. Create one to start selling.")
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bulk list spares" })).not.toBeInTheDocument();
+  });
+
+  it("opens the bulk flow without issuing extra requests (AC-BULK-1.4)", async () => {
+    inventoryListMock.mockResolvedValue([makeEntry()]);
+    getPolicyMock.mockResolvedValue(policy);
+    getMyListingsMock.mockResolvedValue({ listings: [] });
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    renderPage();
+    await screen.findByText("You have no listings yet. Create one to start selling.");
+
+    const callCounts = () => [
+      inventoryListMock.mock.calls.length,
+      getPolicyMock.mock.calls.length,
+      getMyListingsMock.mock.calls.length,
+      getTransactionsMock.mock.calls.length,
+    ];
+    const afterLoad = callCounts();
+    expect(afterLoad).toEqual([1, 1, 1, 1]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Bulk list spares" }));
+    await screen.findByRole("heading", { name: "Bulk list spares" });
+    await userEvent.click(screen.getByRole("button", { name: "Select all matching (1)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Review and price →" }));
+    setPrice("0.50");
+    await screen.findByTestId("bulk-totals");
+
+    // The flow reuses the page's data: no re-fetch and no write before confirm.
+    expect(callCounts()).toEqual(afterLoad);
+    expect(bulkCreateListingMock).not.toHaveBeenCalled();
   });
 
   // Full page + section + run under coverage instrumentation: keep the exact

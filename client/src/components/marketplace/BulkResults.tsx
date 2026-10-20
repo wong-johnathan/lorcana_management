@@ -25,6 +25,10 @@ interface BulkResultsProps {
 const SESSION_EXPIRED_MESSAGE =
   "Your session expired. Sign in again to retry the failed cards.";
 
+/** UI_SPEC §2.5 (new bulk controls only, UD-10): 2 px amber focus-visible ring. */
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950";
+
 /**
  * Results panel (REQ-BULK-7.5/7.6, UI C-17..C-19): headline counts (zero
  * counters omitted), the failed cards with their verbatim server messages,
@@ -117,7 +121,7 @@ export default function BulkResults({
             onClick={onRetry}
             disabled={sessionExpired}
             aria-describedby={sessionExpired ? "bulk-session-expired" : undefined}
-            className="rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 tabular-nums hover:border-gray-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-400 disabled:hover:border-gray-800"
+            className={`rounded-lg border border-gray-700 px-4 py-2 text-sm text-gray-300 tabular-nums hover:border-gray-500 disabled:cursor-not-allowed disabled:border-gray-800 disabled:text-gray-400 disabled:hover:border-gray-800 ${FOCUS_RING}`}
           >
             {`Retry failed (${failed.length})`}
           </button>
@@ -125,7 +129,7 @@ export default function BulkResults({
         <button
           type="button"
           onClick={onDone}
-          className="ml-auto rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400"
+          className={`ml-auto rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 hover:bg-amber-400 ${FOCUS_RING}`}
         >
           Done — view your listings
         </button>
