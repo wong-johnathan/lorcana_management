@@ -15,7 +15,8 @@ interface CardGridPriceContext {
 
 interface CardGridProps {
   cards: Card[];
-  onSelect: (card: Card) => void;
+  /** Required for selectable tiles; ignored when `informational` is set. */
+  onSelect?: (card: Card) => void;
   ownedCardIds?: Set<string>;
   ownedQuantities?: Map<string, InventoryCounts>;
   onQuantityChange?: (card: Card, variant: InventoryVariant, delta: 1 | -1) => void;
@@ -25,6 +26,11 @@ interface CardGridProps {
   showSetName?: boolean;
   /** Total surplus per card (base keep policy) → top-left badge when > 0. */
   surplusByCardId?: Map<string, number>;
+  /**
+   * Bulk-listing mode (REQ-BULK-2.4, design §6.2): tiles are presentational —
+   * no `<button>` wrapper, no pointer cursor, no hover scale, no selection.
+   */
+  informational?: boolean;
 }
 
 const COLOR_CLASSES: Record<string, string> = {
@@ -117,6 +123,7 @@ export default function CardGrid({
   priceContext,
   showSetName,
   surplusByCardId,
+  informational = false,
 }: CardGridProps) {
   if (cards.length === 0) {
     return (
@@ -140,82 +147,96 @@ export default function CardGrid({
         const holofoilUpdating = updatingQuantityKeys?.has(holofoilKey);
         const surplus = surplusByCardId?.get(card.id) ?? 0;
 
+        const tileBody = (
+          <>
+            <div className="relative">
+              {card.imageUrl ? (
+                <img
+                  src={cardImageUrl(card)}
+                  alt={`${card.name} - ${card.subtitle}`}
+                  className="w-full aspect-[2/3] object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center text-gray-500 text-xs text-center p-2">
+                  {card.name}
+                  <br />
+                  {card.subtitle}
+                </div>
+              )}
+
+              {isOwned && (
+                <div className="absolute top-1 right-1 bg-amber-500 text-black text-xs font-bold px-1.5 py-0.5 rounded">
+                  {totalInventoryCount(qty)}x
+                </div>
+              )}
+
+              {surplus > 0 && (
+                <div className="absolute top-1 left-1 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                  {surplus} surplus
+                </div>
+              )}
+
+              {marketPrice != null && (
+                <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
+                  ${marketPrice.toFixed(2)}
+                </div>
+              )}
+
+              {priceContext && marketPrice == null && (
+                <div className="absolute bottom-1 right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded max-w-[90%] truncate">
+                  {priceContextLabel(priceContext)}
+                </div>
+              )}
+
+              {priceContext && marketPrice != null && (
+                <div className="absolute bottom-7 right-1 bg-sky-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  {priceContext.variant}
+                </div>
+              )}
+            </div>
+
+            <div className="p-2 space-y-1.5">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold truncate">{card.name}</p>
+                {card.subtitle && (
+                  <p className="text-xs text-gray-400 truncate">
+                    {card.subtitle}
+                  </p>
+                )}
+                {showSetName && card.setName && (
+                  <p className="text-[10px] text-gray-500 truncate">{card.setName}</p>
+                )}
+              </div>
+              <div className="mt-1">
+                <span className="inline-flex max-w-full rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 truncate">
+                  {cardIndexLabel(card)}
+                </span>
+              </div>
+            </div>
+          </>
+        );
+
         return (
           <div
             key={card.id}
-            className={`relative flex h-full flex-col rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden text-left transition-transform sm:hover:scale-105`}
+            className={`relative flex h-full flex-col rounded-lg border-2 ${borderClass} bg-gray-900 overflow-hidden text-left ${
+              informational ? "cursor-default" : "transition-transform sm:hover:scale-105"
+            }`}
           >
-            <button
-              type="button"
-              onClick={() => onSelect(card)}
-              className="flex w-full flex-1 flex-col text-left"
-            >
-              <div className="relative">
-                {card.imageUrl ? (
-                  <img
-                    src={cardImageUrl(card)}
-                    alt={`${card.name} - ${card.subtitle}`}
-                    className="w-full aspect-[2/3] object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full aspect-[2/3] bg-gray-800 flex items-center justify-center text-gray-500 text-xs text-center p-2">
-                    {card.name}
-                    <br />
-                    {card.subtitle}
-                  </div>
-                )}
-
-                {isOwned && (
-                  <div className="absolute top-1 right-1 bg-amber-500 text-black text-xs font-bold px-1.5 py-0.5 rounded">
-                    {totalInventoryCount(qty)}x
-                  </div>
-                )}
-
-                {surplus > 0 && (
-                  <div className="absolute top-1 left-1 bg-red-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-                    {surplus} surplus
-                  </div>
-                )}
-
-                {marketPrice != null && (
-                  <div className="absolute bottom-1 right-1 bg-emerald-600 text-white text-xs font-bold px-1.5 py-0.5 rounded">
-                    ${marketPrice.toFixed(2)}
-                  </div>
-                )}
-
-                {priceContext && marketPrice == null && (
-                  <div className="absolute bottom-1 right-1 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded max-w-[90%] truncate">
-                    {priceContextLabel(priceContext)}
-                  </div>
-                )}
-
-                {priceContext && marketPrice != null && (
-                  <div className="absolute bottom-7 right-1 bg-sky-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                    {priceContext.variant}
-                  </div>
-                )}
+            {informational ? (
+              <div className="flex w-full flex-1 flex-col text-left" data-testid="card-tile">
+                {tileBody}
               </div>
-
-              <div className="p-2 space-y-1.5">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold truncate">{card.name}</p>
-                  {card.subtitle && (
-                    <p className="text-xs text-gray-400 truncate">
-                      {card.subtitle}
-                    </p>
-                  )}
-                  {showSetName && card.setName && (
-                    <p className="text-[10px] text-gray-500 truncate">{card.setName}</p>
-                  )}
-                </div>
-                <div className="mt-1">
-                  <span className="inline-flex max-w-full rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 truncate">
-                    {cardIndexLabel(card)}
-                  </span>
-                </div>
-              </div>
-            </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSelect?.(card)}
+                className="flex w-full flex-1 flex-col text-left"
+              >
+                {tileBody}
+              </button>
+            )}
 
             {ownedQuantities && onQuantityChange && (
               <div className="mt-auto space-y-1 border-t border-gray-800 bg-black/20 p-2">

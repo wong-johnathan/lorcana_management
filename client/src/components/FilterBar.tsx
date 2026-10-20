@@ -14,6 +14,12 @@ interface FilterBarProps {
   optionSource?: FilterOptions;
   /** Disable the "Spares only" toggle (REQ-SPARE-4): true when keep policy is null. */
   sparesDisabled?: boolean;
+  /**
+   * Bulk listing (REQ-BULK-2.2, design §6.1): render "Spares only" forced on and
+   * non-interactive, with the "Always on for bulk listing" description. This is
+   * additive to `sparesDisabled`, which keeps its "policy missing" meaning.
+   */
+  lockSparesOn?: boolean;
 }
 
 export default function FilterBar({
@@ -23,6 +29,7 @@ export default function FilterBar({
   mode = "full",
   optionSource,
   sparesDisabled = false,
+  lockSparesOn = false,
 }: FilterBarProps) {
   const [options, setOptions] = useState<FilterOptions | null>(null);
   const [rarityOpen, setRarityOpen] = useState(false);
@@ -155,23 +162,42 @@ export default function FilterBar({
           />
           <TriStateToggle value={inkableValue} onChange={(value) => update("inkable", value)} />
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-pressed={sparesOn}
-              disabled={sparesDisabled}
-              onClick={() => update("spares", sparesOn ? "" : "1")}
-              className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md border border-gray-700 focus:outline-none focus:border-amber-500 ${
-                sparesOn
-                  ? "bg-amber-500 text-gray-950 font-semibold"
-                  : "bg-gray-800 text-gray-100 hover:bg-gray-700"
-              } disabled:cursor-not-allowed disabled:opacity-50`}
-            >
-              Spares only
-            </button>
-            {sparesDisabled && (
-              <span className="text-xs text-gray-500">
-                Spares only is unavailable — your keep policy couldn't be loaded.
-              </span>
+            {lockSparesOn ? (
+              <>
+                <button
+                  type="button"
+                  aria-pressed="true"
+                  aria-describedby="bulk-spares-lock-note"
+                  disabled
+                  className="px-3 py-1.5 text-sm whitespace-nowrap rounded-md border border-amber-300/40 bg-amber-500 text-gray-950 font-semibold cursor-not-allowed"
+                >
+                  ✓ Spares only
+                </button>
+                <span id="bulk-spares-lock-note" className="text-xs text-gray-400">
+                  Always on for bulk listing
+                </span>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  aria-pressed={sparesOn}
+                  disabled={sparesDisabled}
+                  onClick={() => update("spares", sparesOn ? "" : "1")}
+                  className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md border border-gray-700 focus:outline-none focus:border-amber-500 ${
+                    sparesOn
+                      ? "bg-amber-500 text-gray-950 font-semibold"
+                      : "bg-gray-800 text-gray-100 hover:bg-gray-700"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  Spares only
+                </button>
+                {sparesDisabled && (
+                  <span className="text-xs text-gray-500">
+                    Spares only is unavailable — your keep policy couldn't be loaded.
+                  </span>
+                )}
+              </>
             )}
           </div>
           <SearchableMultiSelect
