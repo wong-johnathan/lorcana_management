@@ -355,6 +355,56 @@ describe("MarketplaceEditListingPage", () => {
     expect(screen.queryByText("Sell listings page")).not.toBeInTheDocument();
   });
 
+  it("navigates to the listings surface from Cancel (AC-LC-7.4)", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [baseListing] });
+    inventoryListMock.mockResolvedValue([inventoryEntry]);
+    getPolicyMock.mockResolvedValue(policy);
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    renderEditPage();
+
+    await screen.findByLabelText(/Quantity/);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(await screen.findByText("Sell listings page")).toBeInTheDocument();
+    expect(screen.queryByText("Listing details")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Quantity/)).not.toBeInTheDocument();
+  });
+
+  it("tolerates a rejected keep policy: form still hydrates, no banner, no surplus hint", async () => {
+    signIn();
+    getMyListingsMock.mockResolvedValue({ listings: [baseListing] });
+    inventoryListMock.mockResolvedValue([inventoryEntry]);
+    getPolicyMock.mockRejectedValue(new Error("policy down"));
+    getTransactionsMock.mockResolvedValue({ transactions: [] });
+
+    renderEditPage();
+
+    // TD-3 parity with the create page: the rejection is swallowed, so the
+    // page renders the form instead of the page-level error banner.
+    expect(await screen.findByLabelText(/Quantity/)).toHaveValue(2);
+    expect(screen.queryByText("policy down")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading listing…")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Listing details" })
+    ).toBeInTheDocument();
+
+    // Saved values still hydrate from getMyListings.
+    expect(screen.getByRole("heading", { level: 1, name: "Edit listing" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Price")).toHaveValue("12.00");
+    expect(screen.getByLabelText("Currency")).toHaveValue("USD");
+    expect(screen.getByLabelText("Location")).toHaveValue("London");
+    expect(screen.getByTestId("tcg-price-reference")).toHaveTextContent(
+      "TCG market $12.34 (low $9.00 · high $15.00) (USD)"
+    );
+
+    // A null policy keeps the owned hint but cannot compute a surplus, so the
+    // surplus hint is absent rather than wrong.
+    expect(screen.getByText("You own 3 Normal copies.")).toBeInTheDocument();
+    expect(screen.queryByText(/beyond your keep policy/)).not.toBeInTheDocument();
+  });
+
   it("requires sign-in and makes no API calls when signed out", async () => {
     vi.mocked(useAuth).mockReturnValue({ user: null } as never);
 
