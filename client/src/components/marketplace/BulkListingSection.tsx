@@ -26,8 +26,17 @@ import BulkListingTable from "./BulkListingTable";
 import BulkResults, { type BulkFailedRow } from "./BulkResults";
 import BulkRunProgress from "./BulkRunProgress";
 
-/** Client-side cap per batch (AC-BULK-6.6); the server re-checks each item. */
-const BULK_LIMIT = 100;
+/** TCG market price (USD) for the normal printing, or null when absent. */
+function normalTcgUsd(candidate: BulkCandidate): number | null {
+  const normal = (candidate.card.prices ?? []).find(
+    (price) => (price.variant ?? "").toLowerCase() === "normal"
+  );
+  return normal?.marketPrice ?? null;
+}
+
+/** Remembered USD→SGD rate for TCG-based pricing (editable in the UI). */
+const FX_RATE_KEY = "bulk-tcg-usd-sgd-rate";
+const DEFAULT_FX_RATE = "1.35";
 
 const SESSION_EXPIRED_MESSAGE =
   "Your session expired. Sign in again to retry the failed cards.";
@@ -119,6 +128,23 @@ export default function BulkListingSection({
   const [price, setPrice] = useState("");
   const [priceTouched, setPriceTouched] = useState(false);
   const [currency, setCurrency] = useState("SGD");
+  // Price source: a flat per-copy price, or each card's TCG market price with
+  // one batch-wide adjustment % and a USD→SGD conversion.
+  const [priceMode, setPriceMode] = useState<"flat" | "tcg">("flat");
+  const [tcgAdjustment, setTcgAdjustment] = useState("0");
+  const [fxRate, setFxRate] = useState(() => {
+    if (typeof window === "undefined") return DEFAULT_FX_RATE;
+    return window.localStorage.getItem(FX_RATE_KEY) ?? DEFAULT_FX_RATE;
+  });
+
+  // Remember the chosen USD→SGD rate across runs.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FX_RATE_KEY, fxRate);
+    } catch {
+      // storage unavailable — the rate still applies for this session
+    }
+  }, [fxRate]);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [lastLine, setLastLine] = useState<string | null>(null);
   const [runRows, setRunRows] = useState<BulkRunRow[]>([]);
@@ -176,18 +202,40 @@ export default function BulkListingSection({
     [included]
   );
   const selectedCount = selectionActive ? included.length : 0;
-  const overCap = included.length > BULK_LIMIT;
   const priceMinor = priceMinorFromMajor(price);
   const priceValid = priceMinor !== undefined;
+
+  const adjustmentPct = Number(tcgAdjustment);
+  const fx = Number(fxRate);
+  const tcgParamsValid = Number.isFinite(adjustmentPct) && Number.isFinite(fx) && fx > 0;
+  const effectiveCurrency = priceMode === "tcg" ? "SGD" : currency;
+
+  // Flat mode: one price for every row. TCG mode: each row's own TCG market
+  // price (Normal, USD) × FX × (1 + batch adjustment %); rows without TCG data
+  // fall back to the typed flat price.
+  const unitPriceMinorFor = (candidate: BulkCandidate): number | undefined => {
+    if (priceMode === "tcg" && tcgParamsValid) {
+      const usd = normalTcgUsd(candidate);
+      if (usd != null) return Math.round(usd * fx * (1 + adjustmentPct / 100) * 100);
+    }
+    return priceMinor;
+  };
+
+  const allIncludedPriced = included.every(
+    (candidate) => unitPriceMinorFor(candidate) !== undefined
+  );
   // AC-BULK-4.4 / UX RV-6: the batch total is the sum of the per-row line
   // totals (quantity × unit price), never the listing count × price.
   const batchTotalMinor = included.reduce(
-    (total, candidate) => total + candidate.quantity * (priceMinor ?? 0),
+    (total, candidate) => total + candidate.quantity * (unitPriceMinorFor(candidate) ?? 0),
     0
   );
 
-  const showPriceError = priceTouched && !priceValid;
-  const canConfirm = priceValid && included.length >= 1 && !overCap;
+  const showPriceError = priceTouched && !priceValid && priceMode === "flat";
+  const canConfirm =
+    included.length >= 1 &&
+    allIncludedPriced &&
+    (priceMode === "tcg" ? tcgParamsValid : priceValid);
   const alreadyListedCount = candidateSet.skipped.filter(
     (skip) => skip.reason === "already listed"
   ).length;
@@ -244,11 +292,7 @@ export default function BulkListingSection({
   const handleSelectAll = () => {
     setSelectionActive(true);
     setDeselected(new Set());
-    if (eligible > BULK_LIMIT) {
-      selectionLive.announce("Over the 100-listing limit");
-    } else {
-      selectionLive.announce(`${eligible} cards selected, ${eligible} listings to create`);
-    }
+    selectionLive.announce(`${eligible} cards selected, ${eligible} listings to create`);
   };
 
   const handleClearSelection = () => {
@@ -267,17 +311,13 @@ export default function BulkListingSection({
     const nextSelected = candidateSet.matches.filter(
       (candidate) => !next.has(candidate.card.id)
     ).length;
-    if (nextSelected > BULK_LIMIT) {
-      selectionLive.announce("Over the 100-listing limit");
-    } else {
-      selectionLive.announce(
-        `${nextSelected} cards selected, ${nextSelected} listings to create`
-      );
-    }
+    selectionLive.announce(
+      `${nextSelected} cards selected, ${nextSelected} listings to create`
+    );
   };
 
   const runItems = async (items: BulkCandidate[], skips: BulkSkip[]) => {
-    if (runningRef.current || priceMinor === undefined) return;
+    if (runningRef.current) return;
     runningRef.current = true;
     setSessionExpired(false);
     setMode("running");
@@ -293,13 +333,18 @@ export default function BulkListingSection({
         // A 401 is session-level: stop calling and fail the remainder (E18).
         outcome = { status: "failed", error: SESSION_EXPIRED_MESSAGE };
       } else {
-        outcome = await marketplace.bulkCreateListing({
-          cardId: candidate.card.id,
-          quantity: candidate.quantity,
-          priceMinor,
-          currency,
-        });
-        if (outcome.status === "failed" && outcome.httpStatus === 401) expired = true;
+        const rowPrice = unitPriceMinorFor(candidate);
+        if (rowPrice === undefined) {
+          outcome = { status: "failed", error: "No price for this card" };
+        } else {
+          outcome = await marketplace.bulkCreateListing({
+            cardId: candidate.card.id,
+            quantity: candidate.quantity,
+            priceMinor: rowPrice,
+            currency: effectiveCurrency,
+          });
+          if (outcome.status === "failed" && outcome.httpStatus === 401) expired = true;
+        }
       }
       rows.push({ candidate, outcome });
       setProgress({ current: rows.length, total: items.length });
@@ -504,21 +549,10 @@ export default function BulkListingSection({
                     className="text-sm font-semibold tabular-nums text-gray-100"
                     data-testid="bulk-selection-count"
                   >
-                    {overCap ? (
-                      <>
-                        {`${selectedCount} cards selected · `}
-                        <span className="font-semibold text-amber-300">
-                          over the 100-listing limit. Narrow your filters to continue.
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        {`${selectedCount} cards selected · `}
-                        <span className="font-semibold text-amber-300">
-                          {`${selectedCount} listings to create`}
-                        </span>
-                      </>
-                    )}
+                    {`${selectedCount} cards selected · `}
+                    <span className="font-semibold text-amber-300">
+                      {`${selectedCount} listings to create`}
+                    </span>
                   </p>
                   <p className="mt-1 text-xs text-gray-400">
                     Changing any filter reselects all matching cards.
@@ -552,10 +586,51 @@ export default function BulkListingSection({
         <>
           {scopeNote}
 
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-gray-300">Price source</span>
+            <div
+              role="group"
+              aria-label="Price source"
+              className="inline-flex rounded-lg border border-gray-700 p-0.5"
+            >
+              <button
+                type="button"
+                aria-pressed={priceMode === "flat"}
+                onClick={() => setPriceMode("flat")}
+                className={`rounded-md px-3 py-1 text-sm ${
+                  priceMode === "flat"
+                    ? "bg-amber-500 font-semibold text-gray-950"
+                    : "text-gray-300 hover:text-gray-100"
+                } ${FOCUS_RING}`}
+              >
+                Flat price
+              </button>
+              <button
+                type="button"
+                aria-pressed={priceMode === "tcg"}
+                onClick={() => setPriceMode("tcg")}
+                className={`rounded-md px-3 py-1 text-sm ${
+                  priceMode === "tcg"
+                    ? "bg-amber-500 font-semibold text-gray-950"
+                    : "text-gray-300 hover:text-gray-100"
+                } ${FOCUS_RING}`}
+              >
+                TCG market ± %
+              </button>
+            </div>
+            {priceMode === "tcg" ? (
+              <span className="text-xs text-gray-400">
+                Each card priced from its TCG market value (Normal), converted to SGD.
+              </span>
+            ) : null}
+          </div>
+
           <div className="grid gap-3 lg:grid-cols-12">
             <div className="lg:col-span-4">
               <label htmlFor="bulk-price" className="block text-sm text-gray-300">
-                Unit price (per copy)
+                {priceMode === "tcg"
+                  ? "Fallback price (cards without TCG data)"
+                  : "Unit price (per copy)"}
               </label>
               <input
                 id="bulk-price"
@@ -575,7 +650,7 @@ export default function BulkListingSection({
                 }}
                 aria-invalid={showPriceError || undefined}
                 aria-describedby={
-                  showPriceError ? "bulk-price-error" : overCap ? "bulk-overcap" : undefined
+                  showPriceError ? "bulk-price-error" : undefined
                 }
                 className={`mt-1 w-full max-w-[220px] rounded border bg-gray-950 px-3 py-2 text-sm text-gray-100 placeholder-gray-400 focus:border-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 ${
                   showPriceError ? "border-red-500" : "border-gray-500 hover:border-gray-400"
@@ -587,24 +662,67 @@ export default function BulkListingSection({
                 </span>
               ) : null}
             </div>
-            <div className="lg:col-span-2">
-              <label htmlFor="bulk-currency" className="block text-sm text-gray-300">
-                Currency
-              </label>
-              <select
-                id="bulk-currency"
-                value={currency}
-                onChange={(event) => setCurrency(event.target.value)}
-                className="mt-1 w-[120px] rounded border border-gray-500 bg-gray-950 px-3 py-2 text-sm text-gray-100 hover:border-gray-400 focus:border-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
-              >
-                {MARKETPLACE_CURRENCY_OPTIONS.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="lg:col-span-6 lg:pt-6">
+            {priceMode === "tcg" ? (
+              <>
+                <div className="lg:col-span-2">
+                  <label htmlFor="bulk-fx" className="block text-sm text-gray-300">
+                    USD→SGD rate
+                  </label>
+                  <input
+                    id="bulk-fx"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder={DEFAULT_FX_RATE}
+                    value={fxRate}
+                    onChange={(event) => setFxRate(event.target.value)}
+                    className="mt-1 w-[120px] rounded border border-gray-500 bg-gray-950 px-3 py-2 text-sm text-gray-100 hover:border-gray-400 focus:border-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+                  />
+                  {!tcgParamsValid ? (
+                    <span className="mt-1 block text-xs text-red-300">
+                      Enter a positive rate.
+                    </span>
+                  ) : null}
+                </div>
+                <div className="lg:col-span-2">
+                  <label htmlFor="bulk-adjust" className="block text-sm text-gray-300">
+                    Adjustment %
+                  </label>
+                  <input
+                    id="bulk-adjust"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="0"
+                    value={tcgAdjustment}
+                    onChange={(event) => setTcgAdjustment(event.target.value)}
+                    className="mt-1 w-[120px] rounded border border-gray-500 bg-gray-950 px-3 py-2 text-sm text-gray-100 hover:border-gray-400 focus:border-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+                  />
+                  <span className="mt-1 block text-xs text-gray-500">
+                    0% = TCG market; negative discounts.
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="lg:col-span-2">
+                <label htmlFor="bulk-currency" className="block text-sm text-gray-300">
+                  Currency
+                </label>
+                <select
+                  id="bulk-currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                  className="mt-1 w-[120px] rounded border border-gray-500 bg-gray-950 px-3 py-2 text-sm text-gray-100 hover:border-gray-400 focus:border-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+                >
+                  {MARKETPLACE_CURRENCY_OPTIONS.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className={priceMode === "tcg" ? "lg:col-span-4 lg:pt-6" : "lg:col-span-6 lg:pt-6"}>
               <p className="text-sm text-gray-300">
                 Condition: Not specified · no photos · no location or note
               </p>
@@ -626,30 +744,17 @@ export default function BulkListingSection({
               <span className="text-gray-500"> · </span>
               Batch total{" "}
               <span className="font-semibold text-gray-100">
-                {priceValid ? formatPriceMinor(batchTotalMinor, currency) : "—"}
+                {allIncludedPriced ? formatPriceMinor(batchTotalMinor, effectiveCurrency) : "—"}
               </span>
             </p>
           )}
-
-          {overCap ? (
-            <div
-              id="bulk-overcap"
-              role="alert"
-              className="rounded-xl border border-amber-700/40 bg-amber-950/30 p-3 text-sm text-amber-300"
-            >
-              <span className="font-semibold tabular-nums">{included.length}</span>
-              {` listings is over the 100-listing limit. Remove `}
-              <span className="font-semibold tabular-nums">{included.length - BULK_LIMIT}</span>
-              {" cards below or narrow your filters."}
-            </div>
-          ) : null}
 
           <BulkListingTable
             candidates={candidateSet.matches}
             included={includedIds}
             onToggle={handleToggleRow}
-            priceMinor={priceValid ? priceMinor : undefined}
-            currency={currency}
+            priceMinorFor={unitPriceMinorFor}
+            currency={effectiveCurrency}
           />
 
           <BulkListingSkipList skipped={candidateSet.skipped} />
@@ -665,7 +770,7 @@ export default function BulkListingSection({
             <span className="text-sm text-gray-300 tabular-nums" data-testid="bulk-sticky-total">
               Batch total{" "}
               <span className="font-semibold text-gray-100">
-                {priceValid ? formatPriceMinor(batchTotalMinor, currency) : "—"}
+                {allIncludedPriced ? formatPriceMinor(batchTotalMinor, effectiveCurrency) : "—"}
               </span>
             </span>
             <button
@@ -674,7 +779,7 @@ export default function BulkListingSection({
               onClick={startRun}
               disabled={!canConfirm}
               aria-describedby={
-                overCap ? "bulk-overcap" : showPriceError ? "bulk-price-error" : undefined
+                showPriceError ? "bulk-price-error" : undefined
               }
               className={`rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-gray-950 tabular-nums whitespace-nowrap hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-900 disabled:text-amber-300 disabled:hover:bg-amber-900 ${STICKY_RING}`}
             >

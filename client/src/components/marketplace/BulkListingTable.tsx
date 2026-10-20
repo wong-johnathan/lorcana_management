@@ -7,8 +7,8 @@ interface BulkListingTableProps {
   /** cardIds currently included in the batch. */
   included: Set<string>;
   onToggle: (cardId: string, include: boolean) => void;
-  /** Undefined when the typed price is empty/invalid → money cells show an em dash. */
-  priceMinor?: number;
+  /** Per-row unit price; undefined → money cells show an em dash. */
+  priceMinorFor: (candidate: BulkCandidate) => number | undefined;
   currency: string;
 }
 
@@ -31,7 +31,7 @@ export default function BulkListingTable({
   candidates,
   included,
   onToggle,
-  priceMinor,
+  priceMinorFor,
   currency,
 }: BulkListingTableProps) {
   return (
@@ -75,12 +75,13 @@ export default function BulkListingTable({
           {candidates.map((candidate) => {
             const card = candidate.card;
             const isIncluded = included.has(card.id);
+            const rowPriceMinor = priceMinorFor(candidate);
             const unitPrice =
-              priceMinor === undefined ? MONEY_DASH : formatPriceMinor(priceMinor, currency);
+              rowPriceMinor === undefined ? MONEY_DASH : formatPriceMinor(rowPriceMinor, currency);
             const lineTotal =
-              priceMinor === undefined
+              rowPriceMinor === undefined
                 ? MONEY_DASH
-                : formatPriceMinor(candidate.quantity * priceMinor, currency);
+                : formatPriceMinor(candidate.quantity * rowPriceMinor, currency);
 
             return (
               <tr
